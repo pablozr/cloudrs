@@ -75,3 +75,27 @@ fn libraries_never_depend_on_the_app() {
         }
     }
 }
+
+#[test]
+fn the_app_reaches_soundcloud_and_audio_only_through_the_core() {
+    for (name, deps) in members() {
+        if name == "cloudrs" {
+            for lower in ["sc-api", "sc-audio"] {
+                assert!(
+                    !deps.contains(&lower.to_owned()),
+                    "the app depends on {lower}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_core_knows_nothing_about_the_ui() {
+    for (name, deps) in members() {
+        if name == "sc-core" {
+            assert!(!depends_on(&deps, "gpui"));
+            assert!(!deps.contains(&"cloudrs-ui".to_owned()));
+        }
+    }
+}

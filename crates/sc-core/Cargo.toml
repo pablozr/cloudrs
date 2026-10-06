@@ -1,0 +1,18 @@
+[package]
+name = "sc-core"
+description = "cloudrs application core: state, rules and the bridge to SoundCloud and audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+flume = "0.11"
+sc-api = { path = "../sc-api" }
+sc-audio = { path = "../sc-audio" }
+tokio = { version = "1", features = ["rt", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+serde = "1"
+serde_json = "1"

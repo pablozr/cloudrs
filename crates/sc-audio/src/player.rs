@@ -86,6 +86,12 @@ impl Player {
     pub fn events(&self) -> &flume::Receiver<Event> {
         &self.events
     }
+
+    /// The command sender and event receiver, for a layer that talks to the
+    /// player only through channels. The engine stops when the sender drops.
+    pub fn into_channels(self) -> (flume::Sender<Command>, flume::Receiver<Event>) {
+        (self.commands, self.events)
+    }
 }
 
 struct Track {

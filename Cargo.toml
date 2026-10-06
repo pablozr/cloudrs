@@ -5,6 +5,7 @@ members = [
     "crates/cloudrs-ui",
     "crates/sc-api",
     "crates/sc-audio",
+    "crates/sc-core",
     "tests/architecture",
 ]
 
