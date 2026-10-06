@@ -924,8 +924,10 @@ name = "cloudrs"
 version = "0.1.0"
 dependencies = [
  "cloudrs-ui",
+ "dirs",
  "gpui",
  "gpui_platform",
+ "sc-core",
  "tracing",
  "tracing-subscriber",
 ]

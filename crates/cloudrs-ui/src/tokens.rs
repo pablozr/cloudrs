@@ -189,6 +189,13 @@ pub mod typography {
     pub const MONO: TypeToken = type_token(12.0, 16.0, 400.0, FontRole::Mono);
 }
 
+/// Opacity of a control that has nothing to act on yet.
+pub const DISABLED_OPACITY: f32 = 0.4;
+
+/// Bars of the placeholder waveform shown before a track has its own.
+pub const PLACEHOLDER_BARS: usize = 96;
+pub const PLACEHOLDER_LEVEL: f32 = 0.18;
+
 /// Fixed dimensions of components.
 pub mod size {
     use super::*;

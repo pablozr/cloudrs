@@ -10,5 +10,7 @@ publish = false
 cloudrs-ui = { path = "../../crates/cloudrs-ui" }
 gpui.workspace = true
 gpui_platform.workspace = true
+sc-core = { path = "../../crates/sc-core" }
+dirs = "6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
