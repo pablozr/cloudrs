@@ -297,11 +297,26 @@ The visual rules, tokens and motion catalog live in
       (the build environment cannot reach soundcloud.com).
 
 ### M1 — Playable MVP
-- [ ] Search tracks → list → click to play.
-- [ ] PlayerBar: play/pause, seek, volume, time.
-- [ ] Waveform in the PlayerBar.
-- [ ] Paste a SoundCloud URL and play it.
-- [ ] Artwork with cache.
+Design: [ADR 0004](./adr/0004-m1-core-and-ui-contract.md).
+
+Done (layers below the UI):
+- [x] `sc-audio`: seek by HLS segment (`Command::Seek`), `Player::into_channels`.
+- [x] `sc-api`: `waveform` and `download` (CDN, no credentials).
+- [x] `sc-core`: actor with debounced search and paging, play from results or a pasted link,
+      playback state, waveform bars, artwork disk cache; tested with a fake API and fake audio.
+- [x] `cloudrs-ui`: single-line `SearchField` adapted from xemnas (`bind_keys` registers its keys).
+
+Next (the app, `apps/cloudrs`):
+- [ ] Composition root: `sc_core::start(CoreConfig { cache_dir: dirs::cache_dir()/cloudrs })`
+      (`dirs` approved), show a problem state if it fails (no audio device).
+- [ ] Shell view: owns the `CoreHandle`, pumps `events().recv_async()` into view state, and
+      sends `Command::Search` / `Command::PlayUrl` (when the text is a soundcloud.com URL) from
+      `SearchChanged`.
+- [ ] Results: `uniform_list` of track rows with artwork (`img(path)`), click to play,
+      `Command::LoadMore` near the end of the list.
+- [ ] Player bar: now playing + artwork, play/pause, time, waveform with click to seek, volume.
+- [ ] Problems as text through `i18n` (`Problem` → message).
+- [ ] Screenshots in both themes, then tick M1.
 
 ### M2 — Navigation
 - [ ] Track, Profile, Playlist and Album screens.
