@@ -18,7 +18,7 @@ pub use stream::{StreamProtocol, StreamSource, pick_transcoding};
 
 use std::future::Future;
 
-use models::{Page, Resource, Track};
+use models::{Page, Resource, Track, Waveform};
 
 /// What the rest of cloudrs may ask of SoundCloud.
 pub trait SoundCloudApi: Send + Sync {
@@ -45,4 +45,10 @@ pub trait SoundCloudApi: Send + Sync {
 
     /// Resolves the URL of the best stream the audio engine can play.
     fn stream_url(&self, track: &Track) -> impl Future<Output = Result<StreamSource>> + Send;
+
+    /// Fetches the waveform of a track (`Track::waveform_url`).
+    fn waveform(&self, url: &str) -> impl Future<Output = Result<Waveform>> + Send;
+
+    /// Downloads a file from SoundCloud's CDN, such as artwork.
+    fn download(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }

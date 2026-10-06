@@ -216,3 +216,36 @@ async fn resolves_the_best_stream() {
     let preview = sc.stream_url(&page.collection[1]).await.unwrap_err();
     assert!(matches!(preview, Error::NoPlayableStream(_)));
 }
+
+#[tokio::test]
+async fn downloads_waveforms_and_files_without_credentials() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/wave/abc_m.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"width":3,"height":140,"samples":[1,2,3]}"#,
+            "application/json",
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/art/abc-t300x300.jpg"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0xFF, 0xD8, 0xFF]))
+        .mount(&server)
+        .await;
+
+    // No client_id configured and no web app mounted: these calls must not need one.
+    let sc = client(&server, None, None);
+    let wave = sc
+        .waveform(&format!("{}/wave/abc_m.json", server.uri()))
+        .await
+        .unwrap();
+    assert_eq!(wave.samples, [1, 2, 3]);
+    let bytes = sc
+        .download(&format!("{}/art/abc-t300x300.jpg", server.uri()))
+        .await
+        .unwrap();
+    assert_eq!(bytes, [0xFF, 0xD8, 0xFF]);
+    let missing = sc.download(&format!("{}/art/none.jpg", server.uri())).await;
+    assert!(matches!(missing, Err(Error::NotFound)));
+}

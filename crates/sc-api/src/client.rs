@@ -12,7 +12,7 @@ use url::Url;
 use crate::SoundCloudApi;
 use crate::client_id::{find_client_id, script_urls};
 use crate::error::{Error, Result};
-use crate::models::{Page, Resource, Track};
+use crate::models::{Page, Resource, Track, Waveform};
 use crate::stream::{StreamSource, pick_transcoding, protocol};
 
 /// Where to reach SoundCloud and which credentials to start with.
@@ -175,6 +175,19 @@ impl ScClient {
     }
 }
 
+impl ScClient {
+    /// GET an absolute URL outside the API (CDN files): no `client_id`, no token.
+    async fn get_cdn(&self, url: &str) -> Result<reqwest::Response> {
+        let _permit = self.permits.acquire().await.expect("semaphore open");
+        let response = self.http.get(url).send().await?;
+        match response.status() {
+            status if status.is_success() => Ok(response),
+            StatusCode::NOT_FOUND => Err(Error::NotFound),
+            status => Err(Error::Status(status.as_u16())),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct StreamUrl {
     url: String,
@@ -248,5 +261,14 @@ impl SoundCloudApi for ScClient {
             protocol,
             mime_type: transcoding.format.mime_type.clone(),
         })
+    }
+
+    async fn waveform(&self, url: &str) -> Result<Waveform> {
+        let body = self.get_cdn(url).await?.bytes().await?;
+        serde_json::from_slice(&body).map_err(Error::Decode)
+    }
+
+    async fn download(&self, url: &str) -> Result<Vec<u8>> {
+        Ok(self.get_cdn(url).await?.bytes().await?.to_vec())
     }
 }

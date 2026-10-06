@@ -142,6 +142,15 @@ pub struct Playlist {
     pub tracks: Vec<Track>,
 }
 
+/// The waveform drawn in the player: one value per column, from 0 to `height`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Waveform {
+    pub width: u32,
+    pub height: u32,
+    pub samples: Vec<u32>,
+}
+
 /// What a `soundcloud.com` URL points to.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -187,6 +196,14 @@ mod tests {
         assert!(matches!(playlist, Resource::Playlist(p) if p.tracks.len() == 1));
         let other: Resource = serde_json::from_str(r#"{"kind": "system-playlist"}"#).unwrap();
         assert!(matches!(other, Resource::Unknown));
+    }
+
+    #[test]
+    fn decodes_a_waveform() {
+        let waveform: Waveform =
+            serde_json::from_str(r#"{"width":4,"height":140,"samples":[0,70,140,35]}"#).unwrap();
+        assert_eq!(waveform.samples, [0, 70, 140, 35]);
+        assert_eq!(waveform.height, 140);
     }
 
     #[test]
