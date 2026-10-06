@@ -113,7 +113,7 @@ The full plan, with endpoints, the audio pipeline and the risks, is in
 ## Roadmap
 
 - [x] **M0 · Spike.** Workspace, CI, `client_id` + search, HLS playback, the first GPUI window ([findings](docs/adr/0003-m0-spike-findings.md)).
-- [ ] **M1 · Playable MVP.** Search, play, player bar with waveform, paste a link to play.
+- [x] **M1 · Playable MVP.** Search, play, player bar with waveform, paste a link to play.
 - [ ] **M2 · Navigation.** Track, profile and playlist screens, the full queue, autoplay, history.
 - [ ] **M3 · Your account.** Sign in, likes, library, feed, following.
 - [ ] **M4 · Desktop integration.** Media keys, shortcuts, audio devices, timed comments, settings.

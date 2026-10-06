@@ -28,6 +28,9 @@ pub struct PlayerBar {
     state: PlayerState,
     /// Shown as the waveform until (or unless) the track has one.
     flat_waveform: Arc<[f32]>,
+    /// Fraction of the waveform under the pointer. Kept here, not in the
+    /// element, so the preview re-renders only this bar.
+    hover: Option<f32>,
 }
 
 impl EventEmitter<PlayerAction> for PlayerBar {}
@@ -37,6 +40,7 @@ impl PlayerBar {
         Self {
             state: PlayerState::new(),
             flat_waveform: vec![tokens::PLACEHOLDER_LEVEL; tokens::PLACEHOLDER_BARS].into(),
+            hover: None,
         }
     }
 
@@ -136,6 +140,17 @@ impl Render for PlayerBar {
                         "seek",
                         samples,
                         state.progress(),
+                        self.hover,
+                        cx.processor(|this, hover: Option<f32>, _, cx| {
+                            // No target to preview without a duration or real bars.
+                            let seekable = !this.state.playback.duration.is_zero()
+                                && this.state.waveform.is_some();
+                            let hover = hover.filter(|_| seekable);
+                            if this.hover != hover {
+                                this.hover = hover;
+                                cx.notify();
+                            }
+                        }),
                         cx.processor(|this, fraction: f32, _, cx| {
                             let duration = this.state.playback.duration;
                             if !duration.is_zero() {

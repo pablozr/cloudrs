@@ -147,12 +147,17 @@ fn fraction_in(x: f32, left: f32, width: f32) -> f32 {
     ((x - left) / width).clamp(0.0, 1.0)
 }
 
+/// Called with the pointer's fraction while it is over a strip, `None` on leave.
+type HoverHandler = Rc<dyn Fn(Option<f32>, &mut Window, &mut App)>;
+
 /// A focusable strip that reports the pointer's horizontal fraction (0..=1) on
-/// press and, with `drag`, while the left button stays down. `paint` draws it.
+/// press and, with `drag`, while the left button stays down. `on_hover`, when
+/// given, follows the pointer over the strip. `paint` draws it.
 fn scrubber(
     id: impl Into<ElementId>,
     ring: Hsla,
     drag: bool,
+    on_hover: Option<HoverHandler>,
     paint: impl Fn(Bounds<Pixels>, &mut Window) + 'static,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
@@ -188,34 +193,78 @@ fn scrubber(
             )
             .size_full(),
         );
-    if !drag {
+    if !drag && on_hover.is_none() {
         return strip;
     }
-    strip.on_mouse_move(move |event, window, cx| {
-        if event.dragging() {
-            on_change(fraction(event.position.x), window, cx);
-        }
-    })
+    let leave = on_hover.clone();
+    strip
+        .on_mouse_move(move |event, window, cx| {
+            let at = fraction(event.position.x);
+            if let Some(on_hover) = &on_hover {
+                on_hover(Some(at), window, cx);
+            }
+            if drag && event.dragging() {
+                on_change(at, window, cx);
+            }
+        })
+        .on_hover(move |hovered, window, cx| {
+            if let (false, Some(on_hover)) = (*hovered, &leave) {
+                on_hover(None, window, cx);
+            }
+        })
+}
+
+/// How a waveform bar is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BarKind {
+    Played,
+    /// Between the progress and the hover: what a click would change.
+    Preview,
+    Rest,
+}
+
+/// Kind of the bar centred at `at` (0..=1) for the current `progress` and the
+/// pointer's `hover` fraction. Hovering ahead previews the bars a click would
+/// play; hovering behind previews the played bars it would give up.
+fn bar_kind(at: f32, progress: f32, hover: Option<f32>) -> BarKind {
+    let (kept, edge) = match hover {
+        Some(h) if h < progress => (h, progress),
+        Some(h) => (progress, h),
+        None => (progress, progress),
+    };
+    if at <= kept {
+        BarKind::Played
+    } else if at <= edge {
+        BarKind::Preview
+    } else {
+        BarKind::Rest
+    }
 }
 
 /// SoundCloud-style waveform: bars drawn from `samples` (0..=1), filled with
 /// the accent up to `progress` (0..=1). A click calls `on_seek` with the
-/// fraction clicked. Fills its parent (size the parent); the caller adds the
-/// `aria_label`.
+/// fraction clicked. `on_hover` follows the pointer (`None` on leave); the
+/// caller keeps the fraction and passes it back as `hover`, so the bars a click
+/// would change show a muted tint. Fills its parent (size the parent); the
+/// caller adds the `aria_label`.
 pub fn waveform(
     theme: &Theme,
     id: impl Into<ElementId>,
     samples: Arc<[f32]>,
     progress: f32,
+    hover: Option<f32>,
+    on_hover: impl Fn(Option<f32>, &mut Window, &mut App) + 'static,
     on_seek: impl Fn(f32, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let played = theme.colors.accent;
+    let preview = theme.colors.accent_preview;
     let rest = theme.colors.surface_hover;
     // Click only: a seek restarts the HLS segment, so dragging would flood the core.
     scrubber(
         id,
         theme.colors.accent,
         false,
+        Some(Rc::new(on_hover)),
         move |bounds, window| {
             if samples.is_empty() {
                 return;
@@ -228,10 +277,10 @@ pub fn waveform(
                 let x = bounds.origin.x + (bar + gap) * i as f32;
                 let h = (height * sample.clamp(0.08, 1.0)).max(px(2.0));
                 let y = bounds.origin.y + (height - h) / 2.0;
-                let color = if (i as f32 + 0.5) / count <= progress {
-                    played
-                } else {
-                    rest
+                let color = match bar_kind((i as f32 + 0.5) / count, progress, hover) {
+                    BarKind::Played => played,
+                    BarKind::Preview => preview,
+                    BarKind::Rest => rest,
                 };
                 let rect = Bounds::from_corners(point(x, y), point(x + bar, y + h));
                 window.paint_quad(fill(rect, color).corner_radii(bar / 2.0));
@@ -255,6 +304,7 @@ pub fn slider(
         id,
         c.accent,
         true,
+        None,
         move |bounds, window| {
             let track_h = size::SLIDER_TRACK;
             let thumb = size::SLIDER_THUMB;
@@ -597,6 +647,26 @@ mod tests {
     fn fraction_clamps_outside_the_strip() {
         assert_eq!(fraction_in(50.0, 100.0, 200.0), 0.0);
         assert_eq!(fraction_in(900.0, 100.0, 200.0), 1.0);
+    }
+
+    #[test]
+    fn without_hover_bars_are_played_or_rest() {
+        assert_eq!(bar_kind(0.2, 0.5, None), BarKind::Played);
+        assert_eq!(bar_kind(0.8, 0.5, None), BarKind::Rest);
+    }
+
+    #[test]
+    fn hovering_ahead_previews_the_bars_a_click_would_play() {
+        assert_eq!(bar_kind(0.4, 0.5, Some(0.8)), BarKind::Played);
+        assert_eq!(bar_kind(0.6, 0.5, Some(0.8)), BarKind::Preview);
+        assert_eq!(bar_kind(0.9, 0.5, Some(0.8)), BarKind::Rest);
+    }
+
+    #[test]
+    fn hovering_behind_previews_the_bars_a_click_would_give_up() {
+        assert_eq!(bar_kind(0.2, 0.5, Some(0.3)), BarKind::Played);
+        assert_eq!(bar_kind(0.4, 0.5, Some(0.3)), BarKind::Preview);
+        assert_eq!(bar_kind(0.6, 0.5, Some(0.3)), BarKind::Rest);
     }
 
     #[test]
