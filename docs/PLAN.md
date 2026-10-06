@@ -53,8 +53,8 @@ tracks) and want:
 | D2 | **Own UI kit, `crates/cloudrs-ui`** (tokens, theme, motion, primitives) | `gpui-component` depends on `gpui-pre`, a different crate from Zed's `gpui`, so the two cannot be mixed. Same approach as xemnas's `ui/` |
 | D3 | **SoundCloud's internal `api-v2`**, behind a trait | Free and needs no approval. The official API requires a manual review and a paid account. The trait lets us switch later. See [ADR 0002](./adr/0002-soundcloud-api-v2.md) |
 | D4 | **Own audio pipeline**: `symphonia` (decode) + `cpal` (output) | Full control over buffering, seeking, gapless and EQ. `rodio` is simpler but limits gapless and seeking on streams |
-| D5 | **Tokio** for networking, a **dedicated thread** for audio, channels (`flume`) in between | GPUI has its own executor. Audio must never depend on the UI or the network |
-| D6 | **Central state in `sc-core`**. The UI reads snapshots and sends commands | Logic is testable without UI, and a fake runtime enables UI work without credentials |
+| D5 | **`sc-core` runs a small Tokio runtime on its own thread** for all I/O; the UI talks to it only through a `Command` channel and an `Event` channel (`flume`). `sc-audio` has no async runtime: its fetcher is a plain thread with `reqwest::blocking` | GPUI has its own executor. The UI stays free of I/O and business rules, and audio never depends on the UI or an async runtime (approved 2026-10-06) |
+| D6 | **Central state in `sc-core`**, generic over the `SoundCloudApi` trait (`Core<A: SoundCloudApi>`). The UI reads snapshots and sends commands | Logic is testable with a fake API and no HTTP; generics cost nothing at runtime (approved 2026-10-06) |
 | D7 | **SQLite** (`rusqlite`) for persistence + disk cache | History, session, metadata and image cache |
 | D8 | **Tokens in the OS keychain** (`keyring`) | Never store the `oauth_token` in plain text |
 | D9 | **English everywhere in the repository** (code, docs, commits). UI strings go through `i18n` from day one | Open source reach. Other languages ship later without touching screens |
@@ -172,10 +172,10 @@ Encrypted transcodings (`encrypted-hls`, `ctr-encrypted-hls`, `cbc-encrypted-hls
 ### 5.2 Pipeline
 
 ```
-[fetcher (tokio)]  m3u8 → fetch segments ahead (~30 s) → byte ring buffer
+[fetch thread]     m3u8 → fetch segments ahead (~30 s) → bounded channel of segments
         │
 [decoder thread]   symphonia (isomp4/adts + aac | mp3 | ogg/opus) → f32 PCM
-        │          resample (rubato) to the device rate, volume, EQ (later)
+        │          resample (linear until M5, then evaluate rubato) to the device rate
         │
 [cpal callback]    lock-free sample ring buffer (rtrb) → sound card
 ```

@@ -53,5 +53,9 @@ how long stream URLs stay valid.
 
 ## Decision
 
+Approved by the maintainer on 2026-10-06: the blocking fetch thread in `sc-audio`, the linear
+resampler until M5, and the M0 dependencies (`flume`, `rtrb`, `tracing`, `regex`, `thiserror`,
+`url`; `wiremock` and `toml` for tests).
+
 Keep the stack as planned. Enable `wayland` and `x11` on `gpui_platform`. Move on to M1 once the
 live run above confirms the stream format.
