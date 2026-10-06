@@ -370,3 +370,138 @@ fn reports_a_failed_search_and_a_failed_next_page() {
     });
     assert_eq!(failed, ("lights out".into(), true, Problem::NotFound));
 }
+
+fn queue_ids(snapshot: &sc_core::QueueSnapshot) -> Vec<u64> {
+    snapshot.tracks.iter().map(|t| t.id.0).collect()
+}
+
+impl Harness {
+    /// Waits for the first queue snapshot that satisfies `pick`.
+    fn queue_where(
+        &self,
+        pick: impl Fn(&sc_core::QueueSnapshot) -> bool,
+    ) -> sc_core::QueueSnapshot {
+        self.wait(|e| match e {
+            Event::Queue(q) if pick(&q) => Some(q),
+            _ => None,
+        })
+    }
+}
+
+#[test]
+fn playing_from_results_makes_them_the_queue() {
+    let h = Harness::new("queue-context");
+    h.search();
+    h.core.send(Command::Play(TrackId(2)));
+    let queue = h.queue_where(|_| true);
+    assert_eq!(queue_ids(&queue), [1, 2]);
+    assert_eq!(queue.current, Some(1));
+    let now = h.wait(|e| match e {
+        Event::NowPlaying(track) => Some(track),
+        _ => None,
+    });
+    assert_eq!(now.id, TrackId(2));
+}
+
+#[test]
+fn queue_commands_edit_the_queue() {
+    let h = Harness::new("queue-edit");
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.core.send(Command::AddToQueue(TrackId(1)));
+    let queue = h.queue_where(|q| q.tracks.len() == 3);
+    assert_eq!(queue_ids(&queue), [1, 1, 2]);
+
+    h.core.send(Command::MoveInQueue { from: 2, to: 1 });
+    let queue = h.queue_where(|q| queue_ids(q) == [1, 2, 1]);
+    assert_eq!(queue.current, Some(0));
+
+    h.core.send(Command::RemoveFromQueue(1));
+    h.queue_where(|q| queue_ids(q) == [1, 1]);
+
+    h.core.send(Command::SetShuffle(true));
+    h.queue_where(|q| q.shuffle);
+    h.core.send(Command::SetRepeat(sc_core::Repeat::All));
+    h.queue_where(|q| q.repeat == sc_core::Repeat::All);
+
+    h.core.send(Command::PlayQueueIndex(1));
+    let queue = h.queue_where(|q| q.current == Some(1));
+    assert_eq!(queue_ids(&queue), [1, 1]);
+}
+
+#[test]
+fn previous_restarts_a_track_past_three_seconds() {
+    let h = Harness::new("previous");
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.audio_events
+        .send(sc_audio::Event::Position(Duration::from_secs(10)))
+        .unwrap();
+    h.wait(|e| match e {
+        Event::Playback(p) if p.position == Duration::from_secs(10) => Some(()),
+        _ => None,
+    });
+    h.core.send(Command::Previous);
+    let seek = h
+        .audio_commands
+        .iter()
+        .find_map(|c| match c {
+            sc_audio::Command::Seek(at) => Some(at),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(seek, Duration::ZERO);
+}
+
+#[test]
+fn the_next_track_plays_when_one_ends() {
+    let h = Harness::new("track-end");
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Ended))
+        .unwrap();
+    let now = h.wait(|e| match e {
+        Event::NowPlaying(track) if track.id == TrackId(2) => Some(track),
+        _ => None,
+    });
+    assert_eq!(now.title, "Preview");
+}
+
+#[test]
+fn autoplay_appends_related_tracks_when_the_queue_ends() {
+    let h = Harness::new("autoplay");
+    h.search();
+    h.core.send(Command::Play(TrackId(2)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Ended))
+        .unwrap();
+    let queue = h.queue_where(|q| q.tracks.len() == 4);
+    assert_eq!(queue_ids(&queue), [1, 2, 90, 91]);
+    let now = h.wait(|e| match e {
+        Event::NowPlaying(track) if track.id == TrackId(90) => Some(track),
+        _ => None,
+    });
+    assert_eq!(now.title, "Related A");
+    assert!(h.api.calls().contains(&"related 2".to_string()));
+}
+
+#[test]
+fn repeat_one_replays_the_same_track() {
+    let h = Harness::new("repeat-one");
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.core.send(Command::SetRepeat(sc_core::Repeat::One));
+    h.queue_where(|q| q.repeat == sc_core::Repeat::One);
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Ended))
+        .unwrap();
+    let again = h.wait(|e| match e {
+        Event::NowPlaying(track) => Some(track),
+        _ => None,
+    });
+    assert_eq!(again.id, TrackId(1));
+}

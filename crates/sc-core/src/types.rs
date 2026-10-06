@@ -83,3 +83,24 @@ impl Problem {
         }
     }
 }
+
+/// What happens when a track ends.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Repeat {
+    #[default]
+    Off,
+    /// Play the same track again.
+    One,
+    /// Go back to the first track after the last.
+    All,
+}
+
+/// The queue as the UI shows it. The single source of truth for what plays next.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct QueueSnapshot {
+    pub tracks: Vec<TrackSummary>,
+    /// Index into `tracks` of the track that is playing (or loaded).
+    pub current: Option<usize>,
+    pub shuffle: bool,
+    pub repeat: Repeat,
+}
