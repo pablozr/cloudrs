@@ -284,7 +284,7 @@ impl Shell {
                     button(
                         theme,
                         "retry-search",
-                        i18n::search::try_again(),
+                        i18n::app::try_again(),
                         ButtonKind::Primary,
                     )
                     .on_click(cx.listener(Self::retry_search)),
@@ -429,7 +429,7 @@ impl Render for Shell {
             let retry = button(
                 &theme,
                 "restart-core",
-                i18n::startup::try_again(),
+                i18n::app::try_again(),
                 ButtonKind::Primary,
             )
             .on_click(cx.listener(Self::restart_core));
