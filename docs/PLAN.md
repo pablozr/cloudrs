@@ -296,7 +296,7 @@ The visual rules, tokens and motion catalog live in
 - [ ] Run the examples against the live SoundCloud from a normal machine and complete ADR 0003
       (the build environment cannot reach soundcloud.com).
 
-### M1 — Playable MVP
+### M1 — Playable MVP (done 2026-10-06)
 Design: [ADR 0004](./adr/0004-m1-core-and-ui-contract.md) (core and contract),
 [ADR 0005](./adr/0005-m1-app-shell.md) (app shell).
 
@@ -325,8 +325,8 @@ Done (the app, `apps/cloudrs`):
 Before ticking M1:
 - [x] Listen on a real machine: confirmed by the maintainer on Windows 11 (2026-10-06) with a
       release build cross-compiled in a Linux container from the user's Windows SDK.
-- [ ] Waveform hover preview of the seek target (motion catalog 3): clicking seeks, but the
-      hover preview is not built yet.
+- [x] Waveform hover preview of the seek target (motion catalog 3): the bars between the
+      progress and the pointer get a muted accent tint.
 
 ### M2 — Navigation
 - [ ] Track, Profile, Playlist and Album screens.

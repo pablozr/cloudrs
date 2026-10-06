@@ -61,11 +61,12 @@ Audio was not heard.
 
 Also: [results](../assets/readme/m1-dark-results.png),
 [a problem toast](../assets/readme/m1-dark-toast.png) and
-[a scrolled list with the next page loaded](../assets/readme/m1-light-scrolled.png).
+[a scrolled list with the next page loaded](../assets/readme/m1-light-scrolled.png) and
+[the waveform hover preview](../assets/readme/m1-dark-hover.png) (pointer behind the progress: the
+bars a click would give up are tinted).
 
 ## Known limits
 
-- The waveform seeks on click only; the hover preview of the target is not built.
 - A failed `Command::LoadMore` drops the next page inside `sc-core` (`Event::SearchFailed` with
   `append: true`); the list stops asking for more and shows a toast. A failed first page shows
   the error state with "Try again" and no toast.

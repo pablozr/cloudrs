@@ -30,6 +30,8 @@ pub struct Palette {
     pub accent_hover: Hsla,
     pub accent_soft: Hsla,
     pub accent_glow: Hsla,
+    /// Waveform bars the click would play (or un-play), while hovering.
+    pub accent_preview: Hsla,
     /// Text on an accent fill.
     pub on_accent: Hsla,
 }
@@ -50,6 +52,7 @@ pub fn dark() -> Palette {
         accent_hover: tone(0xFF7A1A, 1.0),
         accent_soft: tone(0xFF5500, 0.14),
         accent_glow: tone(0xFF5500, 0.35),
+        accent_preview: tone(0xFF5500, 0.45),
         on_accent: tone(0xFFFFFF, 1.0),
     }
 }
@@ -70,6 +73,7 @@ pub fn light() -> Palette {
         accent_hover: tone(0xFF5500, 1.0),
         accent_soft: tone(0xFF5500, 0.12),
         accent_glow: tone(0xFF5500, 0.28),
+        accent_preview: tone(0xE84D00, 0.40),
         on_accent: tone(0xFFFFFF, 1.0),
     }
 }
