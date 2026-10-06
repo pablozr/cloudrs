@@ -58,13 +58,19 @@ pub(crate) fn run_on_thread<A: SoundCloudApi + 'static>(
     std::thread::Builder::new()
         .name("cloudrs-core".into())
         .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .expect("the core runtime starts");
-            runtime.block_on(run(api, audio, config, commands, events));
+            runtime().block_on(run(api, audio, config, commands, events));
         })
         .expect("the core thread starts");
+}
+
+/// The real API client opens sockets on this runtime, so it needs the IO
+/// driver as well as timers (without it every request panics).
+fn runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .expect("the core runtime starts")
 }
 
 async fn run<A: SoundCloudApi + 'static>(
@@ -404,5 +410,19 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 self.emit(Event::Problem(Problem::Audio(detail)));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime;
+
+    #[test]
+    fn the_runtime_can_open_sockets() {
+        runtime().block_on(async {
+            tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("the IO driver is enabled");
+        });
     }
 }
