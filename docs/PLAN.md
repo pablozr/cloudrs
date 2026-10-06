@@ -354,6 +354,15 @@ Before ticking M1:
 - [ ] First translations beyond English.
 - [ ] Website/README with GIFs and a download page.
 
+### Later — Listen together (after M2)
+Design: [ADR 0006](./adr/0006-listen-together-p2p.md). Peer-to-peer, no cloudrs server; state is
+synced, audio never leaves SoundCloud.
+- [ ] Spike: P2P library (candidate `iroh`): NAT traversal between two home networks, binary
+      size, idle cost. Approval before it becomes a dependency.
+- [ ] `sc-session`: host creates an invite link, guests join by pasting it, host-owned queue.
+- [ ] Sync: clock offset, start when all are buffered, drift correction by seek.
+- [ ] Guests who cannot play a track (GO+ preview, region) are shown, not dropped.
+
 ---
 
 ## 10. Quality and process
