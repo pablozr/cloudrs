@@ -308,7 +308,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let page = match result {
             Ok(page) => page,
             Err(error) => {
-                self.emit(Event::Problem(Problem::from_api(&error)));
+                self.emit(Event::SearchFailed {
+                    query: self.query.clone(),
+                    append,
+                    problem: Problem::from_api(&error),
+                });
                 return;
             }
         };

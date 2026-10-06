@@ -54,7 +54,15 @@ pub enum Event {
     Artwork { track: TrackId, path: PathBuf },
     /// Player state, sent on every change and about ten times per second while playing.
     Playback(Playback),
-    /// Something the person should know about.
+    /// A search page (`append: false` is the first page, `true` a "load more")
+    /// could not be fetched. A failed `append` page is dropped: the core will
+    /// not offer it again, so the UI should stop asking for more.
+    SearchFailed {
+        query: String,
+        append: bool,
+        problem: Problem,
+    },
+    /// Something the person should know about (playing, pasted links, audio).
     Problem(Problem),
 }
 

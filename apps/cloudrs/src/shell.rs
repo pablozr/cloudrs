@@ -155,7 +155,14 @@ impl Shell {
                     .update(cx, |bar, cx| bar.apply(&event, artwork, cx));
             }
             Event::Problem(problem) => self.show_problem(problem, cx),
-            Event::Searching { .. } | Event::Results { .. } => {}
+            // A failed first page has its own error state; a failed next page
+            // leaves the list in place, so it gets a toast.
+            Event::SearchFailed {
+                append: true,
+                problem,
+                ..
+            } => self.show_problem(problem, cx),
+            Event::SearchFailed { .. } | Event::Searching { .. } | Event::Results { .. } => {}
         }
         // Playback ticks leave `changed` false: they must not re-render the list.
         if changed {

@@ -66,5 +66,6 @@ Also: [results](../assets/readme/m1-dark-results.png),
 ## Known limits
 
 - The waveform seeks on click only; the hover preview of the target is not built.
-- A failed `Command::LoadMore` drops the next page inside `sc-core`; the list stops asking
-  for more and shows the problem toast.
+- A failed `Command::LoadMore` drops the next page inside `sc-core` (`Event::SearchFailed` with
+  `append: true`); the list stops asking for more and shows a toast. A failed first page shows
+  the error state with "Try again" and no toast.

@@ -28,7 +28,10 @@ UI and the SoundCloud and audio crates.
 7. **Search as you type**, 300 ms after the last key. A newer query cancels the older one.
 8. **Search field adapted from xemnas** (`SearchField` + `SearchEdit`, MIT, same maintainer) into
    `cloudrs-ui`, using our tokens. It adds `unicode-segmentation`.
-9. **New dependencies:** `dirs` (cache folder), `tokio` with `rt` and `time` in `sc-core`, and
+9. **`Event::SearchFailed`** (approved 2026-10-06). A failed search page or "load more" page is
+   reported as `SearchFailed { query, append, problem }`, separate from `Problem`, so the UI can
+   tell a failed search from a playback problem without guessing from the event order.
+10. **New dependencies:** `dirs` (cache folder), `tokio` with `rt` and `time` in `sc-core`, and
    `unicode-segmentation` in `cloudrs-ui`.
 
 ## Consequences

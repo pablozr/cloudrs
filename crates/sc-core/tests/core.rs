@@ -1,5 +1,6 @@
 //! The core against a fake SoundCloud API and a fake audio engine.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,6 +12,8 @@ use sc_core::{Command, CoreConfig, CoreHandle, Event, PlayState, Problem, TrackI
 #[derive(Clone, Default)]
 struct FakeApi {
     calls: Arc<Mutex<Vec<String>>>,
+    /// Makes the next `next_page` call fail.
+    fail_next_page: Arc<AtomicBool>,
 }
 
 fn track(id: u64, title: &str, policy: &str) -> Track {
@@ -41,6 +44,9 @@ impl FakeApi {
 impl SoundCloudApi for FakeApi {
     async fn search_tracks(&self, query: &str, _limit: u32) -> sc_api::Result<Page<Track>> {
         self.log(format!("search {query}"));
+        if query == "fail" {
+            return Err(sc_api::Error::NotFound);
+        }
         Ok(Page {
             collection: vec![track(1, "One", "ALLOW"), track(2, "Preview", "SNIP")],
             next_href: Some("https://api-v2.soundcloud.com/next".into()),
@@ -53,6 +59,9 @@ impl SoundCloudApi for FakeApi {
         T: serde::de::DeserializeOwned + Send + Sync,
     {
         self.log("next".into());
+        if self.fail_next_page.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::NotFound);
+        }
         let page = serde_json::json!({ "collection": [{ "id": 3, "title": "Three" }] });
         Ok(Some(serde_json::from_value(page).unwrap()))
     }
@@ -320,4 +329,32 @@ fn caches_artwork_on_disk() {
         .filter(|c| c.starts_with("download") && c.contains("t300x300"))
         .count();
     assert_eq!(downloads, 2);
+}
+
+#[test]
+fn reports_a_failed_search_and_a_failed_next_page() {
+    let h = Harness::new("search-failed");
+    h.core.send(Command::Search("fail".into()));
+    let failed = h.wait(|e| match e {
+        Event::SearchFailed {
+            query,
+            append,
+            problem,
+        } => Some((query, append, problem)),
+        _ => None,
+    });
+    assert_eq!(failed, ("fail".into(), false, Problem::NotFound));
+
+    h.search();
+    h.api.fail_next_page.store(true, Ordering::SeqCst);
+    h.core.send(Command::LoadMore);
+    let failed = h.wait(|e| match e {
+        Event::SearchFailed {
+            query,
+            append,
+            problem,
+        } => Some((query, append, problem)),
+        _ => None,
+    });
+    assert_eq!(failed, ("lights out".into(), true, Problem::NotFound));
 }

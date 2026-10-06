@@ -87,19 +87,20 @@ impl ResultsState {
                 self.loading_more = false;
                 true
             }
-            Event::Problem(_) => match self.phase {
-                Phase::Searching => {
-                    self.phase = Phase::Failed;
-                    true
-                }
-                // The core drops the next page when loading it fails.
-                _ if self.loading_more => {
+            Event::SearchFailed { query, append, .. } => {
+                if *append {
+                    // The core drops the next page when loading it fails and will
+                    // not offer it again, so stop asking.
                     self.loading_more = false;
                     self.has_more = false;
-                    true
+                    return true;
                 }
-                _ => false,
-            },
+                if self.phase != Phase::Searching || *query != self.query {
+                    return false;
+                }
+                self.phase = Phase::Failed;
+                true
+            }
             Event::NowPlaying(track) => {
                 self.current = Some(track.id);
                 self.playing = false;
@@ -113,7 +114,8 @@ impl ResultsState {
                 self.artwork.insert(*track, Arc::from(path.as_path()));
                 self.tracks.iter().any(|t| t.id == *track)
             }
-            Event::Waveform { .. } => false,
+            // Playback problems only drive the toast, never the results.
+            Event::Problem(_) | Event::Waveform { .. } => false,
         }
     }
 
@@ -253,6 +255,14 @@ mod tests {
         }
     }
 
+    fn search_failed(query: &str, append: bool) -> Event {
+        Event::SearchFailed {
+            query: query.into(),
+            append,
+            problem: Problem::Offline,
+        }
+    }
+
     fn playback(state: PlayState, position: u64, duration: u64) -> Event {
         Event::Playback(Playback {
             state,
@@ -307,9 +317,30 @@ mod tests {
         state.apply(&Event::Searching {
             query: "house".into(),
         });
-        assert!(state.apply(&Event::Problem(Problem::Offline)));
+        assert!(state.apply(&search_failed("house", false)));
         assert_eq!(state.phase, Phase::Failed);
         assert_eq!(state.query, "house");
+    }
+
+    #[test]
+    fn a_failure_of_an_older_query_is_ignored() {
+        let mut state = ResultsState::new();
+        state.apply(&Event::Searching {
+            query: "house".into(),
+        });
+        assert!(!state.apply(&search_failed("hou", false)));
+        assert_eq!(state.phase, Phase::Searching);
+    }
+
+    #[test]
+    fn an_audio_problem_during_a_search_keeps_the_skeleton() {
+        let mut state = ResultsState::new();
+        state.apply(&Event::Searching {
+            query: "house".into(),
+        });
+        let audio = Event::Problem(Problem::Audio("device lost".into()));
+        assert!(!state.apply(&audio));
+        assert_eq!(state.phase, Phase::Searching);
     }
 
     #[test]
@@ -323,10 +354,19 @@ mod tests {
     fn a_failed_next_page_stops_asking_for_more() {
         let mut state = ready(&[1, 2], true);
         assert!(state.take_load_more(2));
-        assert!(state.apply(&Event::Problem(Problem::Offline)));
+        assert!(state.apply(&search_failed("house", true)));
         assert!(!state.loading_more);
         assert!(!state.take_load_more(2));
         assert_eq!(state.phase, Phase::Ready);
+    }
+
+    #[test]
+    fn a_playback_problem_during_load_more_keeps_paging() {
+        let mut state = ready(&[1, 2], true);
+        assert!(state.take_load_more(2));
+        assert!(!state.apply(&Event::Problem(Problem::CannotPlay)));
+        assert!(state.loading_more);
+        assert!(state.has_more);
     }
 
     #[test]
