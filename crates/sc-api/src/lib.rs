@@ -29,6 +29,9 @@ pub trait SoundCloudApi: Send + Sync {
         limit: u32,
     ) -> impl Future<Output = Result<Page<Track>>> + Send;
 
+    /// Tracks SoundCloud suggests after `id` (autoplay). `limit` is capped at 200.
+    fn related(&self, id: u64, limit: u32) -> impl Future<Output = Result<Page<Track>>> + Send;
+
     /// Fetches the page that follows `page`, if there is one.
     fn next_page<T>(&self, page: &Page<T>) -> impl Future<Output = Result<Option<Page<T>>>> + Send
     where

@@ -207,6 +207,15 @@ impl SoundCloudApi for ScClient {
         .await
     }
 
+    async fn related(&self, id: u64, limit: u32) -> Result<Page<Track>> {
+        let limit = limit.clamp(1, 200).to_string();
+        self.get_json(
+            &format!("tracks/{id}/related"),
+            &[("limit", &limit), ("linked_partitioning", "1")],
+        )
+        .await
+    }
+
     async fn next_page<T>(&self, page: &Page<T>) -> Result<Option<Page<T>>>
     where
         T: DeserializeOwned + Send + Sync,

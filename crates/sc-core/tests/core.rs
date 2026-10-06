@@ -54,6 +54,18 @@ impl SoundCloudApi for FakeApi {
         })
     }
 
+    async fn related(&self, id: u64, _limit: u32) -> sc_api::Result<Page<Track>> {
+        self.log(format!("related {id}"));
+        Ok(Page {
+            collection: vec![
+                track(90, "Related A", "ALLOW"),
+                track(91, "Related B", "ALLOW"),
+            ],
+            next_href: None,
+            total_results: None,
+        })
+    }
+
     async fn next_page<T>(&self, _page: &Page<T>) -> sc_api::Result<Option<Page<T>>>
     where
         T: serde::de::DeserializeOwned + Send + Sync,

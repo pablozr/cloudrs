@@ -72,6 +72,24 @@ async fn extracts_client_id_from_the_web_app() {
 }
 
 #[tokio::test]
+async fn fetches_related_tracks() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tracks/42/related"))
+        .and(query_param("client_id", OLD_ID))
+        .and(query_param("limit", "10"))
+        .respond_with(search_fixture())
+        .mount(&server)
+        .await;
+
+    let page = client(&server, Some(OLD_ID), None)
+        .related(42, 10)
+        .await
+        .unwrap();
+    assert_eq!(page.collection.len(), 2);
+}
+
+#[tokio::test]
 async fn refreshes_a_stale_client_id_once() {
     let server = MockServer::start().await;
     mount_web_app(&server, NEW_ID).await;
