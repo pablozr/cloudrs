@@ -219,6 +219,12 @@ pub mod size {
     pub const SLIDER_THUMB: Pixels = px(12.0);
     pub const EQUALIZER_BAR: Pixels = px(3.0);
     pub const EQUALIZER_HEIGHT: Pixels = px(14.0);
+    pub const EQUALIZER_GAP: Pixels = px(2.0);
+    pub const EQUALIZER_BAR_RADIUS: Pixels = px(1.0);
+    /// Bar heights (fraction of the maximum) while the equalizer is frozen.
+    pub const EQUALIZER_FROZEN: [f32; 3] = [0.55, 1.0, 0.75];
+    pub const SKELETON_TITLE_HEIGHT: Pixels = px(12.0);
+    pub const SKELETON_ARTIST_HEIGHT: Pixels = px(10.0);
     pub const STATUS_DOT: Pixels = px(8.0);
     pub const TOAST_MAX_WIDTH: Pixels = px(420.0);
     /// Longest the search field grows in the header.
