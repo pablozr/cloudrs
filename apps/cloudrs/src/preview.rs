@@ -238,8 +238,10 @@ impl Render for Preview {
                     )
                     .child(div().flex_1().h(px(32.0)).child(waveform(
                         &theme,
-                        self.samples.clone(),
+                        "wave",
+                        self.samples.clone().into(),
                         self.progress,
+                        |_, _, _| {},
                     )))
                     .child(
                         theme

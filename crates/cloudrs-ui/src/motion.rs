@@ -104,6 +104,11 @@ pub const SLOW: MotionSpec = MotionSpec::new(320, EASE_SPRING);
 /// A screen replacing another.
 pub const PAGE: MotionSpec = MotionSpec::new(420, EASE_OUT);
 
+/// One breath of the skeleton shimmer.
+pub const SHIMMER_MS: u64 = 1400;
+/// Periods of the three equalizer bars, different so they never move in step.
+pub const EQUALIZER_MS: [u64; 3] = [700, 950, 820];
+
 /// Content arriving: fades in while settling 6 px up into place. Keyed by
 /// `id`, it plays once when the element first appears.
 pub fn content_in<E>(id: impl Into<ElementId>, element: E) -> AnimationElement<E>

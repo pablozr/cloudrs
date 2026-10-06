@@ -1,7 +1,7 @@
 //! Design tokens: the single source of raw values, in both themes.
 #![allow(clippy::unreadable_literal)]
 
-use gpui::{FontWeight, Hsla, Pixels, Rgba, px, rgb};
+use gpui::{BoxShadow, FontWeight, Hsla, Pixels, Rgba, point, px, rgb};
 
 /// `0xRRGGBB` at `alpha`. Keeps hex and alpha apart so a six-digit color is
 /// never read as eight digits.
@@ -100,6 +100,29 @@ pub mod status {
     }
 }
 
+/// Shadow of floating things (toasts, menus). Dark mode otherwise gets depth
+/// from lighter surfaces.
+pub fn floating_shadow() -> Vec<BoxShadow> {
+    vec![BoxShadow {
+        color: tone(0x000000, 0.35),
+        offset: point(px(0.0), px(8.0)),
+        blur_radius: px(24.0),
+        spread_radius: px(0.0),
+        inset: false,
+    }]
+}
+
+/// The keyboard focus ring: a solid outline that does not shift the layout.
+pub fn focus_ring(color: Hsla) -> Vec<BoxShadow> {
+    vec![BoxShadow {
+        color,
+        offset: point(px(0.0), px(0.0)),
+        blur_radius: px(0.0),
+        spread_radius: px(2.0),
+        inset: false,
+    }]
+}
+
 /// The 4 px spacing scale.
 pub mod space {
     use super::*;
@@ -164,4 +187,36 @@ pub mod typography {
     pub const BODY_MUTED: TypeToken = type_token(13.0, 18.0, 400.0, FontRole::Interface);
     pub const LABEL: TypeToken = type_token(11.0, 14.0, 600.0, FontRole::Interface);
     pub const MONO: TypeToken = type_token(12.0, 16.0, 400.0, FontRole::Mono);
+}
+
+/// Fixed dimensions of components.
+pub mod size {
+    use super::*;
+    /// A track row; the list measures it once.
+    pub const ROW_HEIGHT: Pixels = px(56.0);
+    /// Cover in a track row.
+    pub const ROW_COVER: Pixels = px(40.0);
+    /// Index / equalizer column of a track row.
+    pub const ROW_INDEX: Pixels = px(28.0);
+    /// Cover in the player bar.
+    pub const PLAYER_COVER: Pixels = px(52.0);
+    pub const PLAYER_HEIGHT: Pixels = px(84.0);
+    /// Width of the player bar's now-playing block.
+    pub const PLAYER_INFO_WIDTH: Pixels = px(260.0);
+    pub const PLAY_BUTTON: Pixels = px(44.0);
+    pub const WAVEFORM_HEIGHT: Pixels = px(32.0);
+    pub const VOLUME_WIDTH: Pixels = px(96.0);
+    /// Height of the slider's hit area; the visible track is thinner.
+    pub const SLIDER_HEIGHT: Pixels = px(20.0);
+    pub const SLIDER_TRACK: Pixels = px(4.0);
+    pub const SLIDER_THUMB: Pixels = px(12.0);
+    pub const EQUALIZER_BAR: Pixels = px(3.0);
+    pub const EQUALIZER_HEIGHT: Pixels = px(14.0);
+    pub const STATUS_DOT: Pixels = px(8.0);
+    pub const TOAST_MAX_WIDTH: Pixels = px(420.0);
+    /// Longest the search field grows in the header.
+    pub const SEARCH_MAX_WIDTH: Pixels = px(560.0);
+    /// Skeleton text blocks.
+    pub const SKELETON_TITLE_WIDTH: Pixels = px(220.0);
+    pub const SKELETON_ARTIST_WIDTH: Pixels = px(140.0);
 }
