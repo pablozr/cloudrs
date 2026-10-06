@@ -323,9 +323,8 @@ Done (the app, `apps/cloudrs`):
       playing, offline error).
 
 Before ticking M1:
-- [ ] Listen on a real machine. The container has no sound card, so playback only ran on the
-      ALSA `null` device (the track decodes and "plays" faster than real time); audio was not
-      heard.
+- [x] Listen on a real machine: confirmed by the maintainer on Windows 11 (2026-10-06) with a
+      release build cross-compiled in a Linux container from the user's Windows SDK.
 - [ ] Waveform hover preview of the seek target (motion catalog 3): clicking seeks, but the
       hover preview is not built yet.
 
