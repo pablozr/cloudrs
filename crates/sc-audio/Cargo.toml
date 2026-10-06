@@ -1,0 +1,18 @@
+[package]
+name = "sc-audio"
+description = "cloudrs audio engine: HLS/progressive fetch, decoding and output"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+cpal = "0.18"
+flume = "0.11"
+m3u8-rs = "6"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2", "system-proxy"] }
+rtrb = "0.4"
+symphonia = { version = "0.6", default-features = false, features = ["aac", "isomp4", "mp3"] }
+thiserror = "2"
+tracing = "0.1"
+url = "2"
