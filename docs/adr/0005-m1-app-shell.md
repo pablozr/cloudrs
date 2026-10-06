@@ -23,7 +23,8 @@ cost.
    - `waveform` takes `Arc<[f32]>` (no clone per render) and reports a seek fraction on click;
    - `slider` for the volume;
    - `toast` for problems, entering with `motion::pop_in` and leaving after 4 s;
-   - `track_row` and `skeleton` rows, as listed in the visual identity.
+   - `track_row` and `skeleton_row`, as listed in the visual identity;
+   - a `tooltip` builder, because every icon-only control needs one.
 5. **Problems.** Runtime problems appear as a toast. If the core cannot start (no audio
    device), the window shows a full problem state with a "Try again" action.
 6. **No sidebar in M1.** A header (wordmark, search field, theme switch), the results and the
@@ -45,4 +46,25 @@ cost.
 - The idle cost while playing is one small view re-rendering at 10 Hz.
 - The app has one place that talks to the core, so later screens (M2) add state structs and
   views without new channels.
-- `cloudrs-ui` grows its public API (`waveform`, `slider`, `toast`, `track_row`, `skeleton`).
+- `cloudrs-ui` grows its public API (`waveform`, `slider`, `toast`, `tooltip`, `track_row`, `skeleton_row`).
+
+## Screenshots
+
+Taken in the Linux container (`Xvfb`, lavapipe, ALSA `null` device) against the live SoundCloud.
+Audio was not heard.
+
+| | Dark | Light |
+|---|---|---|
+| Empty | ![](../assets/readme/m1-dark-empty.png) | ![](../assets/readme/m1-light-empty.png) |
+| Playing | ![](../assets/readme/m1-dark-playing.png) | ![](../assets/readme/m1-light-playing.png) |
+| Offline error | ![](../assets/readme/m1-dark-error.png) | ![](../assets/readme/m1-light-error.png) |
+
+Also: [results](../assets/readme/m1-dark-results.png),
+[a problem toast](../assets/readme/m1-dark-toast.png) and
+[a scrolled list with the next page loaded](../assets/readme/m1-light-scrolled.png).
+
+## Known limits
+
+- The waveform seeks on click only; the hover preview of the target is not built.
+- A failed `Command::LoadMore` drops the next page inside `sc-core`; the list stops asking
+  for more and shows the problem toast.
