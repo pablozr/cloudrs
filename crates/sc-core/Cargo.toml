@@ -10,7 +10,7 @@ publish = false
 flume = "0.11"
 sc-api = { path = "../sc-api" }
 sc-audio = { path = "../sc-audio" }
-tokio = { version = "1", features = ["rt", "time"] }
+tokio = { version = "1", features = ["net", "rt", "time"] }
 tracing = "0.1"
 
 [dev-dependencies]
