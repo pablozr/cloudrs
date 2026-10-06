@@ -1,5 +1,30 @@
 # Guidelines for agents and contributors
 
+## Technical decisions need the maintainer's approval
+
+Before introducing any of the following, stop and propose it with the options and a
+recommendation, then wait for an answer:
+
+- a new dependency, or replacing one;
+- a new crate, module boundary or layer, or a change to how layers talk to each other;
+- a public API or trait shape that other crates will build on;
+- a new pattern (concurrency model, error handling, state management, persistence);
+- deviating from `docs/PLAN.md` or an ADR.
+
+Approved decisions are recorded in the plan or as an ADR in the same commit that implements them.
+
+## Layers, low coupling, no needless complexity
+
+- Every crate is one layer with one job. Dependencies point one way (see `docs/PLAN.md` §3);
+  `tests/architecture` enforces it.
+- Layers talk through small, explicit interfaces (commands, events, traits), never through
+  each other's internals or shared mutable state.
+- Write the simplest code that does the job today. No speculative abstractions, generic
+  frameworks, or configuration nobody asked for. Three similar lines beat a premature helper.
+- Prefer plain functions and data over traits; add a trait only where two implementations
+  exist or a test needs a seam.
+- Keep modules small and named after what they do.
+
 ## Pillars
 
 - **Performance and low cost come first.** Between two equivalent solutions, pick the cheaper
