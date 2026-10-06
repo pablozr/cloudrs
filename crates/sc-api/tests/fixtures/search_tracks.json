@@ -1,0 +1,96 @@
+{
+  "collection": [
+    {
+      "kind": "track",
+      "id": 1844203521,
+      "title": "Lights Out (Extended Mix)",
+      "permalink_url": "https://soundcloud.com/charlottedewitte/lights-out",
+      "duration": 372000,
+      "full_duration": 372000,
+      "artwork_url": "https://i1.sndcdn.com/artworks-000000000000-abcdef-large.jpg",
+      "waveform_url": "https://wave.sndcdn.com/abcdef_m.json",
+      "genre": "Techno",
+      "created_at": "2026-09-14T10:00:00Z",
+      "playback_count": 1204311,
+      "likes_count": 40210,
+      "comment_count": 812,
+      "streamable": true,
+      "policy": "ALLOW",
+      "track_authorization": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.fixture",
+      "media": {
+        "transcodings": [
+          {
+            "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:1844203521/aaa/stream/hls",
+            "preset": "aac_160k",
+            "duration": 372000,
+            "snipped": false,
+            "format": { "protocol": "hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" },
+            "quality": "hq"
+          },
+          {
+            "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:1844203521/bbb/stream/hls",
+            "preset": "aac_96k",
+            "duration": 372000,
+            "snipped": false,
+            "format": { "protocol": "hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" },
+            "quality": "sq"
+          },
+          {
+            "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:1844203521/ccc/stream/hls",
+            "preset": "aac_160k",
+            "duration": 372000,
+            "snipped": false,
+            "format": { "protocol": "ctr-encrypted-hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" },
+            "quality": "hq"
+          },
+          {
+            "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:1844203521/ddd/stream/progressive",
+            "preset": "mp3_1_0",
+            "duration": 372000,
+            "snipped": false,
+            "format": { "protocol": "progressive", "mime_type": "audio/mpeg" },
+            "quality": "sq"
+          }
+        ]
+      },
+      "user": {
+        "id": 1520101,
+        "username": "Charlotte de Witte",
+        "permalink_url": "https://soundcloud.com/charlottedewitte",
+        "avatar_url": "https://i1.sndcdn.com/avatars-000000000000-ghijkl-large.jpg",
+        "verified": true
+      }
+    },
+    {
+      "kind": "track",
+      "id": 1790022113,
+      "title": "Deep Water",
+      "permalink_url": "https://soundcloud.com/benbohmer/deep-water",
+      "duration": 30000,
+      "full_duration": 297000,
+      "artwork_url": null,
+      "policy": "SNIP",
+      "media": {
+        "transcodings": [
+          {
+            "url": "https://api-v2.soundcloud.com/media/soundcloud:tracks:1790022113/eee/preview/hls",
+            "preset": "aac_160k",
+            "duration": 30000,
+            "snipped": true,
+            "format": { "protocol": "hls", "mime_type": "audio/mp4; codecs=\"mp4a.40.2\"" },
+            "quality": "hq"
+          }
+        ]
+      },
+      "user": {
+        "id": 2093,
+        "username": "Ben Böhmer",
+        "permalink_url": "https://soundcloud.com/benbohmer",
+        "avatar_url": "https://i1.sndcdn.com/avatars-000000000000-mnopqr-large.jpg"
+      }
+    }
+  ],
+  "total_results": 812,
+  "next_href": "https://api-v2.soundcloud.com/search/tracks?query_urn=soundcloud%3Asearch%3Aabc&offset=2&q=lights+out&limit=2",
+  "query_urn": "soundcloud:search:abc"
+}

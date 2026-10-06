@@ -1,0 +1,21 @@
+[package]
+name = "sc-api"
+description = "Client for SoundCloud's api-v2, used by cloudrs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+regex = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "http2", "charset", "system-proxy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
