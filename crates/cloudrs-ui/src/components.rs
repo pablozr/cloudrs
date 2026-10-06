@@ -8,7 +8,6 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
@@ -417,29 +416,32 @@ pub struct TrackRowData<'a> {
 fn equalizer(theme: &Theme, playing: bool) -> Div {
     let color = theme.colors.accent;
     let max = f32::from(size::EQUALIZER_HEIGHT);
-    // Heights while frozen (paused).
-    let frozen = [0.55, 1.0, 0.75];
     div()
         .flex()
         .items_end()
-        .gap(px(2.0))
+        .gap(size::EQUALIZER_GAP)
         .h(size::EQUALIZER_HEIGHT)
-        .children(motion::EQUALIZER_MS.into_iter().enumerate().map(|(i, ms)| {
-            let bar = div()
-                .w(size::EQUALIZER_BAR)
-                .rounded(px(1.0))
-                .bg(color)
-                .h(px(max * frozen[i]));
-            if !playing {
-                return bar.into_any_element();
-            }
-            bar.with_animation(
-                ("equalizer-bar", i),
-                Animation::new(Duration::from_millis(ms)).repeat(),
-                move |bar, t| bar.h(px(max * equalizer_level(t, i))),
-            )
-            .into_any_element()
-        }))
+        .children(
+            motion::EQUALIZER
+                .into_iter()
+                .enumerate()
+                .map(|(i, period)| {
+                    let bar = div()
+                        .w(size::EQUALIZER_BAR)
+                        .rounded(size::EQUALIZER_BAR_RADIUS)
+                        .bg(color)
+                        .h(px(max * size::EQUALIZER_FROZEN[i]));
+                    if !playing {
+                        return bar.into_any_element();
+                    }
+                    bar.with_animation(
+                        ("equalizer-bar", i),
+                        Animation::new(period).repeat(),
+                        move |bar, t| bar.h(px(max * equalizer_level(t, i))),
+                    )
+                    .into_any_element()
+                }),
+        )
 }
 
 /// Height of equalizer bar `bar` (as a fraction of the maximum) at loop time `t`.
@@ -559,12 +561,18 @@ pub fn skeleton_row(theme: &Theme, id: impl Into<ElementId>) -> impl IntoElement
                 .flex()
                 .flex_col()
                 .gap(space::S2)
-                .child(block(size::SKELETON_TITLE_WIDTH, px(12.0)))
-                .child(block(size::SKELETON_ARTIST_WIDTH, px(10.0))),
+                .child(block(
+                    size::SKELETON_TITLE_WIDTH,
+                    size::SKELETON_TITLE_HEIGHT,
+                ))
+                .child(block(
+                    size::SKELETON_ARTIST_WIDTH,
+                    size::SKELETON_ARTIST_HEIGHT,
+                )),
         )
         .with_animation(
             id,
-            Animation::new(Duration::from_millis(motion::SHIMMER_MS)).repeat_synced(),
+            Animation::new(motion::SHIMMER).repeat_synced(),
             |row, t| row.opacity(shimmer_opacity(t)),
         )
 }

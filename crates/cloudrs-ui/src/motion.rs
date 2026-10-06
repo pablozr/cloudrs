@@ -107,9 +107,13 @@ pub const PAGE: MotionSpec = MotionSpec::new(420, EASE_OUT);
 /// How long a toast stays before it leaves on its own.
 pub const TOAST_LIFETIME: Duration = Duration::from_secs(4);
 /// One breath of the skeleton shimmer.
-pub const SHIMMER_MS: u64 = 1400;
+pub const SHIMMER: Duration = Duration::from_millis(1400);
 /// Periods of the three equalizer bars, different so they never move in step.
-pub const EQUALIZER_MS: [u64; 3] = [700, 950, 820];
+pub const EQUALIZER: [Duration; 3] = [
+    Duration::from_millis(700),
+    Duration::from_millis(950),
+    Duration::from_millis(820),
+];
 
 /// Content arriving: fades in while settling 6 px up into place. Keyed by
 /// `id`, it plays once when the element first appears.
