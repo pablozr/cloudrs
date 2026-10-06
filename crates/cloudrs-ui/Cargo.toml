@@ -9,3 +9,4 @@ publish = false
 [dependencies]
 gpui.workspace = true
 tracing = "0.1"
+unicode-segmentation = "1.13"

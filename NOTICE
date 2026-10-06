@@ -1,0 +1,13 @@
+cloudrs
+Copyright (c) cloudrs contributors. Licensed under the MIT License (see LICENSE).
+
+This product includes code adapted from third-party projects:
+
+------------------------------------------------------------------------------
+xemnas — https://github.com/pablozr/xemnas (MIT License, © 2026 xemnas contributors)
+Used in: crates/cloudrs-ui/src/search_field.rs and crates/cloudrs-ui/src/search_edit.rs
+(single-line text field with selection, clipboard and IME).
+
+------------------------------------------------------------------------------
+Fonts in assets/fonts/ are licensed under the SIL Open Font License 1.1; the
+license texts are next to the font files.

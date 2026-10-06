@@ -936,6 +936,7 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "tracing",
+ "unicode-segmentation",
 ]
 
 [[package]]

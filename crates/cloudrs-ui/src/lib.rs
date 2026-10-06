@@ -8,6 +8,8 @@
 pub mod components;
 pub mod fonts;
 pub mod motion;
+mod search_edit;
+pub mod search_field;
 pub mod theme;
 pub mod tokens;
 
