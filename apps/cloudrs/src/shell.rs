@@ -162,7 +162,10 @@ impl Shell {
                 problem,
                 ..
             } => self.show_problem(problem, cx),
-            Event::SearchFailed { .. } | Event::Searching { .. } | Event::Results { .. } => {}
+            Event::SearchFailed { .. }
+            | Event::Searching { .. }
+            | Event::Results { .. }
+            | Event::Queue(_) => {}
         }
         // Playback ticks leave `changed` false: they must not re-render the list.
         if changed {

@@ -11,6 +11,7 @@ use sc_api::models::{Page, Resource, Track};
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
 use tokio::task::JoinHandle;
 
+use crate::queue::{Queue, Step};
 use crate::types::{PlayState, Playback, Problem, TrackId, TrackSummary};
 use crate::{Command, CoreConfig, Event, artwork, waveform};
 
@@ -18,6 +19,10 @@ use crate::{Command, CoreConfig, Event, artwork, waveform};
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(300);
 /// Results per page.
 const PAGE_SIZE: u32 = 30;
+/// Past this position "previous" restarts the track instead of going back.
+const RESTART_AFTER: Duration = Duration::from_secs(3);
+/// Tracks fetched when the queue runs out.
+const AUTOPLAY_COUNT: u32 = 20;
 
 type AudioLink = (
     flume::Sender<sc_audio::Command>,
@@ -36,8 +41,16 @@ enum Input {
     Resolved(sc_api::Result<Resource>),
     StreamReady {
         track: TrackId,
+        start_at: Option<Duration>,
         result: sc_api::Result<StreamSource>,
     },
+    /// A queued track that was not in this session's cache (a restored queue).
+    TrackFetched {
+        track: TrackId,
+        start_at: Option<Duration>,
+        result: sc_api::Result<Box<Track>>,
+    },
+    RelatedDone(sc_api::Result<Page<Track>>),
     WaveformReady {
         track: TrackId,
         bars: Vec<f32>,
@@ -107,6 +120,9 @@ async fn run<A: SoundCloudApi + 'static>(
         generation: 0,
         search: None,
         next_page: None,
+        results: Vec::new(),
+        queue: Queue::new(shuffle_seed()),
+        autoplay_pending: false,
         current: None,
         playback: Playback {
             volume: 1.0,
@@ -120,6 +136,13 @@ async fn run<A: SoundCloudApi + 'static>(
         }
         core.handle(input);
     }
+}
+
+/// Any value works as a shuffle seed; the clock is enough.
+fn shuffle_seed() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(1, |d| d.as_nanos() as u64)
 }
 
 struct Core<A> {
@@ -138,6 +161,11 @@ struct Core<A> {
     search: Option<JoinHandle<()>>,
     /// The last page received, kept for its `next_href`.
     next_page: Option<Page<Track>>,
+    /// The tracks of the current search, in order: the context of `Play`.
+    results: Vec<TrackSummary>,
+    queue: Queue,
+    /// The queue ended and related tracks are on their way.
+    autoplay_pending: bool,
     current: Option<TrackId>,
     playback: Playback,
     artwork_requested: HashSet<TrackId>,
@@ -166,13 +194,40 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Input::Resolved(result) => match result {
                 Ok(Resource::Track(track)) => {
                     let id = TrackId(track.id);
+                    let summary = TrackSummary::from_api(&track);
                     self.tracks.insert(id, *track);
-                    self.play(id);
+                    self.queue.set_context(vec![summary], 0);
+                    self.queue_changed();
+                    self.play_current(None);
                 }
                 Ok(_) => self.emit(Event::Problem(Problem::NotATrack)),
                 Err(error) => self.emit(Event::Problem(Problem::from_api(&error))),
             },
-            Input::StreamReady { track, result } => {
+            Input::TrackFetched {
+                track,
+                start_at,
+                result,
+            } => {
+                if self.current != Some(track) {
+                    return;
+                }
+                match result {
+                    Ok(api_track) => {
+                        self.tracks.insert(track, (*api_track).clone());
+                        self.start_stream(*api_track, start_at);
+                    }
+                    Err(error) => {
+                        self.set_state(PlayState::Idle);
+                        self.emit(Event::Problem(Problem::from_api(&error)));
+                    }
+                }
+            }
+            Input::RelatedDone(result) => self.related_done(result),
+            Input::StreamReady {
+                track,
+                start_at,
+                result,
+            } => {
                 if self.current != Some(track) {
                     return;
                 }
@@ -187,6 +242,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                             kind,
                         };
                         let _ = self.audio.send(sc_audio::Command::Load(source));
+                        if let Some(at) = start_at {
+                            let _ = self.audio.send(sc_audio::Command::Seek(at));
+                        }
                     }
                     Err(error) => {
                         self.set_state(PlayState::Idle);
@@ -207,7 +265,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         match command {
             Command::Search(query) => self.search(query.trim().to_owned()),
             Command::LoadMore => self.load_more(),
-            Command::Play(id) => self.play(id),
+            Command::Play(id) => self.play_from_results(id),
             Command::PlayUrl(url) => {
                 let api = Arc::clone(&self.api);
                 let inputs = self.inputs.clone();
@@ -216,15 +274,48 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     let _ = inputs.send(Input::Resolved(result));
                 });
             }
+            Command::Next => self.skip_forward(false),
+            Command::Previous => {
+                if self.playback.position > RESTART_AFTER {
+                    self.to_audio(sc_audio::Command::Seek(Duration::ZERO));
+                } else if self.queue.previous().is_some() {
+                    self.queue_changed();
+                    self.play_current(None);
+                }
+            }
+            Command::PlayNext(id) => self.enqueue(id, true),
+            Command::AddToQueue(id) => self.enqueue(id, false),
+            Command::RemoveFromQueue(index) => {
+                if self.queue.remove(index) {
+                    self.queue_changed();
+                }
+            }
+            Command::MoveInQueue { from, to } => {
+                if self.queue.move_item(from, to) {
+                    self.queue_changed();
+                }
+            }
+            Command::PlayQueueIndex(index) => {
+                if self.queue.play_index(index) {
+                    self.queue_changed();
+                    self.play_current(None);
+                }
+            }
+            Command::SetShuffle(on) => {
+                if self.queue.set_shuffle(on) {
+                    self.queue_changed();
+                }
+            }
+            Command::SetRepeat(repeat) => {
+                if self.queue.set_repeat(repeat) {
+                    self.queue_changed();
+                }
+            }
             Command::TogglePlay => match self.playback.state {
                 PlayState::Playing => self.to_audio(sc_audio::Command::Pause),
                 PlayState::Paused => self.to_audio(sc_audio::Command::Play),
                 // The engine dropped the finished or failed track: start it again.
-                PlayState::Ended | PlayState::Idle => {
-                    if let Some(id) = self.current {
-                        self.play(id);
-                    }
-                }
+                PlayState::Ended | PlayState::Idle => self.play_current(None),
                 PlayState::Loading => {}
             },
             Command::Seek(at) => self.to_audio(sc_audio::Command::Seek(at)),
@@ -249,6 +340,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.next_page = None;
         self.query = query.clone();
         if query.is_empty() {
+            self.results.clear();
             self.emit(Event::Results {
                 query,
                 tracks: Vec::new(),
@@ -319,6 +411,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let summaries: Vec<TrackSummary> =
             page.collection.iter().map(TrackSummary::from_api).collect();
         let ids: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
+        if append {
+            self.results.extend(summaries.iter().cloned());
+        } else {
+            self.results.clone_from(&summaries);
+        }
         for track in &page.collection {
             self.tracks.insert(TrackId(track.id), track.clone());
         }
@@ -339,23 +436,144 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         }
     }
 
-    fn play(&mut self, id: TrackId) {
-        let Some(track) = self.tracks.get(&id).cloned() else {
+    /// A click in the results: the queue becomes the results, starting here.
+    fn play_from_results(&mut self, id: TrackId) {
+        if let Some(start) = self.results.iter().position(|t| t.id == id) {
+            self.queue.set_context(self.results.clone(), start);
+        } else if let Some(track) = self.tracks.get(&id) {
+            self.queue
+                .set_context(vec![TrackSummary::from_api(track)], 0);
+        } else {
+            return;
+        }
+        self.queue_changed();
+        self.play_current(None);
+    }
+
+    /// Queues a track seen in the results. With nothing playing it starts.
+    fn enqueue(&mut self, id: TrackId, next: bool) {
+        let Some(track) = self.tracks.get(&id) else {
             return;
         };
-        let summary = TrackSummary::from_api(&track);
+        let summary = TrackSummary::from_api(track);
+        if self.queue.current_track().is_none() {
+            self.queue.set_context(vec![summary], 0);
+            self.queue_changed();
+            self.play_current(None);
+            return;
+        }
+        if next {
+            self.queue.play_next(summary);
+        } else {
+            self.queue.add_to_queue(summary);
+        }
+        self.queue_changed();
+    }
+
+    fn queue_changed(&self) {
+        self.emit(Event::Queue(self.queue.snapshot()));
+    }
+
+    /// The next track, or related tracks when the queue is over.
+    fn skip_forward(&mut self, ended: bool) {
+        match self.queue.next(ended) {
+            Step::Play(_) => {
+                self.queue_changed();
+                self.play_current(None);
+            }
+            Step::End => self.autoplay(),
+        }
+    }
+
+    fn autoplay(&mut self) {
+        let Some(last) = self.queue.last_track().map(|t| t.id) else {
+            return;
+        };
+        if self.autoplay_pending {
+            return;
+        }
+        self.autoplay_pending = true;
+        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+        tokio::spawn(async move {
+            let result = api.related(last.0, AUTOPLAY_COUNT).await;
+            let _ = inputs.send(Input::RelatedDone(result));
+        });
+    }
+
+    fn related_done(&mut self, result: sc_api::Result<Page<Track>>) {
+        if !self.autoplay_pending {
+            return;
+        }
+        let page = match result {
+            Ok(page) => page,
+            Err(error) => {
+                self.autoplay_pending = false;
+                self.emit(Event::Problem(Problem::from_api(&error)));
+                return;
+            }
+        };
+        let summaries: Vec<TrackSummary> =
+            page.collection.iter().map(TrackSummary::from_api).collect();
+        for track in page.collection {
+            self.tracks.insert(TrackId(track.id), track);
+        }
+        let ids: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
+        let added = self.queue.extend_context(summaries);
+        self.autoplay_pending = false;
+        if added == 0 {
+            return;
+        }
+        self.queue_changed();
+        for id in ids {
+            self.request_artwork(id);
+        }
+        // Only keep going if the person has not started something else.
+        if self.playback.state == PlayState::Ended {
+            self.skip_forward(true);
+        }
+    }
+
+    /// Plays the track at the queue's current position.
+    fn play_current(&mut self, start_at: Option<Duration>) {
+        let Some(summary) = self.queue.current_track().cloned() else {
+            return;
+        };
+        let id = summary.id;
         self.current = Some(id);
-        self.playback.position = Duration::ZERO;
+        self.autoplay_pending = false;
+        self.playback.position = start_at.unwrap_or_default();
         self.playback.duration = summary.duration;
         self.emit(Event::NowPlaying(summary));
         self.set_state(PlayState::Loading);
         self.request_artwork(id);
 
+        match self.tracks.get(&id).cloned() {
+            Some(track) => self.start_stream(track, start_at),
+            None => {
+                let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+                tokio::spawn(async move {
+                    let result = api.track(id.0).await.map(Box::new);
+                    let _ = inputs.send(Input::TrackFetched {
+                        track: id,
+                        start_at,
+                        result,
+                    });
+                });
+            }
+        }
+    }
+
+    fn start_stream(&mut self, track: Track, start_at: Option<Duration>) {
+        let id = TrackId(track.id);
         let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
         let waveform_url = track.waveform_url.clone();
         tokio::spawn(async move {
             let result = api.stream_url(&track).await;
-            let _ = inputs.send(Input::StreamReady { track: id, result });
+            let _ = inputs.send(Input::StreamReady {
+                track: id,
+                start_at,
+                result,
+            });
             if let Some(url) = waveform_url
                 && let Ok(wave) = api.waveform(&url).await
             {
@@ -398,13 +616,19 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     fn audio_event(&mut self, event: sc_audio::Event) {
         match event {
-            sc_audio::Event::State(state) => self.set_state(match state {
-                sc_audio::PlaybackState::Idle => PlayState::Idle,
-                sc_audio::PlaybackState::Loading => PlayState::Loading,
-                sc_audio::PlaybackState::Playing => PlayState::Playing,
-                sc_audio::PlaybackState::Paused => PlayState::Paused,
-                sc_audio::PlaybackState::Ended => PlayState::Ended,
-            }),
+            sc_audio::Event::State(state) => {
+                let state = match state {
+                    sc_audio::PlaybackState::Idle => PlayState::Idle,
+                    sc_audio::PlaybackState::Loading => PlayState::Loading,
+                    sc_audio::PlaybackState::Playing => PlayState::Playing,
+                    sc_audio::PlaybackState::Paused => PlayState::Paused,
+                    sc_audio::PlaybackState::Ended => PlayState::Ended,
+                };
+                self.set_state(state);
+                if state == PlayState::Ended {
+                    self.skip_forward(true);
+                }
+            }
             sc_audio::Event::Position(position) => {
                 self.playback.position = position;
                 self.emit(Event::Playback(self.playback));

@@ -7,13 +7,14 @@
 
 mod artwork;
 mod core;
+mod queue;
 mod types;
 mod waveform;
 
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use types::{PlayState, Playback, Problem, TrackId, TrackSummary};
+pub use types::{PlayState, Playback, Problem, QueueSnapshot, Repeat, TrackId, TrackSummary};
 
 /// What the UI asks for.
 #[derive(Debug, Clone, PartialEq)]
@@ -23,10 +24,28 @@ pub enum Command {
     Search(String),
     /// Fetch the next page of the current results.
     LoadMore,
-    /// Play a track from the latest results.
+    /// Play a track from the latest results. The queue becomes those results,
+    /// starting at this track.
     Play(TrackId),
     /// Play whatever a pasted soundcloud.com track URL points to.
     PlayUrl(String),
+    /// The next track (the queue may fetch more when it ends).
+    Next,
+    /// Restarts the track when it is past 3 s, otherwise the previous track.
+    Previous,
+    /// Plays right after the current track (a track seen in the results).
+    PlayNext(TrackId),
+    /// Plays after the other "up next" tracks, before the rest of the queue.
+    AddToQueue(TrackId),
+    /// The current track cannot be removed.
+    RemoveFromQueue(usize),
+    MoveInQueue {
+        from: usize,
+        to: usize,
+    },
+    PlayQueueIndex(usize),
+    SetShuffle(bool),
+    SetRepeat(Repeat),
     /// Pause if playing, otherwise play (restarting a finished track).
     TogglePlay,
     Seek(Duration),
@@ -48,6 +67,8 @@ pub enum Event {
     },
     /// This track is now the current one (it may still be loading).
     NowPlaying(TrackSummary),
+    /// The queue changed. Sent on every change.
+    Queue(QueueSnapshot),
     /// Bars of the current track's waveform, 0.0 to 1.0.
     Waveform { track: TrackId, bars: Vec<f32> },
     /// The artwork of a track is available at `path`.
