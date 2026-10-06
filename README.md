@@ -26,9 +26,10 @@ the UI framework behind the Zed editor, and the audio is decoded in Rust. The go
 opens instantly, stays light on memory and answers every click at 120 fps, made for people who
 keep SoundCloud playing all day.
 
-> **Status: early and built in the open.** The design is settled and the first milestone
-> (search and play) is in progress. Nothing is installable yet. Ideas, issues and pull requests
-> are very welcome; see [Contributing](#contributing).
+> **Status: early and built in the open.** Milestone 0 is done: the SoundCloud client, the audio
+> engine and the GPUI design system work, each on its own. The first real screens (search and
+> play) come next. Ideas, issues and pull requests are very welcome; see
+> [Contributing](#contributing).
 
 ## Highlights
 
@@ -51,8 +52,19 @@ These are the goals for the first releases; see the [roadmap](#roadmap) for what
 <p align="center">
   <img src="docs/assets/readme/design-preview.png" alt="Design preview of the cloudrs home screen: sidebar, recently played, feed and the player bar with a waveform" width="92%">
   <br>
-  <sub>Design preview (mockup with sample data). Screenshots of the real app will replace it once the first milestone lands.</sub>
+  <sub>Target design (mockup with sample data).</sub>
 </p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/readme/m0-dark.png" alt="The running app in the dark theme: buttons, filter pills, badges and the player bar with a waveform"></td>
+    <td width="50%"><img src="docs/assets/readme/m0-light.png" alt="The same window in the light theme, with the track playing"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The real app today (M0): design system check, dark theme</sub></td>
+    <td align="center"><sub>Light theme, with the sample track playing</sub></td>
+  </tr>
+</table>
 
 SoundCloud's orange on warm, dark neutrals, with our own layout and a motion system built on
 GPUI's native animations. Colors, type, motion and components are documented in
@@ -60,17 +72,26 @@ GPUI's native animations. Colors, type, motion and components are documented in
 
 ## Getting started
 
-**Requirements:** stable Rust and the usual platform build tools. On Linux, the ALSA and
-Wayland/X11 development packages.
+**Requirements:** stable Rust. On Linux, the audio and windowing development packages:
+
+```sh
+sudo apt install libasound2-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+  libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig-dev libzstd-dev
+```
 
 ```sh
 git clone https://github.com/pablozr/cloudrs
 cd cloudrs
-cargo run --release
-```
 
-> The Cargo workspace lands with the first milestone (M0). Until then this repository holds the
-> plan and the design.
+# The desktop app (design system preview for now)
+cargo run -p cloudrs
+
+# Search SoundCloud from the terminal
+cargo run -p sc-api --example search -- "charlotte de witte"
+
+# Play a track: sc-api resolves the stream, sc-audio plays it
+cargo run -p sc-audio --example play -- "$(cargo run -q -p sc-api --example stream -- "lights out")"
+```
 
 ## Architecture
 
@@ -80,17 +101,18 @@ A Rust workspace where only the app and the UI kit know about GPUI.
 | --- | --- |
 | `apps/cloudrs` | Desktop app (GPUI): screens, i18n, composition root |
 | `crates/cloudrs-ui` | Design system: tokens, theme, motion, primitives |
-| `crates/sc-core` | App state, queue, commands and events, persistence, cache |
+| `crates/sc-core` | App state, queue, commands and events, persistence, cache (M1) |
 | `crates/sc-api` | SoundCloud client: models, `client_id`, auth, pagination |
 | `crates/sc-audio` | Audio engine: HLS → symphonia → cpal, on its own thread |
-| `crates/sc-platform` | Media keys, MPRIS/Now Playing/SMTC, keychain, notifications |
+| `crates/sc-platform` | Media keys, MPRIS/Now Playing/SMTC, keychain, notifications (M4) |
+| `tests/architecture` | Layering rules, checked in CI |
 
 The full plan, with endpoints, the audio pipeline and the risks, is in
 [docs/PLAN.md](docs/PLAN.md). Decisions are recorded in [docs/adr/](docs/adr/).
 
 ## Roadmap
 
-- [ ] **M0 · Spike.** Workspace, CI, `client_id` + search, HLS playback, the first GPUI window.
+- [x] **M0 · Spike.** Workspace, CI, `client_id` + search, HLS playback, the first GPUI window ([findings](docs/adr/0003-m0-spike-findings.md)).
 - [ ] **M1 · Playable MVP.** Search, play, player bar with waveform, paste a link to play.
 - [ ] **M2 · Navigation.** Track, profile and playlist screens, the full queue, autoplay, history.
 - [ ] **M3 · Your account.** Sign in, likes, library, feed, following.

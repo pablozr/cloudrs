@@ -52,6 +52,11 @@
 
 ## Validation
 
+- The GPUI app builds and runs in a Linux container: install the packages listed in the README,
+  then run it under `Xvfb` with Mesa's lavapipe (`VK_ICD_FILENAMES=.../lvp_icd.json`) to capture
+  screenshots. Check every screen in both themes.
+- The audio engine can be exercised without a sound card through the ALSA `null` device.
+
 ```sh
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings

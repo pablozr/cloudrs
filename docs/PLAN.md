@@ -49,7 +49,7 @@ tracks) and want:
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | **GPUI pinned to a Zed monorepo revision** (the same `rev` as xemnas: `244023605536a412ab6b8d5b658466b89fb15401`) | Proven in xemnas, includes AccessKit support. The crates.io `gpui` is frozen at 0.2.2. See [ADR 0001](./adr/0001-gpui-pinned-to-zed.md) |
+| D1 | **GPUI pinned to a Zed monorepo revision** (the same `rev` as xemnas: `244023605536a412ab6b8d5b658466b89fb15401`), with `gpui_platform`'s `wayland` and `x11` features on Linux | Proven in xemnas, includes AccessKit support. The crates.io `gpui` is frozen at 0.2.2. See [ADR 0001](./adr/0001-gpui-pinned-to-zed.md) |
 | D2 | **Own UI kit, `crates/cloudrs-ui`** (tokens, theme, motion, primitives) | `gpui-component` depends on `gpui-pre`, a different crate from Zed's `gpui`, so the two cannot be mixed. Same approach as xemnas's `ui/` |
 | D3 | **SoundCloud's internal `api-v2`**, behind a trait | Free and needs no approval. The official API requires a manual review and a paid account. The trait lets us switch later. See [ADR 0002](./adr/0002-soundcloud-api-v2.md) |
 | D4 | **Own audio pipeline**: `symphonia` (decode) + `cpal` (output) | Full control over buffering, seeking, gapless and EQ. `rodio` is simpler but limits gapless and seeking on streams |
@@ -70,12 +70,13 @@ cloudrs/
 ├── crates/
 │   ├── sc-api/             # api-v2 HTTP client: models, client_id, auth, pagination
 │   ├── sc-audio/           # audio engine: HLS/progressive → decode → output
-│   ├── sc-core/            # app state, queue, commands/events, persistence, cache
-│   ├── sc-platform/        # OS integration: media keys, MPRIS, keychain, notifications
+│   ├── sc-core/            # app state, queue, commands/events, persistence, cache (M1)
+│   ├── sc-platform/        # OS integration: media keys, MPRIS, keychain, notifications (M4)
 │   └── cloudrs-ui/         # design system: tokens, theme, motion, primitives (GPUI only here and in the app)
 ├── apps/
 │   └── cloudrs/            # GPUI binary: screens, i18n, composition root
 ├── assets/                 # brand (logo, icon, banner), fonts, SVG icons
+├── tests/architecture/     # layering rules, checked in CI
 └── docs/
 ```
 
@@ -285,13 +286,15 @@ The visual rules, tokens and motion catalog live in
 ## 9. Milestones
 
 ### M0 — Technical spike (de-risk) · ~1 week
-- [ ] Cargo workspace + CI (fmt, clippy, test) on GitHub Actions for Linux, macOS and Windows.
-- [ ] `sc-api`: extract the `client_id` and run `search/tracks` from the terminal
-      (`cargo run --example search`).
-- [ ] `sc-audio`: play an HLS AAC track end to end without UI (`cargo run --example play <url>`).
-- [ ] "Hello" GPUI window on the pinned Zed revision, with `cloudrs-ui` tokens and the embedded
-      fonts, building on all three platforms.
-- [ ] Record the findings (formats, container, URL expiry) in an ADR.
+- [x] Cargo workspace + CI (fmt, clippy, test) on GitHub Actions for Linux, macOS and Windows.
+- [x] `sc-api`: extract the `client_id` and run `search/tracks` from the terminal
+      (`cargo run -p sc-api --example search`).
+- [x] `sc-audio`: play an HLS AAC stream end to end without UI (`cargo run -p sc-audio --example play <url>`).
+- [x] GPUI window on the pinned Zed revision, with `cloudrs-ui` tokens, motion and the embedded
+      fonts (`cargo run -p cloudrs`).
+- [x] Record the findings in [ADR 0003](./adr/0003-m0-spike-findings.md).
+- [ ] Run the examples against the live SoundCloud from a normal machine and complete ADR 0003
+      (the build environment cannot reach soundcloud.com).
 
 ### M1 — Playable MVP
 - [ ] Search tracks → list → click to play.
