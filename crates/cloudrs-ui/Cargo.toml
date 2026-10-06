@@ -1,0 +1,11 @@
+[package]
+name = "cloudrs-ui"
+description = "cloudrs design system: tokens, theme, motion and primitives for GPUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+gpui.workspace = true
+tracing = "0.1"

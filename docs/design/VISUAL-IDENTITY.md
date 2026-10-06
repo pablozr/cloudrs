@@ -70,7 +70,8 @@ The accent is reserved for: the primary action, the play button, progress, selec
 ### Status
 
 `success #3DD68C` · `warning #FFC145` · `danger #FF4D5E` · `info #5AA9FF`. Status colors never
-replace the accent.
+replace the accent. Used as text on the light theme they are darkened (`Theme::readable`) to
+keep contrast.
 
 ## Typography
 
