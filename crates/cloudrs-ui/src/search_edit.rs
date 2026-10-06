@@ -34,12 +34,12 @@ impl SearchEdit {
     }
 
     /// UTF-16 code-unit offset (from the OS) to a UTF-8 byte offset.
-    pub fn from_utf16(&self, offset: usize) -> usize {
+    pub fn byte_offset(&self, offset: usize) -> usize {
         utf16_to_byte(&self.text, offset)
     }
 
     /// UTF-8 byte offset to UTF-16 code units.
-    pub fn to_utf16(&self, offset: usize) -> usize {
+    pub fn utf16_offset(&self, offset: usize) -> usize {
         self.text[..offset].encode_utf16().count()
     }
 
@@ -189,8 +189,8 @@ mod tests {
             text: "a🪷b".into(),
             ..Default::default()
         };
-        assert_eq!(edit.from_utf16(3), 5);
-        assert_eq!(edit.to_utf16(5), 3);
+        assert_eq!(edit.byte_offset(3), 5);
+        assert_eq!(edit.utf16_offset(5), 3);
     }
 
     #[test]

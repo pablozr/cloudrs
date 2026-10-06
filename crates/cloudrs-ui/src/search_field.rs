@@ -257,9 +257,9 @@ impl EntityInputHandler for SearchField {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<String> {
-        let start = self.edit.from_utf16(range.start);
-        let end = self.edit.from_utf16(range.end);
-        *actual = Some(self.edit.to_utf16(start)..self.edit.to_utf16(end));
+        let start = self.edit.byte_offset(range.start);
+        let end = self.edit.byte_offset(range.end);
+        *actual = Some(self.edit.utf16_offset(start)..self.edit.utf16_offset(end));
         Some(self.edit.text.get(start..end)?.to_string())
     }
 
@@ -270,8 +270,8 @@ impl EntityInputHandler for SearchField {
         _: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
         Some(UTF16Selection {
-            range: self.edit.to_utf16(self.edit.selection.start)
-                ..self.edit.to_utf16(self.edit.selection.end),
+            range: self.edit.utf16_offset(self.edit.selection.start)
+                ..self.edit.utf16_offset(self.edit.selection.end),
             reversed: self.edit.reversed,
         })
     }
@@ -280,7 +280,7 @@ impl EntityInputHandler for SearchField {
         self.edit
             .marked
             .as_ref()
-            .map(|range| self.edit.to_utf16(range.start)..self.edit.to_utf16(range.end))
+            .map(|range| self.edit.utf16_offset(range.start)..self.edit.utf16_offset(range.end))
     }
 
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -295,7 +295,7 @@ impl EntityInputHandler for SearchField {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let range = range.map(|r| self.edit.from_utf16(r.start)..self.edit.from_utf16(r.end));
+        let range = range.map(|r| self.edit.byte_offset(r.start)..self.edit.byte_offset(r.end));
         self.edit.replace(range, text);
         self.changed(cx);
     }
@@ -308,7 +308,7 @@ impl EntityInputHandler for SearchField {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let range = range.map(|r| self.edit.from_utf16(r.start)..self.edit.from_utf16(r.end));
+        let range = range.map(|r| self.edit.byte_offset(r.start)..self.edit.byte_offset(r.end));
         self.edit.replace_and_mark(range, text, selected);
         self.changed(cx);
     }
@@ -321,8 +321,8 @@ impl EntityInputHandler for SearchField {
         _: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
         let line = self.layout.as_ref()?;
-        let start = self.edit.from_utf16(range.start);
-        let end = self.edit.from_utf16(range.end);
+        let start = self.edit.byte_offset(range.start);
+        let end = self.edit.byte_offset(range.end);
         Some(Bounds::from_corners(
             point(
                 bounds.left() + line.x_for_index(start) - self.scroll_x,
@@ -341,7 +341,7 @@ impl EntityInputHandler for SearchField {
         _: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<usize> {
-        Some(self.edit.to_utf16(self.index_at(position)))
+        Some(self.edit.utf16_offset(self.index_at(position)))
     }
 
     fn set_selected_text_range(
@@ -350,7 +350,7 @@ impl EntityInputHandler for SearchField {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.edit.selection = self.edit.from_utf16(range.start)..self.edit.from_utf16(range.end);
+        self.edit.selection = self.edit.byte_offset(range.start)..self.edit.byte_offset(range.end);
         self.edit.reversed = false;
         cx.notify();
     }
