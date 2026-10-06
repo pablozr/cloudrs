@@ -297,7 +297,8 @@ The visual rules, tokens and motion catalog live in
       (the build environment cannot reach soundcloud.com).
 
 ### M1 — Playable MVP
-Design: [ADR 0004](./adr/0004-m1-core-and-ui-contract.md).
+Design: [ADR 0004](./adr/0004-m1-core-and-ui-contract.md) (core and contract),
+[ADR 0005](./adr/0005-m1-app-shell.md) (app shell).
 
 Done (layers below the UI):
 - [x] `sc-audio`: seek by HLS segment (`Command::Seek`), `Player::into_channels`.
@@ -306,17 +307,27 @@ Done (layers below the UI):
       playback state, waveform bars, artwork disk cache; tested with a fake API and fake audio.
 - [x] `cloudrs-ui`: single-line `SearchField` adapted from xemnas (`bind_keys` registers its keys).
 
-Next (the app, `apps/cloudrs`):
-- [ ] Composition root: `sc_core::start(CoreConfig { cache_dir: dirs::cache_dir()/cloudrs })`
-      (`dirs` approved), show a problem state if it fails (no audio device).
-- [ ] Shell view: owns the `CoreHandle`, pumps `events().recv_async()` into view state, and
+Done (the app, `apps/cloudrs`):
+- [x] Composition root: `sc_core::start(CoreConfig { cache_dir: dirs::cache_dir()/cloudrs })`
+      (`dirs` approved), full-window problem state with "Try again" if it fails (no audio device).
+- [x] Shell view: owns the `CoreHandle`, pumps `events().recv_async()` into view state, and
       sends `Command::Search` / `Command::PlayUrl` (when the text is a soundcloud.com URL) from
-      `SearchChanged`.
-- [ ] Results: `uniform_list` of track rows with artwork (`img(path)`), click to play,
-      `Command::LoadMore` near the end of the list.
-- [ ] Player bar: now playing + artwork, play/pause, time, waveform with click to seek, volume.
-- [ ] Problems as text through `i18n` (`Problem` → message).
-- [ ] Screenshots in both themes, then tick M1.
+      `SearchChanged`. `Ctrl K` and `/` focus the search field.
+- [x] Results: `uniform_list` of track rows with artwork (`img(path)`), click to play,
+      `Command::LoadMore` near the end of the list; skeleton, empty, no-results and error
+      ("Try again") states.
+- [x] Player bar: now playing + artwork, play/pause, time, waveform with click to seek, volume.
+- [x] Problems as text through `i18n` (`Problem` → message) shown as a toast for 4 s.
+- [x] Screenshots in both themes: [`m1-*.png`](./assets/readme/), taken in a Linux container
+      under `Xvfb` and lavapipe against the live SoundCloud (empty, results, scrolled, toast,
+      playing, offline error).
+
+Before ticking M1:
+- [ ] Listen on a real machine. The container has no sound card, so playback only ran on the
+      ALSA `null` device (the track decodes and "plays" faster than real time); audio was not
+      heard.
+- [ ] Waveform hover preview of the seek target (motion catalog 3): clicking seeks, but the
+      hover preview is not built yet.
 
 ### M2 — Navigation
 - [ ] Track, Profile, Playlist and Album screens.
