@@ -48,6 +48,7 @@ pub mod app {
         window_title { en: "cloudrs" }
         brand_cloud { en: "cloud" }
         brand_rs { en: "rs" }
+        try_again { en: "Try again" }
         switch_to_light { en: "Light theme" }
         switch_to_dark { en: "Dark theme" }
     }
@@ -64,7 +65,6 @@ pub mod search {
         no_results_hint { en: "Check the spelling or try fewer words." }
         error_title { en: "Could not load the results" }
         error_hint { en: "Check your connection and try again." }
-        try_again { en: "Try again" }
         preview_badge { en: "30s preview" }
     }
     formats! {
@@ -90,7 +90,6 @@ pub mod startup {
         audio_hint { en: "Connect speakers or headphones, then try again." }
         network_title { en: "Could not start the network" }
         network_hint { en: "Check your connection and try again." }
-        try_again { en: "Try again" }
     }
 }
 
