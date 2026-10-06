@@ -1,0 +1,10 @@
+[package]
+name = "architecture"
+description = "Checks the workspace layering rules from docs/PLAN.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+toml = "0.9"

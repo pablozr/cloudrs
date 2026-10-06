@@ -1,0 +1,34 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/cloudrs",
+    "crates/cloudrs-ui",
+    "crates/sc-api",
+    "crates/sc-audio",
+    "tests/architecture",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/pablozr/cloudrs"
+rust-version = "1.90"
+
+[workspace.dependencies]
+# Pinned to the Zed monorepo revision accepted in ADR 0001 (same as xemnas).
+# Only `apps/cloudrs` and `crates/cloudrs-ui` may use these; the architecture
+# test enforces it.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "244023605536a412ab6b8d5b658466b89fb15401" }
+# On Linux both display servers are compiled in; the other platforms ignore these features.
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "244023605536a412ab6b8d5b658466b89fb15401", features = ["wayland", "x11"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
