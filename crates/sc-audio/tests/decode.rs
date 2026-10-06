@@ -6,7 +6,9 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::thread;
 
-use sc_audio::{Decoder, Error, Source, open};
+use std::time::Duration;
+
+use sc_audio::{Decoder, Error, Source, Stream};
 
 /// Serves files from `tests/assets` until the test process exits.
 fn serve_assets() -> String {
@@ -50,10 +52,12 @@ fn serve_assets() -> String {
     format!("http://{addr}")
 }
 
-/// Decodes a whole source and returns (seconds, sample rate, channels).
-fn decode_all(url: &str) -> (f64, u32, usize) {
-    let opened = open(&Source::from_url(url)).unwrap();
+/// Decodes a source from `at` to the end and returns (seconds, sample rate, channels).
+fn decode_from(url: &str, at: Duration) -> (f64, u32, usize) {
+    let stream = Stream::open(&Source::from_url(url)).unwrap();
+    let (opened, skip) = stream.read_from(at).unwrap();
     let mut decoder = Decoder::new(opened.reader, opened.extension.as_deref()).unwrap();
+    decoder.skip(skip);
     let mut chunk = Vec::new();
     let mut samples = 0usize;
     while decoder.next_chunk(&mut chunk).unwrap() {
@@ -66,6 +70,10 @@ fn decode_all(url: &str) -> (f64, u32, usize) {
         rate,
         channels,
     )
+}
+
+fn decode_all(url: &str) -> (f64, u32, usize) {
+    decode_from(url, Duration::ZERO)
 }
 
 fn assert_close(actual: f64, expected: f64) {
@@ -101,9 +109,24 @@ fn decodes_progressive_mp3() {
 }
 
 #[test]
+fn seeks_into_an_hls_stream() {
+    let base = serve_assets();
+    // 3 s of audio; from 1.5 s there is 1.5 s left.
+    let (secs, _, _) = decode_from(&format!("{base}/fmp4.m3u8"), Duration::from_millis(1500));
+    assert_close(secs, 1.5);
+}
+
+#[test]
+fn seeks_into_a_progressive_file() {
+    let base = serve_assets();
+    let (secs, _, _) = decode_from(&format!("{base}/tone.mp3"), Duration::from_millis(400));
+    assert_close(secs, 0.6);
+}
+
+#[test]
 fn reports_a_missing_playlist() {
     let base = serve_assets();
-    let error = open(&Source::from_url(format!("{base}/missing.m3u8")))
+    let error = Stream::open(&Source::from_url(format!("{base}/missing.m3u8")))
         .err()
         .expect("missing playlist must fail");
     assert!(matches!(error, Error::Network(_)), "{error:?}");

@@ -1,6 +1,7 @@
 //! Demuxing and decoding with symphonia into interleaved `f32` samples.
 
 use std::io::{ErrorKind, Read};
+use std::time::Duration;
 
 use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error as SymphoniaError;
@@ -18,6 +19,8 @@ pub struct Decoder {
     track_id: u32,
     sample_rate: u32,
     channels: usize,
+    /// Audio still to drop before the first returned sample (after a seek).
+    skip: Duration,
 }
 
 impl Decoder {
@@ -56,7 +59,13 @@ impl Decoder {
             format,
             decoder,
             track_id,
+            skip: Duration::ZERO,
         })
+    }
+
+    /// Drops the first `duration` of audio, to land exactly on a seek target.
+    pub fn skip(&mut self, duration: Duration) {
+        self.skip = duration;
     }
 
     /// Sample rate of the last decoded chunk, in Hz.
@@ -92,7 +101,17 @@ impl Decoder {
                     }
                     self.sample_rate = buffer.spec().rate();
                     self.channels = buffer.spec().channels().count();
+                    let frames = buffer.frames();
+                    let to_skip = (self.skip.as_secs_f64() * f64::from(self.sample_rate)) as usize;
+                    if to_skip >= frames {
+                        self.skip = self
+                            .skip
+                            .saturating_sub(frames_to_duration(frames, self.sample_rate));
+                        continue;
+                    }
+                    self.skip = Duration::ZERO;
                     buffer.copy_to_vec_interleaved(out);
+                    out.drain(..to_skip * self.channels);
                     return Ok(true);
                 }
                 // A corrupt packet: skip it, like every player does.
@@ -104,4 +123,8 @@ impl Decoder {
             }
         }
     }
+}
+
+fn frames_to_duration(frames: usize, rate: u32) -> Duration {
+    Duration::from_secs_f64(frames as f64 / f64::from(rate.max(1)))
 }

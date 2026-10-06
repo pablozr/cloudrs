@@ -31,26 +31,6 @@ fn http() -> Result<reqwest::blocking::Client> {
         .build()?)
 }
 
-/// Opens a source for decoding. Blocks until the first bytes are available.
-pub fn open(source: &Source) -> Result<Opened> {
-    match source.kind {
-        SourceKind::Progressive => {
-            let response = http()?.get(&source.url).send()?.error_for_status()?;
-            Ok(Opened {
-                extension: extension_of(&source.url),
-                reader: Box::new(response),
-            })
-        }
-        SourceKind::Hls => {
-            let reader = HlsReader::open(&source.url)?;
-            Ok(Opened {
-                extension: reader.extension.clone(),
-                reader: Box::new(reader),
-            })
-        }
-    }
-}
-
 fn extension_of(url: &str) -> Option<String> {
     let path = Url::parse(url).ok()?.path().to_owned();
     let ext = path.rsplit_once('.')?.1.to_ascii_lowercase();
@@ -60,20 +40,66 @@ fn extension_of(url: &str) -> Option<String> {
     })
 }
 
-/// Reads an HLS VOD playlist as one continuous byte stream: the init segment
-/// (`#EXT-X-MAP`, for fMP4) followed by every media segment.
-pub struct HlsReader {
-    segments: flume::Receiver<io::Result<Vec<u8>>>,
-    current: Vec<u8>,
-    pos: usize,
-    /// Media extension of the segments, for the probe.
-    pub extension: Option<String>,
+/// A source opened once (the HLS playlist is loaded here), then read from
+/// the start or from any position.
+pub struct Stream {
+    client: reqwest::blocking::Client,
+    kind: StreamKind,
 }
 
-impl HlsReader {
-    pub fn open(url: &str) -> Result<Self> {
+enum StreamKind {
+    Progressive(String),
+    Hls(HlsPlaylist),
+}
+
+impl Stream {
+    pub fn open(source: &Source) -> Result<Self> {
         let client = http()?;
-        let (base, media) = load_media_playlist(&client, url)?;
+        let kind = match source.kind {
+            SourceKind::Progressive => StreamKind::Progressive(source.url.clone()),
+            SourceKind::Hls => StreamKind::Hls(HlsPlaylist::load(&client, &source.url)?),
+        };
+        Ok(Self { client, kind })
+    }
+
+    /// Bytes starting as close to `at` as the format allows, plus how much
+    /// audio the decoder must still drop to land exactly on `at`.
+    pub fn read_from(&self, at: Duration) -> Result<(Opened, Duration)> {
+        match &self.kind {
+            // A progressive file restarts from the beginning.
+            StreamKind::Progressive(url) => {
+                let response = self.client.get(url).send()?.error_for_status()?;
+                let opened = Opened {
+                    extension: extension_of(url),
+                    reader: Box::new(response),
+                };
+                Ok((opened, at))
+            }
+            StreamKind::Hls(playlist) => {
+                let (index, start) = playlist.segment_at(at);
+                let reader = HlsReader::start(self.client.clone(), playlist, index)?;
+                let opened = Opened {
+                    extension: playlist.extension.clone(),
+                    reader: Box::new(reader),
+                };
+                Ok((opened, at.saturating_sub(start)))
+            }
+        }
+    }
+}
+
+/// The parts of a VOD media playlist the player needs.
+#[derive(Debug, Clone)]
+pub struct HlsPlaylist {
+    /// `#EXT-X-MAP` init segment (fMP4), sent before any media segment.
+    init: Option<Url>,
+    segments: Vec<(Url, Duration)>,
+    extension: Option<String>,
+}
+
+impl HlsPlaylist {
+    fn load(client: &reqwest::blocking::Client, url: &str) -> Result<Self> {
+        let (base, media) = load_media_playlist(client, url)?;
         if media.segments.iter().any(|s| {
             s.key
                 .as_ref()
@@ -85,14 +111,65 @@ impl HlsReader {
             base.join(uri)
                 .map_err(|e| Error::Playlist(format!("bad segment URI {uri}: {e}")))
         };
-        let mut urls = Vec::with_capacity(media.segments.len() + 1);
-        if let Some(map) = media.segments.first().and_then(|s| s.map.as_ref()) {
-            urls.push(resolve(&map.uri)?);
+        let init = match media.segments.first().and_then(|s| s.map.as_ref()) {
+            Some(map) => Some(resolve(&map.uri)?),
+            None => None,
+        };
+        let segments = media
+            .segments
+            .iter()
+            .map(|s| {
+                Ok((
+                    resolve(&s.uri)?,
+                    Duration::from_secs_f32(s.duration.max(0.0)),
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let extension = segments.last().and_then(|(u, _)| extension_of(u.as_str()));
+        Ok(Self {
+            init,
+            segments,
+            extension,
+        })
+    }
+
+    /// Index of the segment that contains `at`, and the time it starts at.
+    fn segment_at(&self, at: Duration) -> (usize, Duration) {
+        let mut start = Duration::ZERO;
+        for (index, (_, length)) in self.segments.iter().enumerate() {
+            if at < start + *length || index + 1 == self.segments.len() {
+                return (index, start);
+            }
+            start += *length;
         }
-        for segment in &media.segments {
-            urls.push(resolve(&segment.uri)?);
-        }
-        let extension = urls.last().and_then(|u| extension_of(u.as_str()));
+        (0, Duration::ZERO)
+    }
+}
+
+/// Reads HLS segments as one continuous byte stream (init segment first),
+/// fetched ahead on a background thread.
+pub struct HlsReader {
+    segments: flume::Receiver<io::Result<Vec<u8>>>,
+    current: Vec<u8>,
+    pos: usize,
+}
+
+impl HlsReader {
+    fn start(
+        client: reqwest::blocking::Client,
+        playlist: &HlsPlaylist,
+        first: usize,
+    ) -> Result<Self> {
+        let urls: Vec<Url> = playlist
+            .init
+            .iter()
+            .cloned()
+            .chain(
+                playlist.segments[first..]
+                    .iter()
+                    .map(|(url, _)| url.clone()),
+            )
+            .collect();
         let (tx, rx) = flume::bounded(READ_AHEAD_SEGMENTS);
         thread::Builder::new()
             .name("cloudrs-hls-fetch".into())
@@ -106,7 +183,7 @@ impl HlsReader {
                         .map(|b| b.to_vec())
                         .map_err(io::Error::other);
                     let failed = bytes.is_err();
-                    // The reader was dropped: stop fetching.
+                    // The reader was dropped (stop or seek): stop fetching.
                     if tx.send(bytes).is_err() || failed {
                         return;
                     }
@@ -117,7 +194,6 @@ impl HlsReader {
             segments: rx,
             current: Vec::new(),
             pos: 0,
-            extension,
         })
     }
 }
@@ -175,6 +251,33 @@ impl Read for HlsReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn playlist(lengths: &[f32]) -> HlsPlaylist {
+        HlsPlaylist {
+            init: None,
+            segments: lengths
+                .iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    let url = Url::parse(&format!("https://x/seg{i}.m4s")).unwrap();
+                    (url, Duration::from_secs_f32(*l))
+                })
+                .collect(),
+            extension: Some("mp4".into()),
+        }
+    }
+
+    #[test]
+    fn finds_the_segment_for_a_position() {
+        let p = playlist(&[5.0, 5.0, 2.0]);
+        let secs = Duration::from_secs_f32;
+        assert_eq!(p.segment_at(secs(0.0)), (0, secs(0.0)));
+        assert_eq!(p.segment_at(secs(4.9)), (0, secs(0.0)));
+        assert_eq!(p.segment_at(secs(5.0)), (1, secs(5.0)));
+        assert_eq!(p.segment_at(secs(11.0)), (2, secs(10.0)));
+        // Past the end: the last segment.
+        assert_eq!(p.segment_at(secs(99.0)), (2, secs(10.0)));
+    }
 
     #[test]
     fn maps_segment_extensions_to_containers() {

@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::decode::Decoder;
-use crate::fetch;
+use crate::fetch::Stream;
 use crate::output::{self, Output};
 use crate::resample::Resampler;
 use crate::{Error, Result, Source};
@@ -18,6 +18,8 @@ pub enum Command {
     Load(Source),
     Play,
     Pause,
+    /// Jump to this position in the current source.
+    Seek(Duration),
     /// 0.0 to 1.0.
     SetVolume(f32),
     Stop,
@@ -87,6 +89,9 @@ impl Player {
 }
 
 struct Track {
+    stream: Stream,
+    /// Position of the first sample the decoder returns (the last seek target).
+    start: Duration,
     decoder: Decoder,
     resampler: Resampler,
     finished_decoding: bool,
@@ -102,6 +107,8 @@ struct Engine {
     pending: Vec<f32>,
     pending_at: usize,
     last_position: Instant,
+    /// Start of the track that just ended, for its final position report.
+    ended_at: Duration,
 }
 
 impl Engine {
@@ -115,6 +122,7 @@ impl Engine {
             pending: Vec::new(),
             pending_at: 0,
             last_position: Instant::now(),
+            ended_at: Duration::ZERO,
         }
     }
 
@@ -172,6 +180,18 @@ impl Engine {
                 self.set_state(PlaybackState::Paused);
             }
             Command::Pause => {}
+            Command::Seek(at) => {
+                if let Some(track) = self.track.take() {
+                    self.clear();
+                    match seek_track(track, at, &self.output) {
+                        Ok(track) => {
+                            self.track = Some(track);
+                            self.report_position();
+                        }
+                        Err(error) => self.fail(error),
+                    }
+                }
+            }
             Command::SetVolume(volume) => self.output.shared.set_volume(volume),
             Command::Stop => {
                 self.clear();
@@ -241,6 +261,7 @@ impl Engine {
         }
         let drained = self.output.producer.slots() == self.output.capacity;
         if track.finished_decoding && self.pending_at >= self.pending.len() && drained {
+            self.ended_at = track.start;
             self.track = None;
             self.report_position();
             self.set_state(PlaybackState::Ended);
@@ -257,14 +278,24 @@ impl Engine {
     fn report_position(&mut self) {
         self.last_position = Instant::now();
         let frames = self.output.shared.frames_played.load(Ordering::Relaxed);
-        let position = Duration::from_secs_f64(frames as f64 / f64::from(self.output.sample_rate));
-        self.emit(Event::Position(position));
+        let played = Duration::from_secs_f64(frames as f64 / f64::from(self.output.sample_rate));
+        let start = self.track.as_ref().map_or(self.ended_at, |t| t.start);
+        self.emit(Event::Position(start + played));
     }
 }
 
 fn open_track(source: &Source, output: &Output) -> Result<Track> {
-    let opened = fetch::open(source)?;
-    let decoder = Decoder::new(opened.reader, opened.extension.as_deref())?;
+    track_at(Stream::open(source)?, Duration::ZERO, output)
+}
+
+fn seek_track(track: Track, at: Duration, output: &Output) -> Result<Track> {
+    track_at(track.stream, at, output)
+}
+
+fn track_at(stream: Stream, at: Duration, output: &Output) -> Result<Track> {
+    let (opened, skip) = stream.read_from(at)?;
+    let mut decoder = Decoder::new(opened.reader, opened.extension.as_deref())?;
+    decoder.skip(skip);
     let resampler = Resampler::new(
         decoder.sample_rate(),
         decoder.channels(),
@@ -272,6 +303,8 @@ fn open_track(source: &Source, output: &Output) -> Result<Track> {
         output.channels,
     );
     Ok(Track {
+        stream,
+        start: at,
         decoder,
         resampler,
         finished_decoding: false,
