@@ -305,8 +305,8 @@ impl Render for Tooltip {
 }
 
 /// Builder for `.tooltip(..)`, required on icon-only controls.
-pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView {
-    let text = text.into();
+pub fn tooltip(text: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let text = SharedString::new_static(text);
     move |_, cx| cx.new(|_| Tooltip(text.clone())).into()
 }
 
@@ -483,6 +483,7 @@ pub fn track_row(theme: &Theme, id: impl Into<ElementId>, row: TrackRowData) -> 
         .flex()
         .items_center()
         .gap(space::S3)
+        .w_full()
         .h(size::ROW_HEIGHT)
         .px(space::S3)
         .rounded(radius::M)
@@ -541,6 +542,7 @@ pub fn skeleton_row(theme: &Theme, id: impl Into<ElementId>) -> impl IntoElement
         .flex()
         .items_center()
         .gap(space::S3)
+        .w_full()
         .h(size::ROW_HEIGHT)
         .px(space::S3)
         .child(div().flex_none().w(size::ROW_INDEX))

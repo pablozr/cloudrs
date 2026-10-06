@@ -104,6 +104,8 @@ pub const SLOW: MotionSpec = MotionSpec::new(320, EASE_SPRING);
 /// A screen replacing another.
 pub const PAGE: MotionSpec = MotionSpec::new(420, EASE_OUT);
 
+/// How long a toast stays before it leaves on its own.
+pub const TOAST_LIFETIME: Duration = Duration::from_secs(4);
 /// One breath of the skeleton shimmer.
 pub const SHIMMER_MS: u64 = 1400;
 /// Periods of the three equalizer bars, different so they never move in step.
