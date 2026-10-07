@@ -4,6 +4,7 @@
 
 mod account;
 mod history;
+mod home;
 mod jam;
 mod list;
 mod playlist;
@@ -28,6 +29,7 @@ impl Shell {
     /// The screen of the current route. A new `nav_seq` replays the entrance.
     pub(crate) fn screen(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let page = match self.router.current().clone() {
+            Route::Home => self.home_screen(theme, cx),
             Route::Search => self.search_screen(theme, cx),
             Route::Track(id) => self.track_screen(id, theme, cx),
             Route::User(id) => self.user_screen(id, theme, cx),

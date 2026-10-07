@@ -171,8 +171,7 @@ impl Shell {
             this.send(command);
         })
         .detach();
-
-        window.focus(&search.focus_handle(cx), cx);
+        window.focus(&cx.focus_handle(), cx);
 
         let this = cx.weak_entity();
         window.on_window_should_close(cx, move |_, cx| {
@@ -205,6 +204,9 @@ impl Shell {
             stopped: false,
         };
         shell.start_pump(cx);
+        // Home opens first; Ctrl K or / reach the search field.
+        window.focus(&shell.focus, cx);
+        shell.refresh_home(cx);
         shell
     }
 
@@ -292,6 +294,9 @@ impl Shell {
                 let token = account.token.clone();
                 keychain(cx, move || sc_platform::keychain::save_token(&token));
                 self.clear_token_field(cx);
+                if *self.router.current() == Route::Home {
+                    self.refresh_home(cx);
+                }
             }
             Event::SignedOut => {
                 keychain(cx, sc_platform::keychain::delete_token);
@@ -351,7 +356,8 @@ impl Shell {
             Route::Track(id) => ArtKey::Track(*id),
             Route::User(id) => ArtKey::User(*id),
             Route::Playlist(id) => ArtKey::Playlist(*id),
-            Route::Search
+            Route::Home
+            | Route::Search
             | Route::History
             | Route::Feed
             | Route::Likes(_)
@@ -540,7 +546,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+    pub(crate) fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
         if self.router.push(route) {
             self.user_tab = 0;
             self.route_changed(cx);
@@ -572,6 +578,9 @@ impl Shell {
             _ => None,
         };
         self.wave.update(cx, |wave, cx| wave.show(track, cx));
+        if *self.router.current() == Route::Home {
+            self.refresh_home(cx);
+        }
         cx.notify();
     }
 
@@ -587,6 +596,10 @@ impl Shell {
         self.core = start_core(&self.config);
         self.start_pump(cx);
         cx.notify();
+    }
+
+    pub(crate) fn focus_search_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.search.focus_handle(cx), cx);
     }
 
     fn focus_search(&mut self, _: &FocusSearch, window: &mut Window, cx: &mut Context<Self>) {
@@ -629,6 +642,17 @@ impl Shell {
                             .child(i18n::app::brand_cloud())
                             .child(div().text_color(c.accent).child(i18n::app::brand_rs())),
                     ),
+            )
+            .child(
+                sidebar_item(
+                    theme,
+                    "nav-home",
+                    Icon::Home,
+                    i18n::nav::home(),
+                    section == Section::Home,
+                )
+                .aria_label(i18n::nav::home())
+                .on_click(cx.listener(|this, _, _, cx| this.navigate(Route::Home, cx))),
             )
             .child(
                 sidebar_item(

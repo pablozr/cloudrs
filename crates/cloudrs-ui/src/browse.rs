@@ -12,7 +12,7 @@ use gpui::{
     SharedString, Stateful, Window, div, img, px,
 };
 
-use crate::components::{Icon, badge, icon, shimmer_opacity};
+use crate::components::{Icon, badge, icon, play_button, shimmer_opacity};
 use crate::tokens::{self, radius, size, space, typography};
 use crate::{Theme, motion};
 
@@ -284,4 +284,117 @@ pub fn collection_row(
     let cover = picture(theme, size::ROW_COVER, false, row.cover).rounded(radius::M);
     let badge_label = row.album_badge.map(|label| (label, theme.colors.accent));
     browse_row(theme, id, cover, row.title, row.meta, badge_label)
+}
+
+/// Data of a [`card`]; borrowed like a row's.
+pub struct CardData<'a> {
+    pub title: &'a str,
+    /// Already formatted (`42 tracks`, `Artist`).
+    pub meta: &'a str,
+    pub cover: Option<Arc<Path>>,
+    /// An avatar (round) instead of a cover.
+    pub round: bool,
+}
+
+/// Group name cards share, so the play button reacts to its own card.
+const CARD_GROUP: &str = "card";
+
+/// A card on a Home shelf: square cover, title and meta line. The play button
+/// rises over the cover on hover and handles its own click, so the card's
+/// click (open) does not fire. Callers add `on_click` and the `aria_label`.
+pub fn card(
+    theme: &Theme,
+    id: impl Into<ElementId> + Clone,
+    data: CardData,
+    on_play: Option<impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    let id: ElementId = id.into();
+    let cover = picture(theme, size::CARD_WIDTH, data.round, data.cover)
+        .relative()
+        .when_some(on_play, |cover, on_play| {
+            cover.child(
+                div()
+                    .absolute()
+                    .right(space::S2)
+                    .bottom(space::S2)
+                    .invisible()
+                    .group_hover(CARD_GROUP, |s| s.visible())
+                    .child(
+                        play_button(theme, (id.clone(), "play"), false, size::CARD_PLAY).on_click(
+                            move |event, window, cx| {
+                                cx.stop_propagation();
+                                on_play(event, window, cx);
+                            },
+                        ),
+                    ),
+            )
+        });
+    theme
+        .text(div(), typography::BODY)
+        .id(id.clone())
+        .group(CARD_GROUP)
+        .flex_none()
+        .w(size::CARD_WIDTH)
+        .flex()
+        .flex_col()
+        .gap(space::S2)
+        .p(space::S2)
+        .rounded(radius::L)
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .tab_index(0)
+        .focus_visible(move |s| s.border_color(c.accent))
+        .cursor_pointer()
+        .hover(move |s| s.bg(c.surface_raised))
+        .child(cover)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .truncate()
+                        .text_color(c.text)
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(data.title.to_owned()),
+                )
+                .child(
+                    theme
+                        .text(div(), typography::BODY_MUTED)
+                        .truncate()
+                        .text_color(c.text_muted)
+                        .child(data.meta.to_owned()),
+                ),
+        )
+}
+
+/// A card in loading state: the same shape with the soft shimmer.
+pub fn skeleton_card(theme: &Theme, id: impl Into<ElementId>) -> impl IntoElement {
+    let c = theme.colors;
+    div()
+        .flex_none()
+        .w(size::CARD_WIDTH)
+        .flex()
+        .flex_col()
+        .gap(space::S3)
+        .p(space::S2)
+        .child(
+            div()
+                .size(size::CARD_WIDTH)
+                .rounded(radius::L)
+                .bg(c.surface_hover),
+        )
+        .child(
+            div()
+                .w(size::SKELETON_ARTIST_WIDTH)
+                .h(size::SKELETON_TITLE_HEIGHT)
+                .rounded(radius::S)
+                .bg(c.surface_hover),
+        )
+        .with_animation(
+            id,
+            Animation::new(motion::SHIMMER).repeat_synced(),
+            |card, t| card.opacity(shimmer_opacity(t)),
+        )
 }

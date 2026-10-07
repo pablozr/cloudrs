@@ -169,7 +169,7 @@ impl Shell {
             .collect()
     }
 
-    fn track_item(
+    pub(crate) fn track_item(
         &self,
         key: ListId,
         ix: usize,

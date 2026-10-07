@@ -5,6 +5,8 @@ use sc_core::{ListId, PlaylistId, TrackId, UserId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
+    /// Where the app opens: greeting, shelves of what to play next.
+    Home,
     Search,
     Track(TrackId),
     User(UserId),
@@ -27,6 +29,7 @@ pub enum Route {
 /// The sidebar entry a route belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
+    Home,
     Search,
     History,
     Feed,
@@ -42,6 +45,7 @@ impl Route {
     /// keep Search lit in the sidebar.
     pub fn section(&self) -> Section {
         match self {
+            Self::Home => Section::Home,
             Self::History => Section::History,
             Self::Feed => Section::Feed,
             Self::Likes(_) => Section::Likes,
@@ -75,7 +79,7 @@ pub struct Router {
 impl Router {
     pub fn new() -> Self {
         Self {
-            stack: vec![Route::Search],
+            stack: vec![Route::Home],
             at: 0,
         }
     }
@@ -110,7 +114,7 @@ impl Router {
         if !matches!(self.current(), Route::Resolving(_)) {
             return;
         }
-        // The loading step is never the first one: the router starts on Search.
+        // The loading step is never the first one: the router starts on Home.
         self.stack.truncate(self.at);
         self.at -= 1;
         if let Some(route) = route {
@@ -144,9 +148,9 @@ mod tests {
     }
 
     #[test]
-    fn it_starts_on_search_with_nowhere_to_go() {
+    fn it_starts_on_home_with_nowhere_to_go() {
         let router = Router::new();
-        assert_eq!(*router.current(), Route::Search);
+        assert_eq!(*router.current(), Route::Home);
         assert!(!router.can_back() && !router.can_forward());
     }
 
@@ -159,7 +163,7 @@ mod tests {
         assert!(router.back());
         assert_eq!(*router.current(), user(1));
         assert!(router.back());
-        assert_eq!(*router.current(), Route::Search);
+        assert_eq!(*router.current(), Route::Home);
 
         assert!(router.forward());
         assert!(router.forward());
@@ -176,7 +180,7 @@ mod tests {
         assert!(!router.forward(), "nothing ahead");
         assert!(router.back());
         assert!(!router.back(), "already at the start");
-        assert_eq!(*router.current(), Route::Search);
+        assert_eq!(*router.current(), Route::Home);
     }
 
     #[test]
@@ -196,11 +200,11 @@ mod tests {
     #[test]
     fn going_where_you_already_are_adds_no_step() {
         let mut router = Router::new();
-        assert!(!router.push(Route::Search));
+        assert!(!router.push(Route::Home));
         assert!(router.push(user(1)));
         assert!(!router.push(user(1)));
         assert!(router.back());
-        assert_eq!(*router.current(), Route::Search);
+        assert_eq!(*router.current(), Route::Home);
     }
 
     #[test]
@@ -210,7 +214,7 @@ mod tests {
         router.resolve(Some(user(5)));
         assert_eq!(*router.current(), user(5));
         assert!(router.back());
-        assert_eq!(*router.current(), Route::Search);
+        assert_eq!(*router.current(), Route::Home);
         assert!(!router.back(), "no extra step was left behind");
     }
 

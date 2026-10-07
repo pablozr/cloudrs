@@ -171,6 +171,7 @@ pub enum Icon {
     /// Back in the navigation history.
     Back,
     Forward,
+    Home,
     Search,
     History,
     Sun,
@@ -207,6 +208,7 @@ impl Icon {
             Self::Queue => "icons/list-music.svg",
             Self::Back => "icons/chevron-left.svg",
             Self::Forward => "icons/chevron-right.svg",
+            Self::Home => "icons/house.svg",
             Self::Search => "icons/search.svg",
             Self::History => "icons/history.svg",
             Self::Sun => "icons/sun.svg",

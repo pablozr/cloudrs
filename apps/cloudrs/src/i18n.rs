@@ -85,6 +85,7 @@ pub fn dot_join(parts: &[String]) -> String {
 pub mod nav {
     strings! {
         sidebar { en: "Main navigation" }
+        home { en: "Home" }
         search { en: "Search" }
         history { en: "History" }
         back { en: "Back" }
@@ -296,5 +297,24 @@ pub mod jam {
     formats! {
         in_jam(host) { en: "In {host}\u{2019}s Jam" }
         remove_person(name) { en: "Remove {name} from the Jam" }
+    }
+}
+
+/// Home, where cloudrs opens.
+pub mod home {
+    strings! {
+        welcome { en: "Welcome to cloudrs" }
+        subtitle { en: "Pick up where you left off, or find something new." }
+        recently_played { en: "Recently played" }
+        your_playlists { en: "Your playlists" }
+        from_your_feed { en: "From your feed" }
+        see_all { en: "See all" }
+        start_title { en: "Start listening" }
+        start_hint { en: "Search for a track or an artist, or paste a SoundCloud link. Sign in to bring your likes, playlists and feed." }
+        start_search { en: "Search SoundCloud" }
+    }
+    formats! {
+        welcome_back(name) { en: "Welcome back, {name}" }
+        see_all_of(shelf) { en: "See all: {shelf}" }
     }
 }
