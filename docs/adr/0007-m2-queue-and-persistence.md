@@ -36,6 +36,20 @@ next" and "add to queue", and listening together (ADR 0006) is built on the host
 9. **Queue UI.** A side panel on the right, opened from a queue button in the player bar.
    Reorder by drag and drop, with the motion catalog's lift, accent outline and neighbors
    springing aside.
+10. **A damaged database is reset, not fatal.** The file is renamed to
+    `cloudrs.db.corrupt-<unix time>`, a new empty one is created and the person is told with a
+    toast (`Problem::StorageReset`). A database written by a newer build is left untouched
+    and not used (the app runs without saving) instead of being downgraded. The migration
+    runs in one transaction with `user_version`, and a connection waits up to 2 s for a
+    second instance.
+11. **Orderly shutdown.** Closing the window sends `Command::Shutdown`. The core saves the
+    session on its own thread (no `spawn_blocking`; the store lock waits for a write in
+    progress), answers `Event::Stopped` and stops. The app waits up to 500 ms for the reply
+    before quitting. A core that never changed anything does not write on exit, so a second
+    instance cannot overwrite the saved session.
+12. **Player bar layout.** A centre column, as in Spotify: transport on top, a wide waveform
+    underneath with both times, artwork and title on the left, volume and the queue button on
+    the right. The bar grows from 84 px to 100 px.
 
 ## Consequences
 
@@ -51,6 +65,12 @@ live SoundCloud. Audio was not heard.
 |---|---|---|
 | ![](../assets/readme/m2-queue-dark.png) | ![](../assets/readme/m2-queue-light.png) | ![](../assets/readme/m2-queue-drag.png) |
 
+The player bar with the centre column:
+
+| Dark | Light |
+|---|---|
+| ![](../assets/readme/m2-player-dark.png) | ![](../assets/readme/m2-player-light.png) |
+
 ## Known limits
 
 - While dragging, the neighbors do not spring aside (motion catalog 7): the dragged row is
@@ -58,7 +78,8 @@ live SoundCloud. Audio was not heard.
 - Row actions ("Play next", "Add to queue", "Remove") appear on hover only, so a keyboard user
   cannot reach them yet. The panel rows, the player bar buttons and the queue button are focusable.
 - The current track cannot be removed from the queue.
-- The session is saved on queue changes, on pause and every 5 s while playing; closing the
-  window between saves loses at most that interval.
+- The session is saved on queue changes, on pause, every 5 s while playing, a second after the
+  volume stops changing and when the window closes (not when the OS kills the app, or on
+  Cmd-Q, which skips the window hook).
 - Turning shuffle off after a restart keeps the restored order, since the pre-shuffle order is
   not saved.

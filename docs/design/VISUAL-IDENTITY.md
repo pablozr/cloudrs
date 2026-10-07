@@ -152,11 +152,12 @@ The OS "reduce motion" setting turns every duration down to an instant change.
   - the active row shows the equalizer and the accent title.
 - **Card:** square cover; the play button rises on hover.
 - **Toast:** artwork or status icon, text, optional action ("Undo").
-- **PlayerBar:**
-  - now playing + like;
-  - transport controls with the gradient play button;
-  - waveform with timed-comment pins;
-  - queue and volume.
+- **PlayerBar:** about 100 px tall, in three blocks with the centre column in the middle:
+  - left: artwork, title and artist (+ like);
+  - centre: the transport row on top (shuffle, previous, the gradient play button, next,
+    repeat, centred) and, underneath, a wide waveform with the elapsed time on its left and
+    the total on its right (timed-comment pins later);
+  - right: volume and the queue button.
 - **Sidebar:** brand, main navigation with an accent rail on the active item, "Your playlists".
 
 Every surface has the full set of states: loading (skeleton), empty (what fills it), error (with

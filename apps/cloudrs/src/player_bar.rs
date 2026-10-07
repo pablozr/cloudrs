@@ -187,7 +187,7 @@ impl Render for PlayerBar {
             .unwrap_or_else(|| self.flat_waveform.clone());
         let timeline = div()
             .flex()
-            .flex_1()
+            .w_full()
             .items_center()
             .gap(space::S3)
             .when(!active, |timeline| {
@@ -234,6 +234,36 @@ impl Render for PlayerBar {
             .aria_label(t::volume())
             .tooltip(tooltip(t::volume())),
         );
+        // Transport on top, the waveform with both times underneath.
+        let centre = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(px(0.0))
+            .items_center()
+            .gap(space::S1)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(space::S1)
+                    .child(shuffle)
+                    .child(previous)
+                    .child(play)
+                    .child(next)
+                    .child(repeat),
+            )
+            .child(timeline);
+        // As wide as the left block, so the centre column is truly centred.
+        let right = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_end()
+            .gap(space::S3)
+            .w(size::PLAYER_INFO_WIDTH)
+            .child(volume)
+            .child(queue);
 
         div()
             .flex()
@@ -245,20 +275,7 @@ impl Render for PlayerBar {
             .border_t_1()
             .border_color(c.line)
             .child(info)
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(space::S1)
-                    .child(shuffle)
-                    .child(previous)
-                    .child(play)
-                    .child(next)
-                    .child(repeat),
-            )
-            .child(timeline)
-            .child(volume)
-            .child(queue)
+            .child(centre)
+            .child(right)
     }
 }
