@@ -69,3 +69,18 @@ one shape in the core contract instead of one event per screen.
 - `Event::Waveform` is also sent for the track whose page opens, not only the playing one.
 - `/users/{id}/likes` is decoded as `Like { track }`; the core keeps the tracks and skips the
   rest.
+
+## Implementation notes (UI)
+
+- `seam.rs` is the only file that knows both the view models and the core's events and commands.
+  Models keep the core's types and add only UI state (loading flags, page placeholders).
+- A single list component (`screens/list.rs`) renders, pages and plays every list. A profile
+  tab asks for its first page with `LoadMore` the first time it is shown.
+- A pasted link shows a loading page until the core answers with a page event, a track starts
+  playing, or a problem arrives.
+- GPUI has no blur, so the screen change (`motion::page_in`) is a slide and a fade.
+- Known limit: counts pluralize only "tracks" (`1 track`); `docs/design/i18n.md` has no plural rule yet.
+- Screenshots `m2-*` were taken live against SoundCloud (Xvfb, lavapipe, ALSA null), except
+  `m2-history-{dark,light}`, which show static rows: the null audio device runs faster than real
+  time, so no play ever counts as listened and the real history stays empty
+  (`m2-history-empty-*`).
