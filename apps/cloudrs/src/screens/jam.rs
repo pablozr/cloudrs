@@ -42,25 +42,78 @@ impl Shell {
             .into_any_element()
     }
 
+    /// No Jam yet: what it is, in three steps, and the button to start one.
     fn jam_intro(&mut self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let c = theme.colors;
+        let step = |n: &'static str, title: &'static str, hint: &'static str| {
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .flex()
+                .flex_col()
+                .gap(space::S1)
+                .p(space::S4)
+                .rounded(radius::L)
+                .bg(c.surface_raised)
+                .child(
+                    theme
+                        .text(div(), typography::DISPLAY_L)
+                        .text_color(c.accent)
+                        .child(n),
+                )
+                .child(
+                    theme
+                        .text(div(), typography::BODY)
+                        .text_color(c.text)
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(title),
+                )
+                .child(muted(theme, hint))
+        };
         div()
+            .relative()
+            .overflow_hidden()
             .flex()
             .flex_col()
-            .gap(space::S3)
+            .gap(space::S4)
+            .p(space::S6)
+            .rounded(radius::XL)
+            .bg(c.surface)
+            .border_1()
+            .border_color(c.line)
+            .child(div().absolute().top(px(0.0)).left(px(0.0)).size_full().bg(
+                gpui::linear_gradient(
+                    135.0,
+                    gpui::linear_color_stop(c.accent.opacity(0.16), 0.0),
+                    gpui::linear_color_stop(c.accent.opacity(0.0), 0.6),
+                ),
+            ))
             .child(
-                theme
-                    .text(div(), typography::TITLE)
+                div()
+                    .relative()
                     .flex()
                     .items_center()
                     .gap(space::S3)
-                    .text_color(c.text)
-                    .child(icon(Icon::Jam, size::ICON_M, c.accent))
-                    .child(t::intro_title()),
+                    .child(icon(Icon::Jam, size::ICON_STATUS, c.accent))
+                    .child(
+                        theme
+                            .text(div(), typography::DISPLAY_L)
+                            .text_color(c.text)
+                            .child(t::intro_title()),
+                    ),
             )
-            .child(muted(theme, t::intro_hint()))
+            .child(div().relative().child(muted(theme, t::intro_hint())))
             .child(
-                div().pt(space::S2).child(
+                div()
+                    .relative()
+                    .flex()
+                    .gap(space::S3)
+                    .child(step("1", t::step_start(), t::step_start_hint()))
+                    .child(step("2", t::step_share(), t::step_share_hint()))
+                    .child(step("3", t::step_listen(), t::step_listen_hint())),
+            )
+            .child(
+                div().relative().flex().pt(space::S2).child(
                     button(theme, "jam-start", t::start(), ButtonKind::Primary)
                         .aria_label(t::start())
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -106,7 +159,7 @@ impl Shell {
                         .child(link.clone()),
                 )
                 .child(
-                    div().child(
+                    div().flex().child(
                         button(theme, "jam-copy", t::copy_link(), ButtonKind::Primary)
                             .aria_label(t::copy_link())
                             .child(icon(Icon::Copy, size::ICON_S, c.on_accent))
@@ -233,7 +286,7 @@ impl Shell {
             (t::leave(), "jam-leave")
         };
         view.child(
-            div().pt(space::S6).child(
+            div().flex().pt(space::S6).child(
                 button(theme, id, label, ButtonKind::Secondary)
                     .aria_label(label)
                     .on_click(cx.listener(|this, _, _, cx| {

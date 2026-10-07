@@ -285,6 +285,12 @@ pub mod jam {
         intro_title { en: "Listen together" }
         intro_hint { en: "Start a Jam and share its link: friends hear the same track at the same moment, wherever they are, and can add to the queue. To join one, paste its link in the search field." }
         start { en: "Start a Jam" }
+        step_start { en: "Start a Jam" }
+        step_start_hint { en: "You host: your queue plays for everyone." }
+        step_share { en: "Share the link" }
+        step_share_hint { en: "Send it in any chat. It works from any network." }
+        step_listen { en: "Listen together" }
+        step_listen_hint { en: "Same track, same second. Friends add songs too." }
         going_online { en: "Going online\u{2026}" }
         joining { en: "Joining the Jam\u{2026}" }
         hosting { en: "You\u{2019}re hosting a Jam" }

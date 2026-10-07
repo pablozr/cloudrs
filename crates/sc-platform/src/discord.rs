@@ -15,8 +15,8 @@ use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 
 /// The "cloudrs" application registered on Discord's developer portal. Its
 /// name is what Discord shows ("Listening to cloudrs" in short views); the id
-/// is public. Empty: presence stays off.
-pub const APP_ID: &str = "";
+/// is public (empty would keep the presence off).
+pub const APP_ID: &str = "1557535157018427493";
 
 /// The small image: the logo uploaded to the application's Rich Presence
 /// assets under this name.

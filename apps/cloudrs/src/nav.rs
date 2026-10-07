@@ -41,15 +41,15 @@ pub enum Section {
 }
 
 impl Route {
-    /// Track, profile and playlist pages are reached by searching, so they
-    /// keep Search lit in the sidebar.
+    /// Track and profile pages are reached by searching, so they keep Search
+    /// lit in the sidebar; a playlist belongs with the Library.
     pub fn section(&self) -> Section {
         match self {
             Self::Home => Section::Home,
             Self::History => Section::History,
             Self::Feed => Section::Feed,
             Self::Likes(_) => Section::Likes,
-            Self::Library => Section::Library,
+            Self::Library | Self::Playlist(_) => Section::Library,
             Self::Following(_) => Section::Following,
             Self::Account => Section::Account,
             Self::Jam => Section::Jam,
