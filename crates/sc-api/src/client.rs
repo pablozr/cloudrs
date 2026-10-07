@@ -1,9 +1,9 @@
 //! The `api-v2` HTTP client.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-use reqwest::StatusCode;
+use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
@@ -12,7 +12,9 @@ use url::Url;
 use crate::SoundCloudApi;
 use crate::client_id::{find_client_id, script_urls};
 use crate::error::{Error, Result};
-use crate::models::{Like, Page, Playlist, Resource, Track, User, Waveform};
+use crate::models::{
+    LibraryItem, Like, Page, Playlist, Resource, StreamItem, Track, User, Waveform,
+};
 use crate::stream::{StreamSource, pick_transcoding, protocol};
 
 /// Where to reach SoundCloud and which credentials to start with.
@@ -51,6 +53,8 @@ pub struct ScClient {
     http: reqwest::Client,
     config: Arc<ClientConfig>,
     client_id: Arc<Mutex<Option<String>>>,
+    /// The signed-in user's token; replaced on sign-in and sign-out.
+    oauth_token: Arc<RwLock<Option<String>>>,
     /// Serializes `client_id` refreshes so a burst of 401s scrapes once.
     refreshing: Arc<tokio::sync::Mutex<()>>,
     permits: Arc<Semaphore>,
@@ -67,6 +71,7 @@ impl ScClient {
         Ok(Self {
             http,
             client_id: Arc::new(Mutex::new(config.client_id.clone())),
+            oauth_token: Arc::new(RwLock::new(config.oauth_token.clone())),
             refreshing: Arc::new(tokio::sync::Mutex::new(())),
             permits: Arc::new(Semaphore::new(config.max_concurrency.max(1))),
             config: Arc::new(config),
@@ -124,9 +129,24 @@ impl ScClient {
         Err(Error::ClientIdNotFound)
     }
 
+    fn token(&self) -> Option<String> {
+        self.oauth_token.read().expect("token lock").clone()
+    }
+
     /// GET `url` (relative to the API base, or absolute) and decode the JSON.
-    /// Retries once with a fresh `client_id` when SoundCloud refuses the old one.
     async fn get_json<T: DeserializeOwned>(&self, url: &str, query: &[(&str, &str)]) -> Result<T> {
+        let body = self.send(Method::GET, url, query).await?.bytes().await?;
+        serde_json::from_slice(&body).map_err(Error::Decode)
+    }
+
+    /// Sends a request to the API and returns the successful response.
+    /// Retries once with a fresh `client_id` when SoundCloud refuses the old one.
+    async fn send(
+        &self,
+        method: Method,
+        url: &str,
+        query: &[(&str, &str)],
+    ) -> Result<reqwest::Response> {
         let url = self
             .config
             .api_base
@@ -139,20 +159,17 @@ impl ScClient {
                 let _permit = self.permits.acquire().await.expect("semaphore open");
                 let mut request = self
                     .http
-                    .get(url.clone())
+                    .request(method.clone(), url.clone())
                     .query(query)
                     .query(&[("client_id", client_id.as_str())]);
-                if let Some(token) = &self.config.oauth_token {
+                if let Some(token) = self.token() {
                     request =
                         request.header(reqwest::header::AUTHORIZATION, format!("OAuth {token}"));
                 }
                 request.send().await?
             };
             match response.status() {
-                status if status.is_success() => {
-                    let body = response.bytes().await?;
-                    return serde_json::from_slice(&body).map_err(Error::Decode);
-                }
+                status if status.is_success() => return Ok(response),
                 StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN if !refreshed => {
                     client_id = self.refresh_client_id(Some(&client_id)).await?;
                     refreshed = true;
@@ -326,5 +343,65 @@ impl SoundCloudApi for ScClient {
 
     async fn download(&self, url: &str) -> Result<Vec<u8>> {
         Ok(self.get_cdn(url).await?.bytes().await?.to_vec())
+    }
+
+    fn set_oauth_token(&self, token: Option<String>) {
+        *self.oauth_token.write().expect("token lock") = token;
+    }
+
+    async fn me(&self) -> Result<User> {
+        self.get_json("me", &[]).await
+    }
+
+    async fn feed(&self, limit: u32) -> Result<Page<StreamItem>> {
+        self.paged("stream", &[], limit).await
+    }
+
+    async fn library(&self, limit: u32) -> Result<Page<LibraryItem>> {
+        self.paged("me/library/all", &[], limit).await
+    }
+
+    async fn followings(&self, user: u64, limit: u32) -> Result<Page<User>> {
+        self.paged(&format!("users/{user}/followings"), &[], limit)
+            .await
+    }
+
+    async fn liked_track_ids(&self) -> Result<Vec<u64>> {
+        self.all_ids("me/track_likes/ids").await
+    }
+
+    async fn followed_user_ids(&self) -> Result<Vec<u64>> {
+        self.all_ids("me/followings/ids").await
+    }
+
+    async fn set_track_like(&self, me: u64, track: u64, liked: bool) -> Result<()> {
+        let method = if liked { Method::PUT } else { Method::DELETE };
+        self.send(method, &format!("users/{me}/track_likes/{track}"), &[])
+            .await?;
+        Ok(())
+    }
+
+    async fn set_following(&self, user: u64, following: bool) -> Result<()> {
+        let method = if following {
+            Method::POST
+        } else {
+            Method::DELETE
+        };
+        self.send(method, &format!("me/followings/{user}"), &[])
+            .await?;
+        Ok(())
+    }
+}
+
+impl ScClient {
+    /// Every id of an `/ids` collection, following its pages.
+    async fn all_ids(&self, url: &str) -> Result<Vec<u64>> {
+        let mut page: Page<u64> = self.paged(url, &[], 200).await?;
+        let mut ids = std::mem::take(&mut page.collection);
+        while let Some(mut next) = self.next_page(&page).await? {
+            ids.append(&mut next.collection);
+            page = next;
+        }
+        Ok(ids)
     }
 }

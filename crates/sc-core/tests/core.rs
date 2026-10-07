@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sc_api::models::{Like, Page, Playlist, Resource, Track, User, UserSummary, Waveform};
+use sc_api::models::{
+    LibraryItem, Like, Page, Playlist, Resource, StreamItem, Track, User, UserSummary, Waveform,
+};
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
 use sc_core::{
     ArtKey, Command, CoreConfig, CoreHandle, Event, ListId, ListItems, PlayState, PlaylistId,
@@ -25,6 +27,10 @@ struct FakeApi {
     fail_streams: Arc<AtomicBool>,
     /// Makes `next_page` answer after 400 ms.
     slow_next_page: Arc<AtomicBool>,
+    /// The token `set_oauth_token` was given; only `"good"` signs in.
+    token: Arc<Mutex<Option<String>>>,
+    /// Makes like and follow calls fail.
+    fail_actions: Arc<AtomicBool>,
 }
 
 fn partial(id: u64) -> Track {
@@ -275,6 +281,97 @@ impl SoundCloudApi for FakeApi {
     async fn download(&self, url: &str) -> sc_api::Result<Vec<u8>> {
         self.log(format!("download {url}"));
         Ok(b"jpeg".to_vec())
+    }
+
+    fn set_oauth_token(&self, token: Option<String>) {
+        self.log(format!("token {}", token.as_deref().unwrap_or("-")));
+        *self.token.lock().unwrap() = token;
+    }
+
+    async fn me(&self) -> sc_api::Result<User> {
+        self.log("me".into());
+        if self.token.lock().unwrap().as_deref() != Some("good") {
+            return Err(sc_api::Error::Unauthorized);
+        }
+        Ok(User {
+            id: 9,
+            username: "Me".into(),
+            avatar_url: Some("https://i1.sndcdn.com/avatars-9-large.jpg".into()),
+            ..User::default()
+        })
+    }
+
+    async fn feed(&self, _limit: u32) -> sc_api::Result<Page<StreamItem>> {
+        self.log("feed".into());
+        Ok(Page {
+            collection: vec![
+                StreamItem {
+                    kind: "track-repost".into(),
+                    track: Some(track(80, "Fed", "ALLOW")),
+                    playlist: None,
+                },
+                StreamItem {
+                    kind: "playlist".into(),
+                    track: None,
+                    playlist: Some(self.playlist(5).await?),
+                },
+            ],
+            next_href: Some("https://api-v2.soundcloud.com/stream?o=1".into()),
+            total_results: None,
+        })
+    }
+
+    async fn library(&self, _limit: u32) -> sc_api::Result<Page<LibraryItem>> {
+        self.log("library".into());
+        Ok(Page {
+            collection: vec![
+                LibraryItem {
+                    kind: "playlist-like".into(),
+                    playlist: Some(self.playlist(5).await?),
+                },
+                LibraryItem {
+                    kind: "system-playlist-like".into(),
+                    playlist: None,
+                },
+            ],
+            next_href: None,
+            total_results: None,
+        })
+    }
+
+    async fn followings(&self, user: u64, _limit: u32) -> sc_api::Result<Page<User>> {
+        self.log(format!("followings {user}"));
+        Ok(Page {
+            collection: vec![self.user(50).await?],
+            next_href: None,
+            total_results: None,
+        })
+    }
+
+    async fn liked_track_ids(&self) -> sc_api::Result<Vec<u64>> {
+        self.log("liked_ids".into());
+        Ok(vec![1, 72])
+    }
+
+    async fn followed_user_ids(&self) -> sc_api::Result<Vec<u64>> {
+        self.log("followed_ids".into());
+        Ok(vec![50])
+    }
+
+    async fn set_track_like(&self, me: u64, track: u64, liked: bool) -> sc_api::Result<()> {
+        self.log(format!("like {me} {track} {liked}"));
+        if self.fail_actions.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::Status(500));
+        }
+        Ok(())
+    }
+
+    async fn set_following(&self, user: u64, following: bool) -> sc_api::Result<()> {
+        self.log(format!("follow {user} {following}"));
+        if self.fail_actions.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::Status(500));
+        }
+        Ok(())
     }
 }
 

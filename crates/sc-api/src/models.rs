@@ -178,6 +178,29 @@ pub struct Like {
     pub track: Option<Track>,
 }
 
+/// One entry of the signed-in user's feed (`/stream`): a post or a repost of
+/// a track or a playlist.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct StreamItem {
+    /// `track`, `track-repost`, `playlist` or `playlist-repost`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub track: Option<Track>,
+    pub playlist: Option<Playlist>,
+}
+
+/// One entry of the signed-in user's library (`/me/library/all`): a
+/// playlist or album they made or liked. Other kinds have no `playlist`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct LibraryItem {
+    /// `playlist`, `playlist-like`, `system-playlist-like`...
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub playlist: Option<Playlist>,
+}
+
 /// The waveform drawn in the player: one value per column, from 0 to `height`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -247,6 +270,24 @@ mod tests {
             .map(|track| track.id)
             .collect();
         assert_eq!(tracks, [1]);
+    }
+
+    #[test]
+    fn decodes_feed_and_library_entries() {
+        let feed: Page<StreamItem> = serde_json::from_str(
+            r#"{"collection":[{"type":"track-repost","track":{"id":1}},{"type":"playlist","playlist":{"id":2}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(feed.collection[0].kind, "track-repost");
+        assert_eq!(feed.collection[0].track.as_ref().unwrap().id, 1);
+        assert_eq!(feed.collection[1].playlist.as_ref().unwrap().id, 2);
+
+        let library: Page<LibraryItem> = serde_json::from_str(
+            r#"{"collection":[{"type":"playlist-like","playlist":{"id":3}},{"type":"system-playlist-like","system_playlist":{"id":"x"}}]}"#,
+        )
+        .unwrap();
+        assert_eq!(library.collection[0].playlist.as_ref().unwrap().id, 3);
+        assert!(library.collection[1].playlist.is_none());
     }
 
     #[test]

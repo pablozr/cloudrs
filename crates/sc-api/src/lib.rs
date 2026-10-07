@@ -18,7 +18,7 @@ pub use stream::{StreamProtocol, StreamSource, pick_transcoding};
 
 use std::future::Future;
 
-use models::{Like, Page, Playlist, Resource, Track, User, Waveform};
+use models::{LibraryItem, Like, Page, Playlist, Resource, StreamItem, Track, User, Waveform};
 
 /// What the rest of cloudrs may ask of SoundCloud.
 pub trait SoundCloudApi: Send + Sync {
@@ -95,4 +95,36 @@ pub trait SoundCloudApi: Send + Sync {
 
     /// Downloads a file from SoundCloud's CDN, such as artwork.
     fn download(&self, url: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
+
+    /// Signs in (`Some`) or out (`None`): later requests carry this token.
+    fn set_oauth_token(&self, token: Option<String>);
+
+    /// The signed-in user. [`Error::Unauthorized`] when the token is refused.
+    fn me(&self) -> impl Future<Output = Result<User>> + Send;
+
+    /// The signed-in user's feed: posts and reposts of the people they follow.
+    fn feed(&self, limit: u32) -> impl Future<Output = Result<Page<StreamItem>>> + Send;
+
+    /// The signed-in user's playlists and albums, made or liked.
+    fn library(&self, limit: u32) -> impl Future<Output = Result<Page<LibraryItem>>> + Send;
+
+    /// The people a user follows.
+    fn followings(&self, user: u64, limit: u32) -> impl Future<Output = Result<Page<User>>> + Send;
+
+    /// Every track the signed-in user liked, by id.
+    fn liked_track_ids(&self) -> impl Future<Output = Result<Vec<u64>>> + Send;
+
+    /// Every user the signed-in user follows, by id.
+    fn followed_user_ids(&self) -> impl Future<Output = Result<Vec<u64>>> + Send;
+
+    /// Likes or unlikes a track as the signed-in user `me`.
+    fn set_track_like(
+        &self,
+        me: u64,
+        track: u64,
+        liked: bool,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Follows or unfollows a user as the signed-in user.
+    fn set_following(&self, user: u64, following: bool) -> impl Future<Output = Result<()>> + Send;
 }

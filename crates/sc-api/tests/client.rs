@@ -376,3 +376,115 @@ async fn fetches_a_playlist_with_partial_tracks() {
     assert_eq!(playlist.tracks.len(), 2);
     assert!(playlist.tracks[1].title.is_empty());
 }
+
+#[tokio::test]
+async fn swaps_the_token_at_runtime() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/me"))
+        .and(header("authorization", "OAuth new-token"))
+        .respond_with(json(r#"{"id":9,"username":"Me"}"#))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/me"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    mount_web_app(&server, OLD_ID).await;
+    let sc = client(&server, Some(OLD_ID), None);
+
+    assert!(matches!(sc.me().await, Err(Error::Unauthorized)));
+    sc.set_oauth_token(Some("new-token".into()));
+    assert_eq!(sc.me().await.unwrap().username, "Me");
+    sc.set_oauth_token(None);
+    assert!(matches!(sc.me().await, Err(Error::Unauthorized)));
+}
+
+#[tokio::test]
+async fn fetches_the_account_lists() {
+    let server = MockServer::start().await;
+    let routes = [
+        (
+            "stream",
+            r#"{"collection":[{"type":"track","track":{"id":1}},{"type":"playlist-repost","playlist":{"id":2}}]}"#,
+        ),
+        (
+            "me/library/all",
+            r#"{"collection":[{"type":"playlist-like","playlist":{"id":3}}]}"#,
+        ),
+        (
+            "users/9/followings",
+            r#"{"collection":[{"id":4,"username":"Bo"}]}"#,
+        ),
+    ];
+    for (route, body) in routes {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/{route}")))
+            .and(header("authorization", "OAuth t"))
+            .respond_with(json(body))
+            .mount(&server)
+            .await;
+    }
+    let sc = client(&server, Some(OLD_ID), Some("t"));
+
+    let feed = sc.feed(20).await.unwrap();
+    assert_eq!(feed.collection[0].track.as_ref().unwrap().id, 1);
+    assert_eq!(feed.collection[1].kind, "playlist-repost");
+    let library = sc.library(20).await.unwrap();
+    assert_eq!(library.collection[0].playlist.as_ref().unwrap().id, 3);
+    assert_eq!(
+        sc.followings(9, 20).await.unwrap().collection[0].username,
+        "Bo"
+    );
+}
+
+#[tokio::test]
+async fn collects_every_page_of_ids() {
+    let server = MockServer::start().await;
+    let next = format!("{}/api/me/track_likes/ids?cursor=2", server.uri());
+    Mock::given(method("GET"))
+        .and(path("/api/me/track_likes/ids"))
+        .and(query_param("cursor", "2"))
+        .respond_with(json(r#"{"collection":[3],"next_href":null}"#))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/me/track_likes/ids"))
+        .respond_with(json(&format!(
+            r#"{{"collection":[1,2],"next_href":"{next}"}}"#
+        )))
+        .mount(&server)
+        .await;
+
+    let ids = client(&server, Some(OLD_ID), Some("t"))
+        .liked_track_ids()
+        .await
+        .unwrap();
+    assert_eq!(ids, [1, 2, 3]);
+}
+
+#[tokio::test]
+async fn likes_and_follows() {
+    let server = MockServer::start().await;
+    for (verb, route) in [
+        ("PUT", "users/9/track_likes/5"),
+        ("DELETE", "users/9/track_likes/5"),
+        ("POST", "me/followings/4"),
+        ("DELETE", "me/followings/4"),
+    ] {
+        Mock::given(method(verb))
+            .and(path(format!("/api/{route}")))
+            .and(header("authorization", "OAuth t"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let sc = client(&server, Some(OLD_ID), Some("t"));
+
+    sc.set_track_like(9, 5, true).await.unwrap();
+    sc.set_track_like(9, 5, false).await.unwrap();
+    sc.set_following(4, true).await.unwrap();
+    sc.set_following(4, false).await.unwrap();
+}
