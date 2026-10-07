@@ -1,5 +1,8 @@
 //! cloudrs: the desktop app and composition root.
 
+// A release build is a GUI app on Windows: no console window next to it.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod i18n;
 mod intent;
 mod models;

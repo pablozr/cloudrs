@@ -5,75 +5,127 @@
 <p align="center">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-ff5500?style=flat-square"></a>
   <img alt="Rust + GPUI" src="https://img.shields.io/badge/Rust-GPUI-ff5500?style=flat-square&logo=rust&logoColor=white">
-  <img alt="Linux, macOS and Windows" src="https://img.shields.io/badge/platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-ff5500?style=flat-square">
-  <img alt="Status: early" src="https://img.shields.io/badge/status-early%20%C2%B7%20building%20in%20the%20open-ff5500?style=flat-square">
+  <img alt="Windows, Linux and macOS" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-ff5500?style=flat-square">
+  <img alt="Version 0.1.0 beta 1" src="https://img.shields.io/badge/version-0.1.0--beta.1-ff5500?style=flat-square">
 </p>
 
 <p align="center">
-  <a href="#highlights">Highlights</a> ·
-  <a href="#design">Design</a> ·
-  <a href="#getting-started">Getting started</a> ·
+  <a href="#download">Download</a> ·
+  <a href="#what-it-does">What it does</a> ·
+  <a href="#jam-listen-together">Jam</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#build-from-source">Build from source</a> ·
   <a href="#architecture">Architecture</a> ·
-  <a href="#roadmap">Roadmap</a> ·
-  <a href="#contributing">Contributing</a>
+  <a href="#roadmap">Roadmap</a>
 </p>
 
 ---
 
 **cloudrs** is a native, open source desktop client for SoundCloud. There is no Electron and no
-webview: the interface is drawn on the GPU with [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui),
-the UI framework behind the Zed editor, and the audio is decoded in Rust. The goal is an app that
-opens instantly, stays light on memory and answers every click at 120 fps, made for people who
-keep SoundCloud playing all day.
+webview in the main window. The interface is drawn on the GPU with
+[GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui), the UI framework behind the
+Zed editor, and the audio is decoded in Rust. It opens fast and stays light on memory, and it is
+made for people who keep SoundCloud playing all day: long mixes, DJ sets and underground tracks.
 
-> **Status: early and built in the open.** Milestone 0 is done: the SoundCloud client, the audio
-> engine and the GPUI design system work, each on its own. The first real screens (search and
-> play) come next. Ideas, issues and pull requests are very welcome; see
-> [Contributing](#contributing).
+It also does something the website doesn't: **Jam**. Start one, share a link, and your friends
+hear the same track at the same moment, wherever they are.
 
-## Highlights
+> **0.1.0 beta 1.** This is the first public build. Expect rough edges, and please
+> [open an issue](https://github.com/pablozr/cloudrs/issues) when something breaks.
 
-These are the goals for the first releases; see the [roadmap](#roadmap) for what is done.
+## Download
 
-- **Native, for real.** Rust + GPUI, with a target of under 100 MB of RAM while playing.
-- **The waveform is the seek bar.** Hover to preview, click to jump, with timed comments
-  pinned along the track.
-- **A real queue.** Drag to reorder, play next, shuffle that can be undone, and endless autoplay
-  from related tracks.
-- **Part of your desktop.** Media keys and system controls: MPRIS on Linux, Now Playing on
-  macOS, SMTC on Windows.
-- **Keyboard first.** `Ctrl K` to search, `Space` to play, and paste any SoundCloud link to play
-  it right away.
-- **Your library.** Likes, playlists, feed and followings once you sign in.
-- **Remembers where you were.** Queue, position and volume come back when you reopen it.
+| System | File | Notes |
+| --- | --- | --- |
+| **Windows 10/11** | `cloudrs_0.1.0-beta.1_x64-setup.exe` | Installs for your user only (no admin). |
+| **Linux** | `.deb` or `.AppImage` | Needs WebKitGTK 4.1 for the sign-in window. |
+| **macOS** | `.dmg` | Untested by us in this beta. |
 
-## Design
+The beta is **not code-signed** yet, so your system will warn you the first time:
 
-<p align="center">
-  <img src="docs/assets/readme/design-preview.png" alt="Design preview of the cloudrs home screen: sidebar, recently played, feed and the player bar with a waveform" width="92%">
-  <br>
-  <sub>Target design (mockup with sample data).</sub>
-</p>
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
+- **macOS:** right-click the app, choose **Open**, then confirm.
+
+## What it does
+
+**Listen**
+- Search tracks, people, playlists and albums, with infinite scroll.
+- Paste any `soundcloud.com` link in the search field to play a track or open a profile or
+  playlist.
+- SoundCloud's waveform is the seek bar. Hover over it to preview a position, click to jump.
+- Track, profile, playlist and album pages, with back and forward navigation (`Alt ←` / `Alt →`
+  and the mouse's side buttons).
+
+**Queue**
+- A real queue: play next, add to queue, drag to reorder, remove.
+- Shuffle that can be undone, and repeat one or all.
+- When the queue runs out, autoplay continues with related tracks, as on the website.
+- History, and the session comes back when you reopen the app: queue, position and volume.
+
+**Your account**
+- Sign in with your SoundCloud account in a small window, using the normal SoundCloud sign-in.
+  You can also paste a token if a provider refuses the window.
+- Feed, Likes, Library and Following.
+- Like tracks and follow people.
+- Your session is kept in your system's keychain (Credential Manager, Keychain or Secret
+  Service). It is never written anywhere else.
+
+**Look and feel**
+- Dark and light themes.
+- Each page takes on the color of its artwork.
+- Keyboard: `Ctrl K` (or `/`) jumps to search, and every control has visible focus and a label
+  for screen readers.
+
+## Jam: listen together
+
+1. Open **Jam** in the sidebar and choose **Start a Jam**.
+2. Copy the link (`cloudrs:jam/…`) and send it to your friends.
+3. They paste it in the search field and join.
+
+Everyone hears the same track at the same moment. Guests can always add tracks. You choose
+whether they can also play, pause, skip and seek. If someone can't play a track (a GO+ preview
+or a region block), you see it next to their name. When you end the Jam, everyone gets their
+own queue back.
+
+How it works:
+- **Peer to peer.** Your apps connect directly when your networks allow it. Otherwise they go
+  through public relays ([iroh](https://iroh.computer)), so a Jam works from anywhere with an
+  internet connection.
+- **No cloudrs server.** Nothing about the session is stored anywhere.
+- **Only state travels:** track ids, positions and the queue. Every person plays the audio from
+  SoundCloud with their own account.
+- **The link stays useful only during that Jam.** It is made for that Jam alone and stops
+  working when the Jam ends. It does not carry your IP address.
+
+## Screenshots
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/assets/readme/m0-dark.png" alt="The running app in the dark theme: buttons, filter pills, badges and the player bar with a waveform"></td>
-    <td width="50%"><img src="docs/assets/readme/m0-light.png" alt="The same window in the light theme, with the track playing"></td>
+    <td width="50%"><img src="docs/assets/readme/m2-polish-search-playing-dark.png" alt="Search results with a track playing, in the dark theme"></td>
+    <td width="50%"><img src="docs/assets/readme/m2-polish-track-light.png" alt="A track page with its large waveform, in the light theme"></td>
   </tr>
   <tr>
-    <td align="center"><sub>The real app today (M0): design system check, dark theme</sub></td>
-    <td align="center"><sub>Light theme, with the sample track playing</sub></td>
+    <td align="center"><sub>Search, with the player bar and the waveform</sub></td>
+    <td align="center"><sub>A track page (light theme)</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/readme/m2-polish-user-dark.png" alt="A profile page with its tracks"></td>
+    <td width="50%"><img src="docs/assets/readme/m2-queue-drag.png" alt="The queue panel while a track is dragged to a new place"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>A profile</sub></td>
+    <td align="center"><sub>Reordering the queue</sub></td>
   </tr>
 </table>
 
-SoundCloud's orange on warm, dark neutrals, with our own layout and a motion system built on
-GPUI's native animations. Colors, type, motion and components are documented in
+Colors, type, motion and components are documented in
 [docs/design/VISUAL-IDENTITY.md](docs/design/VISUAL-IDENTITY.md).
 
-## Getting started
+## Build from source
 
-**Requirements:** stable Rust. On Linux, the audio, windowing and webview (sign-in window)
-development packages:
+**Requirements:** stable Rust 1.91 or newer.
+- **Windows:** the Visual Studio Build Tools with the C++ workload.
+- **Linux:** these development packages:
 
 ```sh
 sudo apt install libasound2-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
@@ -84,54 +136,56 @@ sudo apt install libasound2-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland
 ```sh
 git clone https://github.com/pablozr/cloudrs
 cd cloudrs
-
-# The desktop app (design system preview for now)
-cargo run -p cloudrs
-
-# Search SoundCloud from the terminal
-cargo run -p sc-api --example search -- "charlotte de witte"
-
-# Play a track: sc-api resolves the stream, sc-audio plays it
-cargo run -p sc-audio --example play -- "$(cargo run -q -p sc-api --example stream -- "lights out")"
+cargo run -p cloudrs --release
 ```
+
+| Command | What it does |
+| --- | --- |
+| `cargo run -p cloudrs --release --no-default-features` | Builds without Jam (about 8 MB smaller) |
+| `cargo install cargo-packager --locked` then `cargo packager --release` | Builds this system's installers into `target/packages` |
+| `cargo run -p sc-session --example jam -- host` | Tests a Jam connection without the app |
+| `cargo run -p sc-session --example jam -- join "<link>"` | Joins that test connection from another machine |
 
 ## Architecture
 
-A Rust workspace where only the app and the UI kit know about GPUI.
+A Rust workspace in layers. Dependencies point one way, and `tests/architecture` checks it in CI.
 
 | Path | Role |
 | --- | --- |
-| `apps/cloudrs` | Desktop app (GPUI): screens, i18n, composition root |
+| `apps/cloudrs` | The desktop app (GPUI): screens, i18n, composition root |
 | `crates/cloudrs-ui` | Design system: tokens, theme, motion, primitives |
-| `crates/sc-core` | App state, queue, commands and events, persistence, cache (M1) |
-| `crates/sc-api` | SoundCloud client: models, `client_id`, auth, pagination |
-| `crates/sc-audio` | Audio engine: HLS → symphonia → cpal, on its own thread |
-| `crates/sc-platform` | Media keys, MPRIS/Now Playing/SMTC, keychain, notifications (M4) |
-| `tests/architecture` | Layering rules, checked in CI |
+| `crates/sc-core` | App state, queue, Jam rules, persistence (SQLite), artwork cache |
+| `crates/sc-api` | SoundCloud `api-v2` client: `client_id`, search, pages, account |
+| `crates/sc-audio` | Audio engine: HLS/MP3 → symphonia → cpal, on its own thread |
+| `crates/sc-session` | Jam transport: peer-to-peer sessions over iroh |
+| `crates/sc-platform` | OS integration: keychain and the sign-in window |
+| `tests/architecture` | Layering rules |
 
-The full plan, with endpoints, the audio pipeline and the risks, is in
-[docs/PLAN.md](docs/PLAN.md). Decisions are recorded in [docs/adr/](docs/adr/).
+The UI sends commands to `sc-core` and draws its events. It never talks to SoundCloud, the audio
+engine or the network itself. The plan is in [docs/PLAN.md](docs/PLAN.md), and every decision
+is in [docs/adr/](docs/adr/).
 
 ## Roadmap
 
-- [x] **M0 · Spike.** Workspace, CI, `client_id` + search, HLS playback, the first GPUI window ([findings](docs/adr/0003-m0-spike-findings.md)).
+- [x] **M0 · Spike.** SoundCloud client, HLS playback, the first GPUI window.
 - [x] **M1 · Playable MVP.** Search, play, player bar with waveform, paste a link to play.
-- [ ] **M2 · Navigation.** Track, profile and playlist screens, the full queue, autoplay, history.
-- [ ] **M3 · Your account.** Sign in, likes, library, feed, following.
-- [ ] **M4 · Desktop integration.** Media keys, shortcuts, audio devices, timed comments, settings.
-- [ ] **M5 · 0.1 release.** Gapless, EQ, mini player, packages for every platform, first translations.
+- [x] **M2 · Navigation.** Track, profile, playlist and album pages, the full queue, autoplay,
+  history, session restore.
+- [x] **M3 · Your account.** Sign in, feed, likes, library, following, like and follow.
+- [x] **Jam.** Listening together over peer-to-peer, from anywhere, with no server.
+- [ ] **M4 · Desktop integration.** Media keys and system controls (SMTC, MPRIS, Now Playing),
+  full shortcuts, audio device choice, timed comments, settings.
+- [ ] **M5 · 0.1.0.** Gapless playback, loudness, equalizer, mini player, tray, signed
+  installers, first translations.
 
 ## Contributing
 
-cloudrs is early, so there is room to shape it. Good places to start:
+Ideas, issues and pull requests are welcome. Good places to start:
+- **Platform integration:** media keys, and packages for each system.
+- **Translations:** the interface is built for more languages ([how it works](docs/design/i18n.md)).
+- **Design:** new components that follow the [visual identity](docs/design/VISUAL-IDENTITY.md).
 
-- **Audio.** HLS, gapless playback and seeking with `symphonia` and `cpal`.
-- **Platform integration.** MPRIS, Now Playing and SMTC, and packaging for each OS.
-- **Translations.** The interface is English-first and built for more languages
-  ([how it works](docs/design/i18n.md)).
-- **Design.** New components that follow the [visual identity](docs/design/VISUAL-IDENTITY.md).
-
-Open an issue to discuss an idea before a large change. Before sending a PR:
+Before sending a pull request:
 
 ```sh
 cargo fmt --all -- --check
@@ -139,15 +193,19 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
-Small commits, one topic each, in English. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+Keep commits small, one topic each, in English. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 [AGENTS.md](AGENTS.md).
 
 ## Disclaimer
 
-cloudrs is an **unofficial** client and is not affiliated with, endorsed or sponsored by
-SoundCloud. It streams what SoundCloud already makes available to you: it does not download
-tracks, remove ads or unlock paid content. All trademarks belong to their owners.
+cloudrs is an **unofficial** client. It is not affiliated with, endorsed or sponsored by
+SoundCloud.
+- It streams what SoundCloud already makes available to you.
+- It does not download tracks, remove ads or unlock paid content.
+- A Jam shares only what is playing, never the audio.
+
+All trademarks belong to their owners.
 
 ## License
 
-[MIT](LICENSE) © cloudrs contributors
+[MIT](LICENSE) © cloudrs contributors. Third-party notices are in [NOTICE](NOTICE).
