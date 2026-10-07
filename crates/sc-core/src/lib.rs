@@ -7,7 +7,9 @@
 
 mod artwork;
 mod core;
+mod listen;
 mod queue;
+mod store;
 mod types;
 mod waveform;
 
@@ -110,6 +112,8 @@ impl CoreHandle {
 pub struct CoreConfig {
     /// Folder for cached artwork, created if missing.
     pub cache_dir: PathBuf,
+    /// Folder for the session and history database, created if missing.
+    pub data_dir: PathBuf,
 }
 
 /// Starts the core with the real SoundCloud client and the default audio device.

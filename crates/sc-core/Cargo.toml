@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 flume = "0.11"
+rusqlite = { version = "0.40", features = ["bundled"] }
 sc-api = { path = "../sc-api" }
 sc-audio = { path = "../sc-audio" }
 tokio = { version = "1", features = ["net", "rt", "time"] }

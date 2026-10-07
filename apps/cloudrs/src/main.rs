@@ -24,7 +24,8 @@ fn main() {
         shell::bind_keys(cx);
 
         let config = CoreConfig {
-            cache_dir: cache_dir(),
+            cache_dir: app_dir(dirs::cache_dir(), "cache"),
+            data_dir: app_dir(dirs::data_dir(), "data"),
         };
         let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
         let opened = cx.open_window(
@@ -55,11 +56,14 @@ fn main() {
     });
 }
 
-/// `<OS cache dir>/cloudrs`, or the temp dir when the OS has none.
-fn cache_dir() -> std::path::PathBuf {
-    let base = dirs::cache_dir().unwrap_or_else(|| {
+/// `<OS dir>/cloudrs`, or the temp dir when the OS has none.
+fn app_dir(base: Option<std::path::PathBuf>, what: &str) -> std::path::PathBuf {
+    let base = base.unwrap_or_else(|| {
         let fallback = std::env::temp_dir();
-        tracing::warn!(?fallback, "no OS cache directory; using the temp directory");
+        tracing::warn!(
+            ?fallback,
+            "no OS {what} directory; using the temp directory"
+        );
         fallback
     });
     base.join("cloudrs")

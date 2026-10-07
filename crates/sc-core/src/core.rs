@@ -4,14 +4,16 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use sc_api::models::{Page, Resource, Track};
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
 use tokio::task::JoinHandle;
 
+use crate::listen::Listened;
 use crate::queue::{Queue, Step};
+use crate::store::{self, Session, SessionTrack};
 use crate::types::{PlayState, Playback, Problem, TrackId, TrackSummary};
 use crate::{Command, CoreConfig, Event, artwork, waveform};
 
@@ -21,6 +23,8 @@ const SEARCH_DEBOUNCE: Duration = Duration::from_millis(300);
 const PAGE_SIZE: u32 = 30;
 /// Past this position "previous" restarts the track instead of going back.
 const RESTART_AFTER: Duration = Duration::from_secs(3);
+/// How often the session is saved while playing.
+const SAVE_EVERY: Duration = Duration::from_secs(5);
 /// Tracks fetched when the queue runs out.
 const AUTOPLAY_COUNT: u32 = 20;
 
@@ -51,6 +55,8 @@ enum Input {
         result: sc_api::Result<Box<Track>>,
     },
     RelatedDone(sc_api::Result<Page<Track>>),
+    /// The database opened (or not) off the actor loop, with the saved session.
+    StoreReady(Option<(SharedStore, Option<Session>)>),
     WaveformReady {
         track: TrackId,
         bars: Vec<f32>,
@@ -59,6 +65,34 @@ enum Input {
         track: TrackId,
         path: PathBuf,
     },
+}
+
+/// The connection plus the sequence of the last session written, so a slow
+/// older write never overwrites a newer one.
+struct Store {
+    conn: rusqlite::Connection,
+    last_seq: u64,
+}
+
+type SharedStore = Arc<Mutex<Store>>;
+
+/// Opens the database and loads the saved session. Runs on a blocking thread.
+fn open_store(dir: &std::path::Path) -> Option<(SharedStore, Option<Session>)> {
+    let opened = std::fs::create_dir_all(dir)
+        .map_err(|error| error.to_string())
+        .and_then(|()| store::open(&dir.join("cloudrs.db")).map_err(|error| error.to_string()));
+    let conn = match opened {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(%error, "no session database; continuing without saving");
+            return None;
+        }
+    };
+    let session = store::load_session(&conn)
+        .inspect_err(|error| tracing::warn!(%error, "could not read the saved session"))
+        .ok()
+        .flatten();
+    Some((Arc::new(Mutex::new(Store { conn, last_seq: 0 })), session))
 }
 
 pub(crate) fn run_on_thread<A: SoundCloudApi + 'static>(
@@ -109,6 +143,12 @@ async fn run<A: SoundCloudApi + 'static>(
         }
     });
 
+    let data_dir = config.data_dir.clone();
+    let opened = inputs.clone();
+    tokio::task::spawn_blocking(move || {
+        let _ = opened.send(Input::StoreReady(open_store(&data_dir)));
+    });
+
     let mut core = Core {
         api: Arc::new(api),
         inputs,
@@ -123,6 +163,12 @@ async fn run<A: SoundCloudApi + 'static>(
         results: Vec::new(),
         queue: Queue::new(shuffle_seed()),
         autoplay_pending: false,
+        store: None,
+        save_seq: 0,
+        last_save: Instant::now(),
+        listened: Listened::default(),
+        restored_artwork: HashMap::new(),
+        pending_restore: None,
         current: None,
         playback: Playback {
             volume: 1.0,
@@ -166,6 +212,15 @@ struct Core<A> {
     queue: Queue,
     /// The queue ended and related tracks are on their way.
     autoplay_pending: bool,
+    store: Option<SharedStore>,
+    save_seq: u64,
+    last_save: Instant,
+    listened: Listened,
+    /// Artwork URLs of a restored queue, whose tracks are not fetched yet.
+    restored_artwork: HashMap<TrackId, String>,
+    /// A restored track waits paused at this position; its stream is
+    /// resolved on the first play.
+    pending_restore: Option<Duration>,
     current: Option<TrackId>,
     playback: Playback,
     artwork_requested: HashSet<TrackId>,
@@ -223,6 +278,15 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 }
             }
             Input::RelatedDone(result) => self.related_done(result),
+            Input::StoreReady(opened) => {
+                let Some((store, session)) = opened else {
+                    return;
+                };
+                self.store = Some(store);
+                if let Some(session) = session {
+                    self.restore(session);
+                }
+            }
             Input::StreamReady {
                 track,
                 start_at,
@@ -277,7 +341,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Command::Next => self.skip_forward(false),
             Command::Previous => {
                 if self.playback.position > RESTART_AFTER {
-                    self.to_audio(sc_audio::Command::Seek(Duration::ZERO));
+                    self.seek(Duration::ZERO);
                 } else if self.queue.previous().is_some() {
                     self.queue_changed();
                     self.play_current(None);
@@ -311,6 +375,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     self.queue_changed();
                 }
             }
+            Command::TogglePlay if self.pending_restore.is_some() => {
+                self.play_current(self.pending_restore);
+            }
             Command::TogglePlay => match self.playback.state {
                 PlayState::Playing => self.to_audio(sc_audio::Command::Pause),
                 PlayState::Paused => self.to_audio(sc_audio::Command::Play),
@@ -318,13 +385,25 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 PlayState::Ended | PlayState::Idle => self.play_current(None),
                 PlayState::Loading => {}
             },
-            Command::Seek(at) => self.to_audio(sc_audio::Command::Seek(at)),
+            Command::Seek(at) => self.seek(at),
             Command::SetVolume(volume) => {
                 let volume = volume.clamp(0.0, 1.0);
                 self.to_audio(sc_audio::Command::SetVolume(volume));
                 self.playback.volume = volume;
                 self.emit(Event::Playback(self.playback));
             }
+        }
+    }
+
+    /// Seeks the audio, or moves the saved position of a restored track that
+    /// has no stream yet.
+    fn seek(&mut self, at: Duration) {
+        if self.pending_restore.is_some() {
+            self.pending_restore = Some(at);
+            self.playback.position = at;
+            self.emit(Event::Playback(self.playback));
+        } else {
+            self.to_audio(sc_audio::Command::Seek(at));
         }
     }
 
@@ -470,8 +549,112 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.queue_changed();
     }
 
-    fn queue_changed(&self) {
+    fn queue_changed(&mut self) {
         self.emit(Event::Queue(self.queue.snapshot()));
+        self.save_session();
+    }
+
+    /// Writes the session off the actor loop. Newer writes win.
+    fn save_session(&mut self) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        self.last_save = Instant::now();
+        let snapshot = self.queue.snapshot();
+        let session = Session {
+            tracks: snapshot
+                .tracks
+                .into_iter()
+                .map(|track| SessionTrack {
+                    artwork_url: self.artwork_url(track.id),
+                    track,
+                })
+                .collect(),
+            current: snapshot.current,
+            position: self.playback.position,
+            volume: self.playback.volume,
+            shuffle: snapshot.shuffle,
+            repeat: snapshot.repeat,
+        };
+        self.save_seq += 1;
+        let seq = self.save_seq;
+        tokio::task::spawn_blocking(move || {
+            let mut store = store.lock().unwrap_or_else(PoisonError::into_inner);
+            if seq <= store.last_seq {
+                return;
+            }
+            store.last_seq = seq;
+            if let Err(error) = store::save_session(&mut store.conn, &session) {
+                tracing::warn!(%error, "could not save the session");
+            }
+        });
+    }
+
+    fn record_history(&self, track: TrackSummary) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let played_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        tokio::task::spawn_blocking(move || {
+            let store = store.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Err(error) = store::record_play(&store.conn, &track, played_at) {
+                tracing::warn!(%error, "could not record the history");
+            }
+        });
+    }
+
+    /// Brings back the saved queue, paused at the saved position. The stream
+    /// is only resolved when the person presses play.
+    fn restore(&mut self, session: Session) {
+        // Something already started: the person's choice wins.
+        if self.current.is_some() || session.tracks.is_empty() {
+            return;
+        }
+        let mut tracks = Vec::with_capacity(session.tracks.len());
+        for item in session.tracks {
+            if let Some(url) = item.artwork_url {
+                self.restored_artwork.insert(item.track.id, url);
+            }
+            tracks.push(item.track);
+        }
+        self.queue
+            .restore(tracks, session.current, session.shuffle, session.repeat);
+        self.playback.volume = session.volume;
+        self.to_audio(sc_audio::Command::SetVolume(session.volume));
+        self.emit(Event::Queue(self.queue.snapshot()));
+
+        // Covers already on disk show at once; only the current one may download.
+        for id in self.queue.snapshot().tracks.iter().map(|t| t.id) {
+            let Some(url) = self.artwork_url(id) else {
+                continue;
+            };
+            let path = artwork::path_for(&self.artwork_dir, &url);
+            if path.exists() && self.artwork_requested.insert(id) {
+                self.emit(Event::Artwork { track: id, path });
+            }
+        }
+        let Some(current) = self.queue.current_track().cloned() else {
+            return;
+        };
+        self.current = Some(current.id);
+        self.pending_restore = Some(session.position);
+        self.playback.position = session.position;
+        self.playback.duration = current.duration;
+        let id = current.id;
+        self.emit(Event::NowPlaying(current));
+        self.set_state(PlayState::Paused);
+        self.request_artwork(id);
+    }
+
+    /// Where the artwork of a track comes from: this session's tracks, or a
+    /// restored queue.
+    fn artwork_url(&self, id: TrackId) -> Option<String> {
+        self.tracks
+            .get(&id)
+            .and_then(|t| t.artwork(artwork::SIZE))
+            .or_else(|| self.restored_artwork.get(&id).cloned())
     }
 
     /// The next track, or related tracks when the queue is over.
@@ -541,11 +724,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let id = summary.id;
         self.current = Some(id);
         self.autoplay_pending = false;
+        self.pending_restore = None;
+        self.listened.reset();
         self.playback.position = start_at.unwrap_or_default();
         self.playback.duration = summary.duration;
         self.emit(Event::NowPlaying(summary));
         self.set_state(PlayState::Loading);
         self.request_artwork(id);
+        self.save_session();
 
         match self.tracks.get(&id).cloned() {
             Some(track) => self.start_stream(track, start_at),
@@ -587,7 +773,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if !self.artwork_requested.insert(id) {
             return;
         }
-        let Some(url) = self.tracks.get(&id).and_then(|t| t.artwork(artwork::SIZE)) else {
+        let Some(url) = self.artwork_url(id) else {
             return;
         };
         let path = artwork::path_for(&self.artwork_dir, &url);
@@ -612,6 +798,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     fn set_state(&mut self, state: PlayState) {
         self.playback.state = state;
         self.emit(Event::Playback(self.playback));
+        if state == PlayState::Paused {
+            self.save_session();
+        }
     }
 
     fn audio_event(&mut self, event: sc_audio::Event) {
@@ -632,6 +821,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             sc_audio::Event::Position(position) => {
                 self.playback.position = position;
                 self.emit(Event::Playback(self.playback));
+                if self.listened.tick(position)
+                    && let Some(track) = self.queue.current_track().cloned()
+                {
+                    self.record_history(track);
+                }
+                if self.last_save.elapsed() >= SAVE_EVERY {
+                    self.save_session();
+                }
             }
             sc_audio::Event::Error(detail) => {
                 tracing::warn!(%detail, "audio error");
