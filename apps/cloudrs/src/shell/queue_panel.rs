@@ -112,11 +112,13 @@ impl Shell {
                     title: &track.title,
                     artist: &track.artist,
                     duration: &duration,
-                    artwork: self.results.artwork.get(&track.id).cloned(),
+                    artwork: self.models.art.tracks.get(&track.id).cloned(),
                     active,
-                    playing: active && self.results.playing,
+                    playing: active && self.models.playing,
                     preview_badge: None,
                     actions,
+                    title_link: None,
+                    artist_link: None,
                 };
                 Some(
                     track_row(&theme, ("queue-row", ix), row)

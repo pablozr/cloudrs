@@ -149,6 +149,9 @@ pub enum Icon {
     /// Repeat with a mark: the same track plays again.
     RepeatOne,
     Queue,
+    /// Back in the navigation history.
+    Back,
+    Forward,
 }
 
 fn paint_icon(bounds: Bounds<Pixels>, icon: Icon, color: Hsla, window: &mut Window) {
@@ -189,6 +192,8 @@ fn paint_icon(bounds: Bounds<Pixels>, icon: Icon, color: Hsla, window: &mut Wind
             bar(window, (15.5, 6.0), (18.0, 18.0));
             triangle(window, (6.0, 6.0), (6.0, 18.0), (14.5, 12.0));
         }
+        Icon::Back => stroke(window, &[(15.0, 5.0), (8.0, 12.0), (15.0, 19.0)]),
+        Icon::Forward => stroke(window, &[(9.0, 5.0), (16.0, 12.0), (9.0, 19.0)]),
         Icon::Queue => {
             bar(window, (4.0, 6.0), (18.0, 8.0));
             bar(window, (4.0, 11.0), (18.0, 13.0));
@@ -633,6 +638,50 @@ pub struct TrackRowData<'a> {
     pub preview_badge: Option<&'a str>,
     /// Shown only while the row is hovered (see [`row_action`]).
     pub actions: Vec<AnyElement>,
+    /// Makes the title (opens the track) or the artist (opens the profile) a
+    /// link of its own; the row's click does not fire for them.
+    pub title_link: Option<RowLink>,
+    pub artist_link: Option<RowLink>,
+}
+
+/// What a link inside a row does when clicked.
+pub type RowLink = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+
+/// A line of row text. With `link` it is clickable and handles its own click,
+/// so the row's click does not fire; its box hugs the text.
+fn row_text(
+    id: impl Into<ElementId>,
+    text: &str,
+    color: Hsla,
+    hover: Hsla,
+    link: Option<RowLink>,
+) -> AnyElement {
+    let text = text.to_owned();
+    let Some(link) = link else {
+        return div()
+            .truncate()
+            .text_color(color)
+            .child(text)
+            .into_any_element();
+    };
+    div()
+        .flex()
+        .min_w(px(0.0))
+        .child(
+            div()
+                .id(id)
+                .truncate()
+                .text_color(color)
+                .cursor_pointer()
+                .hover(move |s| s.text_color(hover))
+                .aria_label(text.clone())
+                .child(text)
+                .on_click(move |event, window, cx| {
+                    cx.stop_propagation();
+                    link(event, window, cx);
+                }),
+        )
+        .into_any_element()
 }
 
 /// The "now playing" equalizer: three bars, moving only while `playing`.
@@ -731,19 +780,20 @@ pub fn track_row(theme: &Theme, id: impl Into<ElementId>, row: TrackRowData) -> 
                 .min_w(px(0.0))
                 .flex()
                 .flex_col()
-                .child(
-                    div()
-                        .truncate()
-                        .text_color(title_color)
-                        .child(row.title.to_owned()),
-                )
-                .child(
-                    theme
-                        .text(div(), typography::BODY_MUTED)
-                        .truncate()
-                        .text_color(c.text_muted)
-                        .child(row.artist.to_owned()),
-                ),
+                .child(row_text(
+                    ("title-link", row.index),
+                    row.title,
+                    title_color,
+                    c.accent_hover,
+                    row.title_link,
+                ))
+                .child(theme.text(div(), typography::BODY_MUTED).child(row_text(
+                    ("artist-link", row.index),
+                    row.artist,
+                    c.text_muted,
+                    c.text,
+                    row.artist_link,
+                ))),
         )
         .when_some(row.preview_badge, |el, label| {
             el.child(badge(theme, label.to_owned(), tokens::status::warning()))
@@ -825,7 +875,7 @@ pub fn skeleton_row(theme: &Theme, id: impl Into<ElementId>) -> impl IntoElement
 }
 
 /// Opacity of the skeleton at loop time `t`: a slow breath between 0.45 and 1.
-fn shimmer_opacity(t: f32) -> f32 {
+pub(crate) fn shimmer_opacity(t: f32) -> f32 {
     0.725 + 0.275 * (t * std::f32::consts::TAU).cos()
 }
 

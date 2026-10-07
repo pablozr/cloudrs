@@ -1,30 +1,36 @@
-//! The window's one view (ADR 0005). It owns the core handle, runs the only
-//! event pump, keeps the search results and forwards player events to the
-//! player bar, which stays a separate entity.
+//! The window's one view (ADR 0005, ADR 0008). It owns the core handle, runs
+//! the only event pump, keeps the view models and the router, draws the
+//! sidebar and header around the current screen and forwards player events to
+//! the player bar, which stays a separate entity.
 
-use std::ops::Range;
+use std::collections::HashMap;
 use std::time::Duration;
 
-use cloudrs_ui::components::{
-    ButtonKind, ToastKind, TrackRowData, button, row_action, skeleton_row, toast, track_row,
-};
+use cloudrs_ui::browse::sidebar_item;
+use cloudrs_ui::components::{ButtonKind, Icon, ToastKind, button, icon_button, toast, tooltip};
 use cloudrs_ui::search_field::{SearchChanged, SearchField};
-use cloudrs_ui::tokens::{size, space, typography};
+use cloudrs_ui::tokens::{self, size, space, typography};
 use cloudrs_ui::{Theme, ThemeMode, motion};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding, Role, ScrollStrategy,
-    Stateful, Task, UniformListScrollHandle, Window, actions, div, px, uniform_list,
+    AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding, MouseButton,
+    NavigationDirection, Role, ScrollStrategy, Stateful, Task, UniformListScrollHandle, Window,
+    actions, div, px,
 };
 use sc_core::{Command, CoreConfig, CoreHandle, Event, Problem, StartError};
 
 use crate::i18n;
+use crate::intent::UiIntent;
+use crate::models::{ListId, Models};
+use crate::nav::{Route, Router, Section};
 use crate::player_bar::{PlayerAction, PlayerBar};
-use crate::state::{Phase, QueueState, ResultsState, TRACK_SEARCH, format_time, is_soundcloud_url};
+use crate::screens::{TrackWave, WaveAction};
+use crate::seam;
+use crate::state::{QueueState, is_soundcloud_url};
 
 mod queue_panel;
 
-actions!(shell, [FocusSearch]);
+actions!(shell, [FocusSearch, GoBack, GoForward]);
 
 /// Key context of the root, so `/` can be limited to when no field is focused.
 const CONTEXT: &str = "Shell";
@@ -32,10 +38,6 @@ const CONTEXT: &str = "Shell";
 /// How long closing the window waits for the core to save its state.
 const SHUTDOWN_WAIT: Duration = Duration::from_millis(500);
 const SHUTDOWN_POLL: Duration = Duration::from_millis(20);
-
-/// Skeleton rows while a search runs, and at the end while the next page loads.
-const SEARCH_SKELETONS: usize = 10;
-const PAGE_SKELETONS: usize = 3;
 
 /// Registers the shell's key bindings. Call once at startup.
 pub fn bind_keys(cx: &mut App) {
@@ -45,6 +47,12 @@ pub fn bind_keys(cx: &mut App) {
         "ctrl-k"
     };
     cx.bind_keys([
+        KeyBinding::new("alt-left", GoBack, None),
+        KeyBinding::new("alt-right", GoForward, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-[", GoBack, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-]", GoForward, None),
         KeyBinding::new(focus_search, FocusSearch, None),
         // "/" must stay typeable inside the field.
         KeyBinding::new("/", FocusSearch, Some("Shell && !SearchField")),
@@ -66,8 +74,15 @@ pub struct Shell {
     focus: FocusHandle,
     search: Entity<SearchField>,
     player: Entity<PlayerBar>,
-    results: ResultsState,
-    scroll: UniformListScrollHandle,
+    pub(crate) models: Models,
+    pub(crate) router: Router,
+    /// Changes with every navigation, so the screen's entrance plays again.
+    pub(crate) nav_seq: usize,
+    /// One per list, so going back finds the scroll position it left.
+    pub(crate) scrolls: HashMap<ListId, UniformListScrollHandle>,
+    /// The profile tab showing (Tracks, Playlists, Likes).
+    pub(crate) user_tab: usize,
+    pub(crate) wave: Entity<TrackWave>,
     queue: QueueState,
     queue_open: bool,
     queue_scroll: UniformListScrollHandle,
@@ -94,8 +109,23 @@ impl Shell {
             i18n::search::hint()
         };
         let search = cx.new(|cx| SearchField::new(i18n::search::placeholder(), hint, cx));
-        cx.subscribe(&search, |this, _, event: &SearchChanged, _| {
-            this.on_search(&event.0);
+        cx.subscribe(&search, |this, _, event: &SearchChanged, cx| {
+            this.on_search(&event.0, cx);
+        })
+        .detach();
+        cx.on_focus_in(&search.focus_handle(cx), window, |this, _, cx| {
+            this.show_search(cx);
+        })
+        .detach();
+
+        let wave = cx.new(|_| TrackWave::new());
+        cx.subscribe(&wave, |this, _, action: &WaveAction, cx| match *action {
+            WaveAction::Seek(to) => this.send(Command::Seek(to)),
+            WaveAction::Play(track) => {
+                // Not in any list on screen: the core falls back to the track alone.
+                let list = ListId::Related(track);
+                this.dispatch(UiIntent::Play { list, track }, cx);
+            }
         })
         .detach();
 
@@ -137,8 +167,12 @@ impl Shell {
             focus: cx.focus_handle(),
             search,
             player,
-            results: ResultsState::new(),
-            scroll: UniformListScrollHandle::new(),
+            models: Models::new(),
+            router: Router::new(),
+            nav_seq: 0,
+            scrolls: HashMap::new(),
+            user_tab: 0,
+            wave,
             queue: QueueState::default(),
             queue_open: false,
             queue_scroll: UniformListScrollHandle::new(),
@@ -179,7 +213,7 @@ impl Shell {
         false
     }
 
-    fn send(&self, command: Command) {
+    pub(crate) fn send(&self, command: Command) {
         if let Ok(core) = &self.core {
             core.send(command);
         }
@@ -205,19 +239,23 @@ impl Shell {
     }
 
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
-        // Results first: the player reads the artwork they collect.
-        let changed = self.results.apply(&event);
+        // Models first: the player reads the artwork they collect.
+        let changed = seam::apply(&mut self.models, &event);
         let queue_changed = self.queue.apply(&event);
-        if matches!(&event, Event::Searching { .. }) {
-            self.scroll.scroll_to_item(0, ScrollStrategy::Top);
+        if let Event::Searching { kind, .. } = &event
+            && let Some(scroll) = self.scrolls.get(&ListId::Search { kind: *kind })
+        {
+            scroll.scroll_to_item(0, ScrollStrategy::Top);
         }
+        self.resolve_link(&event, cx);
+        self.wave.update(cx, |wave, cx| wave.apply(&event, cx));
         match &event {
             Event::NowPlaying(_)
             | Event::Waveform { .. }
             | Event::Playback(_)
             | Event::Queue(_)
             | Event::Artwork { .. } => {
-                let artwork = &self.results.artwork;
+                let artwork = &self.models.art.tracks;
                 self.player
                     .update(cx, |bar, cx| bar.apply(&event, artwork, cx));
             }
@@ -226,18 +264,42 @@ impl Shell {
             // A failed first page has its own error state; a failed next page
             // leaves the list in place, so it gets a toast.
             Event::ListFailed {
-                list: TRACK_SEARCH,
                 append: true,
                 problem,
+                ..
             } => self.show_problem(problem, cx),
-            // The other screens' events are not drawn yet.
-            _ => {}
+            Event::ListFailed { .. }
+            | Event::Searching { .. }
+            | Event::List { .. }
+            | Event::TrackPage(_)
+            | Event::UserPage(_)
+            | Event::PlaylistPage(_) => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
         let artwork_in_queue = self.queue_open && self.queue.shows_artwork_of(&event);
         if changed || artwork_in_queue || (queue_changed && self.queue_open) {
             cx.notify();
+        }
+    }
+
+    /// A pasted link is answered by the page it leads to, by the track
+    /// starting to play, or by a problem: the loading step goes away and the
+    /// page, if any, takes its place.
+    fn resolve_link(&mut self, event: &Event, cx: &mut Context<Self>) {
+        if !matches!(self.router.current(), Route::Resolving(_)) {
+            return;
+        }
+        let answer = match event {
+            Event::TrackPage(page) => Some(Some(Route::Track(page.track.id))),
+            Event::UserPage(page) => Some(Some(Route::User(page.id))),
+            Event::PlaylistPage(page) => Some(Some(Route::Playlist(page.id))),
+            Event::NowPlaying(_) | Event::Problem(_) => Some(None),
+            _ => None,
+        };
+        if let Some(route) = answer {
+            self.router.resolve(route);
+            self.route_changed(cx);
         }
     }
 
@@ -275,17 +337,71 @@ impl Shell {
         cx.notify();
     }
 
-    fn on_search(&self, text: &str) {
+    /// Typing in the search field shows the search screen, then searches (or
+    /// opens a pasted link).
+    fn on_search(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.show_search(cx);
         let text = text.trim();
-        if is_soundcloud_url(text) {
-            self.send(Command::OpenUrl(text.to_owned()));
+        let intent = if is_soundcloud_url(text) {
+            UiIntent::OpenUrl(text.to_owned())
         } else {
-            self.send(Command::Search(text.to_owned()));
+            UiIntent::Search(text.to_owned())
+        };
+        self.dispatch(intent, cx);
+    }
+
+    /// The one place intents go: opens the screen they lead to, updates the
+    /// models and sends the core command, when the core can take it.
+    pub(crate) fn dispatch(&mut self, intent: UiIntent, cx: &mut Context<Self>) {
+        if let Some(route) = intent.route() {
+            self.navigate(route, cx);
+        }
+        let command = seam::take(&mut self.models, &intent);
+        self.send(command);
+        cx.notify();
+    }
+
+    fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+        if self.router.push(route) {
+            self.user_tab = 0;
+            self.route_changed(cx);
         }
     }
 
-    fn retry_search(&mut self, _: &gpui::ClickEvent, _: &mut Window, _: &mut Context<Self>) {
-        self.send(Command::Search(self.results.query.clone()));
+    fn show_search(&mut self, cx: &mut Context<Self>) {
+        self.navigate(Route::Search, cx);
+    }
+
+    fn go_back(&mut self, cx: &mut Context<Self>) {
+        if self.router.back() {
+            self.route_changed(cx);
+        }
+    }
+
+    fn go_forward(&mut self, cx: &mut Context<Self>) {
+        if self.router.forward() {
+            self.route_changed(cx);
+        }
+    }
+
+    /// After any change of route: replays the entrance and points the large
+    /// waveform at the track page, if that is where we are.
+    pub(crate) fn route_changed(&mut self, cx: &mut Context<Self>) {
+        self.nav_seq += 1;
+        let track = match self.router.current() {
+            Route::Track(id) => Some(*id),
+            _ => None,
+        };
+        self.wave.update(cx, |wave, cx| wave.show(track, cx));
+        cx.notify();
+    }
+
+    fn on_go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {
+        self.go_back(cx);
+    }
+
+    fn on_go_forward(&mut self, _: &GoForward, _: &mut Window, cx: &mut Context<Self>) {
+        self.go_forward(cx);
     }
 
     fn restart_core(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -298,126 +414,59 @@ impl Shell {
         window.focus(&self.search.focus_handle(cx), cx);
     }
 
-    /// The visible rows of the results list (and skeletons for the next page).
-    fn rows(&mut self, range: Range<usize>, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        if self.results.take_load_more(range.end) {
-            self.send(Command::LoadMore(TRACK_SEARCH));
-            cx.notify();
-        }
-        let theme = Theme::of(cx);
-        range
-            .map(|ix| {
-                let Some(track) = self.results.tracks.get(ix) else {
-                    return skeleton_row(&theme, ("skeleton-more", ix)).into_any_element();
-                };
-                let id = track.id;
-                let active = self.results.current == Some(id);
-                let duration = format_time(track.duration);
-                let row = TrackRowData {
-                    index: ix + 1,
-                    title: &track.title,
-                    artist: &track.artist,
-                    duration: &duration,
-                    artwork: self.results.artwork.get(&id).cloned(),
-                    active,
-                    playing: active && self.results.playing,
-                    preview_badge: track.preview_only.then(i18n::search::preview_badge),
-                    actions: vec![
-                        row_action(
-                            &theme,
-                            ("play-next", ix),
-                            i18n::queue::play_next(),
-                            cx.listener(move |this, _, _, _| this.send(Command::PlayNext(id))),
-                        )
-                        .into_any_element(),
-                        row_action(
-                            &theme,
-                            ("add-to-queue", ix),
-                            i18n::queue::add_to_queue(),
-                            cx.listener(move |this, _, _, _| this.send(Command::AddToQueue(id))),
-                        )
-                        .into_any_element(),
-                    ],
-                };
-                track_row(&theme, ("track", ix), row)
-                    .aria_label(i18n::search::play_track(&track.title, &track.artist))
-                    .on_click(cx.listener(move |this, _, _, _| {
-                        this.send(Command::Play {
-                            list: TRACK_SEARCH,
-                            track: id,
-                        })
-                    }))
-                    .into_any_element()
-            })
-            .collect()
-    }
-
-    fn results_view(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        match self.results.phase {
-            Phase::Empty => status_view(
-                theme,
-                "empty",
-                i18n::search::empty_title(),
-                i18n::search::empty_hint(),
-                None,
-            ),
-            Phase::Searching => div()
-                .flex()
-                .flex_col()
-                .px(space::S5)
-                .pt(space::S2)
-                .children((0..SEARCH_SKELETONS).map(|i| skeleton_row(theme, ("skeleton", i))))
-                .into_any_element(),
-            Phase::Failed => status_view(
-                theme,
-                "failed",
-                i18n::search::error_title(),
-                i18n::search::error_hint(),
-                Some(
-                    button(
-                        theme,
-                        "retry-search",
-                        i18n::app::try_again(),
-                        ButtonKind::Primary,
-                    )
-                    .on_click(cx.listener(Self::retry_search)),
-                ),
-            ),
-            Phase::Ready if self.results.tracks.is_empty() => status_view(
-                theme,
-                "no-results",
-                &i18n::search::no_results_title(&self.results.query),
-                i18n::search::no_results_hint(),
-                None,
-            ),
-            Phase::Ready => {
-                let more = if self.results.loading_more {
-                    PAGE_SKELETONS
-                } else {
-                    0
-                };
-                div()
-                    .id("results")
-                    .role(Role::List)
-                    .aria_label(i18n::search::results())
-                    .size_full()
-                    .px(space::S5)
-                    .child(
-                        uniform_list(
-                            "results-list",
-                            self.results.tracks.len() + more,
-                            cx.processor(|this, range, _, cx| this.rows(range, cx)),
-                        )
-                        .track_scroll(&self.scroll)
-                        .size_full(),
-                    )
-                    .into_any_element()
-            }
-        }
-    }
-
-    fn header(&self, theme: &Theme) -> impl IntoElement {
+    fn sidebar(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let c = theme.colors;
+        let section = self.router.current().section();
+        div()
+            .id("sidebar")
+            .role(Role::Navigation)
+            .aria_label(i18n::nav::sidebar())
+            .w(size::SIDEBAR_WIDTH)
+            .flex_none()
+            .h_full()
+            .flex()
+            .flex_col()
+            .gap(space::S1)
+            .px(space::S3)
+            .py(space::S4)
+            .bg(c.canvas_deep)
+            .border_r_1()
+            .border_color(c.line)
+            .child(
+                theme
+                    .text(div(), typography::DISPLAY_L)
+                    .flex()
+                    .px(space::S4)
+                    .pb(space::S6)
+                    .text_color(c.text)
+                    .child(i18n::app::brand_cloud())
+                    .child(div().text_color(c.accent).child(i18n::app::brand_rs())),
+            )
+            .child(
+                sidebar_item(
+                    theme,
+                    "nav-search",
+                    i18n::nav::search(),
+                    section == Section::Search,
+                )
+                .aria_label(i18n::nav::search())
+                .on_click(cx.listener(|this, _, _, cx| this.show_search(cx))),
+            )
+            .child(
+                sidebar_item(
+                    theme,
+                    "nav-history",
+                    i18n::nav::history(),
+                    section == Section::History,
+                )
+                .aria_label(i18n::nav::history())
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.dispatch(UiIntent::OpenHistory, cx);
+                })),
+            )
+    }
+
+    fn header(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_button = button(
             theme,
             "theme-toggle",
@@ -436,20 +485,41 @@ impl Shell {
             cx.set_global(next);
             window.refresh();
         });
+        let dim = |enabled: bool| {
+            if enabled {
+                1.0
+            } else {
+                tokens::DISABLED_OPACITY
+            }
+        };
+        let (can_back, can_forward) = (self.router.can_back(), self.router.can_forward());
+        let back = icon_button(theme, "nav-back", Icon::Back, false)
+            .aria_label(i18n::nav::back())
+            .tooltip(tooltip(i18n::nav::back()))
+            .opacity(dim(can_back))
+            .when(can_back, |button| {
+                button.on_click(cx.listener(|this, _, _, cx| this.go_back(cx)))
+            });
+        let forward = icon_button(theme, "nav-forward", Icon::Forward, false)
+            .aria_label(i18n::nav::forward())
+            .tooltip(tooltip(i18n::nav::forward()))
+            .opacity(dim(can_forward))
+            .when(can_forward, |button| {
+                button.on_click(cx.listener(|this, _, _, cx| this.go_forward(cx)))
+            });
         div()
             .flex()
             .items_center()
-            .gap(space::S6)
-            .px(space::S7)
+            .gap(space::S4)
+            .px(space::S5)
             .py(space::S4)
             .child(
-                theme
-                    .text(div(), typography::DISPLAY_L)
+                div()
                     .flex()
                     .flex_none()
-                    .text_color(c.text)
-                    .child(i18n::app::brand_cloud())
-                    .child(div().text_color(c.accent).child(i18n::app::brand_rs())),
+                    .gap(space::S1)
+                    .child(back)
+                    .child(forward),
             )
             .child(
                 div().flex().flex_1().justify_center().child(
@@ -465,7 +535,7 @@ impl Shell {
 
 /// A centered title and hint, with an optional action: the empty and error
 /// states of a surface.
-fn status_view(
+pub(crate) fn status_view(
     theme: &Theme,
     key: &'static str,
     title: &str,
@@ -529,37 +599,61 @@ impl Render for Shell {
             return root.child(status_view(&theme, "startup", title, hint, Some(retry)));
         }
 
-        let results = self.results_view(&theme, cx);
-        let queue_panel = self.queue_open.then(|| self.queue_panel(&theme, cx));
+        let screen = self.screen(&theme, cx);
+        let queue_panel = self
+            .queue_open
+            .then(|| self.queue_panel(&theme, cx).into_any_element());
         let toast = self
             .toast
             .as_ref()
             .map(|t| toast(&theme, ("toast", t.id), t.kind, t.text));
-        root.child(self.header(&theme))
+        let sidebar = self.sidebar(&theme, cx).into_any_element();
+        let header = self.header(&theme, cx).into_any_element();
+        root.on_action(cx.listener(Self::on_go_back))
+            .on_action(cx.listener(Self::on_go_forward))
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|this, _, _, cx| this.go_back(cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|this, _, _, cx| this.go_forward(cx)),
+            )
             .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h(px(0.0))
-                    .child(
-                        div()
-                            .relative()
-                            .flex_1()
-                            .min_w(px(0.0))
-                            .child(results)
-                            .when_some(toast, |body, toast| {
-                                body.child(
+                div().flex().flex_1().min_h(px(0.0)).child(sidebar).child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .child(header)
+                        .child(
+                            div()
+                                .flex()
+                                .flex_1()
+                                .min_h(px(0.0))
+                                .child(
                                     div()
-                                        .absolute()
-                                        .bottom(space::S4)
-                                        .w_full()
-                                        .flex()
-                                        .justify_center()
-                                        .child(toast),
+                                        .relative()
+                                        .flex_1()
+                                        .min_w(px(0.0))
+                                        .overflow_hidden()
+                                        .child(screen)
+                                        .when_some(toast, |body, toast| {
+                                            body.child(
+                                                div()
+                                                    .absolute()
+                                                    .bottom(space::S4)
+                                                    .w_full()
+                                                    .flex()
+                                                    .justify_center()
+                                                    .child(toast),
+                                            )
+                                        }),
                                 )
-                            }),
-                    )
-                    .children(queue_panel),
+                                .children(queue_panel),
+                        ),
+                ),
             )
             .child(self.player.clone())
     }

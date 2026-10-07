@@ -126,6 +126,24 @@ where
     })
 }
 
+/// How far (px) a new screen starts to the right of its final place.
+const PAGE_SLIDE: f32 = 32.0;
+
+/// A screen replacing another (catalog #5): fades in while sliding in from
+/// the right. GPUI has no blur, so the "light blur" of the identity is left
+/// out. Keyed by `id`: a new id replays it, so use one per navigation.
+pub fn page_in<E>(id: impl Into<ElementId>, element: E) -> AnimationElement<E>
+where
+    E: Styled + IntoElement + 'static,
+{
+    element.with_animation(id, PAGE.animation(), |element, t| {
+        element
+            .relative()
+            .opacity(t.min(1.0))
+            .left(px(PAGE_SLIDE * (1.0 - t)))
+    })
+}
+
 /// A toast or popover arriving from below with a small overshoot.
 pub fn pop_in<E>(id: impl Into<ElementId>, element: E) -> AnimationElement<E>
 where

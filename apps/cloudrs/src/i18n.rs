@@ -66,10 +66,107 @@ pub mod search {
         error_title { en: "Could not load the results" }
         error_hint { en: "Check your connection and try again." }
         preview_badge { en: "30s preview" }
+        tab_tracks { en: "Tracks" }
+        tab_people { en: "People" }
+        tab_playlists { en: "Playlists" }
+        tab_albums { en: "Albums" }
     }
     formats! {
         no_results_title(query) { en: "No results for \u{201c}{query}\u{201d}" }
         play_track(title, artist) { en: "Play {title} by {artist}" }
+    }
+}
+
+/// Joins the parts of a meta line (`Ana \u{b7} 12 tracks`).
+pub fn dot_join(parts: &[String]) -> String {
+    parts.join(" \u{b7} ")
+}
+
+pub mod nav {
+    strings! {
+        sidebar { en: "Main navigation" }
+        search { en: "Search" }
+        history { en: "History" }
+        back { en: "Back" }
+        forward { en: "Forward" }
+    }
+}
+
+/// Shared by every list: the empty and error states of the screens.
+pub mod list {
+    strings! {
+        error_title { en: "Could not load this list" }
+        error_hint { en: "Check your connection and try again." }
+        empty_hint { en: "Nothing to show here yet." }
+        user_tracks_empty { en: "No tracks yet" }
+        user_playlists_empty { en: "No playlists yet" }
+        user_likes_empty { en: "No likes yet" }
+        playlist_empty { en: "This playlist is empty" }
+        related_empty { en: "No related tracks" }
+        history_empty { en: "Nothing played yet" }
+        history_empty_hint { en: "Tracks you play show up here." }
+    }
+}
+
+/// Shared by the track, profile and playlist pages.
+pub mod page {
+    strings! {
+        error_title { en: "Could not load this page" }
+        error_hint { en: "Check your connection and try again." }
+        resolving_title { en: "Opening the link" }
+        resolving_hint { en: "Looking it up on SoundCloud." }
+    }
+}
+
+pub mod track {
+    strings! {
+        related { en: "Related" }
+    }
+    formats! {
+        plays(count) { en: "{count} plays" }
+        open_profile(name) { en: "Open the profile of {name}" }
+    }
+}
+
+pub mod user {
+    strings! {
+        tab_tracks { en: "Tracks" }
+        tab_playlists { en: "Playlists" }
+        tab_likes { en: "Likes" }
+    }
+    formats! {
+        followers(count) { en: "{count} followers" }
+        following(count) { en: "{count} following" }
+        open_profile(name) { en: "Open the profile of {name}" }
+    }
+}
+
+pub mod playlist {
+    strings! {
+        album_badge { en: "Album" }
+        kind_playlist { en: "Playlist" }
+        play { en: "Play" }
+    }
+    formats! {
+        open_playlist(title) { en: "Open {title}" }
+    }
+}
+
+pub mod count {
+    strings! {
+        one_track { en: "1 track" }
+    }
+    formats! {
+        many_tracks(count) { en: "{count} tracks" }
+    }
+
+    /// `1 track`, `12 tracks`.
+    pub fn tracks(count: u64) -> String {
+        if count == 1 {
+            one_track().to_owned()
+        } else {
+            many_tracks(count)
+        }
     }
 }
 
