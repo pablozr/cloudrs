@@ -115,7 +115,7 @@ impl ResultsState {
                 self.tracks.iter().any(|t| t.id == *track)
             }
             // Playback problems only drive the toast, never the results.
-            Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) => false,
+            Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) | Event::Stopped => false,
         }
     }
 
