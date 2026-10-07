@@ -24,10 +24,18 @@ pub enum SearchKind {
 /// Every list the core serves and pages (ADR 0008).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ListId {
-    Search { kind: SearchKind },
+    Search {
+        kind: SearchKind,
+    },
     UserTracks(UserId),
     UserPlaylists(UserId),
     UserLikes(UserId),
+    /// The people a user follows.
+    Followings(UserId),
+    /// The signed-in user's feed (tracks posted or reposted by people they follow).
+    Feed,
+    /// The signed-in user's playlists and albums, made or liked.
+    Library,
     Playlist(PlaylistId),
     Related(TrackId),
     History,
@@ -273,6 +281,29 @@ pub enum Problem {
     Audio(String),
     /// The saved session and history were damaged and have been reset.
     StorageReset,
+    /// SoundCloud refused the token given to sign in.
+    SignInFailed,
+    /// SoundCloud no longer accepts the saved token: the person is signed out.
+    SessionExpired,
+    /// Liking or following needs an account.
+    SignInRequired,
+}
+
+/// The signed-in person. `Debug` hides the token so it never reaches a log.
+#[derive(Clone, PartialEq)]
+pub struct Account {
+    pub user: UserSummary,
+    /// For the app to keep in the OS keychain.
+    pub token: String,
+}
+
+impl std::fmt::Debug for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Account")
+            .field("user", &self.user)
+            .field("token", &"<hidden>")
+            .finish()
+    }
 }
 
 impl Problem {

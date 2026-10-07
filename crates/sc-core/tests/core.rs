@@ -29,8 +29,10 @@ struct FakeApi {
     slow_next_page: Arc<AtomicBool>,
     /// The token `set_oauth_token` was given; only `"good"` signs in.
     token: Arc<Mutex<Option<String>>>,
-    /// Makes like and follow calls fail.
+    /// Makes like and follow calls fail (`Status(500)`).
     fail_actions: Arc<AtomicBool>,
+    /// Makes like and follow calls answer `Unauthorized` (an expired token).
+    expired: Arc<AtomicBool>,
 }
 
 fn partial(id: u64) -> Track {
@@ -360,6 +362,9 @@ impl SoundCloudApi for FakeApi {
 
     async fn set_track_like(&self, me: u64, track: u64, liked: bool) -> sc_api::Result<()> {
         self.log(format!("like {me} {track} {liked}"));
+        if self.expired.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::Unauthorized);
+        }
         if self.fail_actions.load(Ordering::SeqCst) {
             return Err(sc_api::Error::Status(500));
         }
@@ -368,6 +373,9 @@ impl SoundCloudApi for FakeApi {
 
     async fn set_following(&self, user: u64, following: bool) -> sc_api::Result<()> {
         self.log(format!("follow {user} {following}"));
+        if self.expired.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::Unauthorized);
+        }
         if self.fail_actions.load(Ordering::SeqCst) {
             return Err(sc_api::Error::Status(500));
         }
@@ -375,10 +383,11 @@ impl SoundCloudApi for FakeApi {
     }
 }
 
-fn config(root: &std::path::Path) -> CoreConfig {
+fn config(root: &std::path::Path, token: Option<&str>) -> CoreConfig {
     CoreConfig {
         cache_dir: root.to_path_buf(),
         data_dir: root.join("data"),
+        oauth_token: token.map(str::to_owned),
     }
 }
 
@@ -392,13 +401,24 @@ struct Harness {
 
 impl Harness {
     fn new(name: &str) -> Self {
+        Self::start(name, None)
+    }
+
+    /// Starts with a saved token the fake accepts and waits for the sign-in.
+    fn signed_in(name: &str) -> Self {
+        let h = Self::start(name, Some("good"));
+        h.wait(|e| matches!(e, Event::SignedIn(_)).then_some(()));
+        h
+    }
+
+    fn start(name: &str, token: Option<&str>) -> Self {
         let api = FakeApi::default();
         let (audio_tx, audio_commands) = flume::unbounded();
         let (audio_events, audio_rx) = flume::unbounded();
         let cache =
             std::env::temp_dir().join(format!("cloudrs-core-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cache);
-        let core = sc_core::spawn(api.clone(), (audio_tx, audio_rx), config(&cache));
+        let core = sc_core::spawn(api.clone(), (audio_tx, audio_rx), config(&cache, token));
         Self {
             core,
             api,
@@ -808,7 +828,7 @@ fn wait_for_store(h: &Harness) {
 fn restart(h: &Harness) -> (CoreHandle, flume::Receiver<sc_audio::Command>) {
     let (audio_tx, audio_commands) = flume::unbounded();
     let (_audio_events, audio_rx) = flume::unbounded();
-    let core = sc_core::spawn(h.api.clone(), (audio_tx, audio_rx), config(&h.cache));
+    let core = sc_core::spawn(h.api.clone(), (audio_tx, audio_rx), config(&h.cache, None));
     (core, audio_commands)
 }
 
@@ -1028,7 +1048,7 @@ fn a_damaged_database_is_reset_and_reported() {
 
     let (audio_tx, _audio_commands) = flume::unbounded();
     let (_audio_events, audio_rx) = flume::unbounded();
-    let core = sc_core::spawn(FakeApi::default(), (audio_tx, audio_rx), config(&dir));
+    let core = sc_core::spawn(FakeApi::default(), (audio_tx, audio_rx), config(&dir, None));
     let problem = loop {
         let event = core.events().recv_timeout(Duration::from_secs(10)).unwrap();
         if let Event::Problem(p) = event {
@@ -1361,4 +1381,138 @@ fn the_history_lists_played_tracks_newest_first() {
     });
     let queue = h.queue_where(|q| queue_ids(q) == [1]);
     assert_eq!(queue.current, Some(0));
+}
+
+#[test]
+fn signs_in_with_the_saved_token() {
+    let h = Harness::start("saved-token", Some("good"));
+    let account = h.wait(|e| match e {
+        Event::SignedIn(account) => Some(account),
+        _ => None,
+    });
+    assert_eq!(account.user.username, "Me");
+    assert_eq!(account.token, "good");
+    assert!(!format!("{account:?}").contains("good"));
+    let liked = h.wait(|e| match e {
+        Event::LikedIds(ids) => Some(ids),
+        _ => None,
+    });
+    assert_eq!(liked, [TrackId(1), TrackId(72)]);
+    let followed = h.wait(|e| match e {
+        Event::FollowedIds(ids) => Some(ids),
+        _ => None,
+    });
+    assert_eq!(followed, [UserId(50)]);
+}
+
+#[test]
+fn a_refused_token_does_not_sign_in() {
+    let h = Harness::new("refused-token");
+    h.core.send(Command::SignIn("  bad \n".into()));
+    let problem = h.wait(|e| match e {
+        Event::Problem(problem) => Some(problem),
+        Event::SignedIn(_) => panic!("signed in with a refused token"),
+        _ => None,
+    });
+    assert_eq!(problem, Problem::SignInFailed);
+    let calls = h.api.calls();
+    assert!(calls.contains(&"token bad".to_owned()), "{calls:?}");
+    assert_eq!(calls.last().unwrap(), "token -");
+}
+
+#[test]
+fn signs_in_and_out() {
+    let h = Harness::new("sign-in-out");
+    h.core.send(Command::SignIn("good".into()));
+    h.wait(|e| matches!(e, Event::SignedIn(_)).then_some(()));
+    h.core.send(Command::SignOut);
+    h.wait(|e| matches!(e, Event::SignedOut).then_some(()));
+    assert_eq!(h.api.calls().last().unwrap(), "token -");
+}
+
+#[test]
+fn serves_the_account_lists() {
+    let h = Harness::signed_in("account-lists");
+    h.core.send(Command::LoadMore(ListId::Feed));
+    let (feed, _, has_more) = h.list(ListId::Feed);
+    assert_eq!(feed.len(), 1);
+    assert_eq!(feed[0].title, "Fed");
+    assert!(has_more);
+
+    h.core.send(Command::LoadMore(ListId::Library));
+    let (library, _, _) = h.page(ListId::Library, |items| match items {
+        ListItems::Playlists(rows) => Some(rows),
+        _ => None,
+    });
+    assert_eq!(library.len(), 1);
+    assert_eq!(library[0].id, PlaylistId(5));
+
+    let me = ListId::Followings(UserId(9));
+    h.core.send(Command::LoadMore(me));
+    let (people, _, _) = h.page(me, |items| match items {
+        ListItems::Users(rows) => Some(rows),
+        _ => None,
+    });
+    assert_eq!(people[0].id, UserId(50));
+    assert!(h.api.calls().contains(&"followings 9".to_owned()));
+}
+
+#[test]
+fn likes_and_follows_show_at_once_and_revert_on_failure() {
+    let h = Harness::signed_in("like-follow");
+    h.core.send(Command::Like {
+        track: TrackId(2),
+        liked: true,
+    });
+    let liked = h.wait(|e| match e {
+        Event::Liked { track, liked } => Some((track, liked)),
+        _ => None,
+    });
+    assert_eq!(liked, (TrackId(2), true));
+
+    h.api.fail_actions.store(true, Ordering::SeqCst);
+    h.core.send(Command::Follow {
+        user: UserId(50),
+        following: false,
+    });
+    let mut changes = Vec::new();
+    while changes.len() < 2 {
+        changes.push(h.wait(|e| match e {
+            Event::Followed { following, .. } => Some(following),
+            _ => None,
+        }));
+    }
+    assert_eq!(changes, [false, true]);
+    h.wait(|e| matches!(e, Event::Problem(Problem::Offline)).then_some(()));
+    let calls = h.api.calls();
+    assert!(calls.contains(&"like 9 2 true".to_owned()), "{calls:?}");
+    assert!(calls.contains(&"follow 50 false".to_owned()), "{calls:?}");
+}
+
+#[test]
+fn liking_needs_an_account() {
+    let h = Harness::new("like-signed-out");
+    h.core.send(Command::Like {
+        track: TrackId(1),
+        liked: true,
+    });
+    let problem = h.wait(|e| match e {
+        Event::Problem(problem) => Some(problem),
+        Event::Liked { .. } => panic!("liked while signed out"),
+        _ => None,
+    });
+    assert_eq!(problem, Problem::SignInRequired);
+}
+
+#[test]
+fn an_expired_token_signs_out() {
+    let h = Harness::signed_in("expired");
+    h.api.expired.store(true, Ordering::SeqCst);
+    h.core.send(Command::Like {
+        track: TrackId(1),
+        liked: false,
+    });
+    h.wait(|e| matches!(e, Event::SignedOut).then_some(()));
+    h.wait(|e| matches!(e, Event::Problem(Problem::SessionExpired)).then_some(()));
+    assert_eq!(h.api.calls().last().unwrap(), "token -");
 }

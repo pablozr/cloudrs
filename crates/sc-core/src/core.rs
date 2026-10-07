@@ -16,10 +16,13 @@ use crate::lists::{self, Fetched, ListState, SEARCH_KINDS};
 use crate::queue::{Queue, Step};
 use crate::store::{self, Session, SessionTrack};
 use crate::types::{
-    ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage, PlaylistSummary,
-    Problem, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage, UserSummary,
+    Account, ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage,
+    PlaylistSummary, Problem, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage,
+    UserSummary,
 };
 use crate::{Command, CoreConfig, Event, artwork, waveform};
+
+mod account;
 
 /// How long the search waits for more typing.
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -106,6 +109,27 @@ enum Input {
     ArtworkReady {
         key: ArtKey,
         path: PathBuf,
+    },
+    /// `/me` answered for the token of a sign-in.
+    SignInChecked {
+        generation: u64,
+        token: String,
+        result: sc_api::Result<Box<User>>,
+    },
+    AccountIds {
+        generation: u64,
+        liked: sc_api::Result<Vec<u64>>,
+        followed: sc_api::Result<Vec<u64>>,
+    },
+    LikeDone {
+        track: TrackId,
+        liked: bool,
+        result: sc_api::Result<()>,
+    },
+    FollowDone {
+        user: UserId,
+        following: bool,
+        result: sc_api::Result<()>,
     },
 }
 
@@ -233,7 +257,12 @@ async fn run<A: SoundCloudApi + 'static>(
             ..Playback::default()
         },
         artwork_requested: HashSet::new(),
+        account: None,
+        sign_in_gen: 0,
     };
+    if let Some(token) = config.oauth_token {
+        core.sign_in(token);
+    }
     while let Ok(input) = input_rx.recv_async().await {
         if matches!(input, Input::UiClosed) {
             core.shutdown();
@@ -333,6 +362,10 @@ struct Core<A> {
     current: Option<TrackId>,
     playback: Playback,
     artwork_requested: HashSet<ArtKey>,
+    /// The signed-in person, once `/me` accepted the token.
+    account: Option<Account>,
+    /// Bumped on every sign-in and sign-out: answers for an older one are dropped.
+    sign_in_gen: u64,
 }
 
 impl<A: SoundCloudApi + 'static> Core<A> {
@@ -470,6 +503,26 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 }
             }
             Input::ArtworkReady { key, path } => self.emit(Event::Artwork { key, path }),
+            Input::SignInChecked {
+                generation,
+                token,
+                result,
+            } => self.sign_in_checked(generation, token, result),
+            Input::AccountIds {
+                generation,
+                liked,
+                followed,
+            } => self.account_ids(generation, liked, followed),
+            Input::LikeDone {
+                track,
+                liked,
+                result,
+            } => self.like_done(track, liked, result),
+            Input::FollowDone {
+                user,
+                following,
+                result,
+            } => self.follow_done(user, following, result),
         }
     }
 
@@ -562,6 +615,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             },
             Command::Seek(at) => self.seek(at),
             Command::Shutdown => self.shutdown(),
+            Command::SignIn(token) => self.sign_in(token),
+            Command::SignOut => self.sign_out(),
+            Command::Like { track, liked } => self.like(track, liked),
+            Command::Follow { user, following } => self.follow(user, following),
             Command::SetVolume(volume) => {
                 let volume = volume.clamp(0.0, 1.0);
                 self.to_audio(sc_audio::Command::SetVolume(volume));
@@ -721,6 +778,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 } else {
                     self.lists.remove(&list);
                 }
+                self.expired(&error);
                 self.emit(Event::ListFailed {
                     list,
                     append,
@@ -780,23 +838,39 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     .collect();
                 (ListItems::Users(users), art)
             }
-            Fetched::Playlists(page) => {
-                let mut art = Vec::new();
-                let playlists = page
+            Fetched::Playlists(page) => self.absorb_playlists(&page.collection),
+            // Playlists in the feed come later; the feed is tracks for now.
+            Fetched::Feed(page) => self.absorb_tracks(
+                page.collection
+                    .into_iter()
+                    .filter_map(|item| item.track)
+                    .collect(),
+            ),
+            Fetched::Library(page) => {
+                let playlists: Vec<Playlist> = page
                     .collection
-                    .iter()
-                    .map(|playlist| {
-                        let id = PlaylistId(playlist.id);
-                        if let Some(url) = playlist.artwork(artwork::SIZE) {
-                            self.other_art.insert(ArtKey::Playlist(id), url);
-                            art.push(ArtKey::Playlist(id));
-                        }
-                        PlaylistSummary::from_api(playlist)
-                    })
+                    .into_iter()
+                    .filter_map(|item| item.playlist)
                     .collect();
-                (ListItems::Playlists(playlists), art)
+                self.absorb_playlists(&playlists)
             }
         }
+    }
+
+    fn absorb_playlists(&mut self, playlists: &[Playlist]) -> (ListItems, Vec<ArtKey>) {
+        let mut art = Vec::new();
+        let rows = playlists
+            .iter()
+            .map(|playlist| {
+                let id = PlaylistId(playlist.id);
+                if let Some(url) = playlist.artwork(artwork::SIZE) {
+                    self.other_art.insert(ArtKey::Playlist(id), url);
+                    art.push(ArtKey::Playlist(id));
+                }
+                PlaylistSummary::from_api(playlist)
+            })
+            .collect();
+        (ListItems::Playlists(rows), art)
     }
 
     fn absorb_tracks(&mut self, tracks: Vec<Track>) -> (ListItems, Vec<ArtKey>) {

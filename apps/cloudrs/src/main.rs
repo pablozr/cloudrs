@@ -34,6 +34,8 @@ fn main() {
             let config = CoreConfig {
                 cache_dir: app_dir(dirs::cache_dir(), "cache"),
                 data_dir: app_dir(dirs::data_dir(), "data"),
+                // The keychain arrives with sc-platform.
+                oauth_token: None,
             };
             let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
             let opened = cx.open_window(

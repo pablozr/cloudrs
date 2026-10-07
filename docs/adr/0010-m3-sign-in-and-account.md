@@ -56,3 +56,18 @@ person's default browser.
   Windows 11 ships WebView2 and macOS ships WebKit.
 - The token never touches the disk outside the keychain and is never logged.
 - Embedded webviews can be refused by some identity providers; the paste fallback covers them.
+
+## Refinements made while implementing the core
+
+- The followings list is `ListId::Followings(UserId)`, not `Following`: the signed-in person's
+  is `Followings(me)`, and a profile can show anyone's later.
+- `Account`'s and `CoreConfig`'s `Debug` hide the token.
+- While a sign-in is checked, requests already carry the new token. A refused token puts the
+  previous account's token back (or none) and sends `Problem::SignInFailed`; a network failure
+  sends the network problem instead. A saved token that cannot be checked at start (offline)
+  leaves the person signed out for that run, and the keychain keeps it for the next one.
+- Signing in or out drops the Feed, Library and the person's Likes and Followings lists, so
+  another account's rows never stay behind.
+- Any `Unauthorized` while signed in (a list page, a like, a follow) signs out with
+  `Problem::SessionExpired`. Liking or following signed out sends `Problem::SignInRequired`.
+- The feed keeps tracks only (posts and reposts); playlists in the feed come later.

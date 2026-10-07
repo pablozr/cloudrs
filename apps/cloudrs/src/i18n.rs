@@ -105,6 +105,10 @@ pub mod list {
         related_empty { en: "No related tracks" }
         history_empty { en: "Nothing played yet" }
         history_empty_hint { en: "Tracks you play show up here." }
+        followings_empty { en: "Not following anyone yet" }
+        feed_empty { en: "Your feed is empty" }
+        feed_empty_hint { en: "Follow people to see what they post and repost." }
+        library_empty { en: "No playlists or albums yet" }
     }
 }
 
@@ -219,5 +223,8 @@ pub mod problem {
         cannot_play { en: "This track can\u{2019}t be played here." }
         audio { en: "Something went wrong with the audio. Try again." }
         storage_reset { en: "Your history and saved session were damaged and have been reset." }
+        sign_in_failed { en: "SoundCloud didn{2019}t accept that sign-in. Try again." }
+        session_expired { en: "Your SoundCloud session expired. Sign in again." }
+        sign_in_required { en: "Sign in to like tracks and follow people." }
     }
 }

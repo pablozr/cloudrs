@@ -49,6 +49,9 @@ fn empty_text(key: ListId, query: &str) -> (String, &'static str) {
         ListId::Playlist(_) => (t::playlist_empty().to_owned(), hint),
         ListId::Related(_) => (t::related_empty().to_owned(), hint),
         ListId::History => (t::history_empty().to_owned(), t::history_empty_hint()),
+        ListId::Followings(_) => (t::followings_empty().to_owned(), hint),
+        ListId::Feed => (t::feed_empty().to_owned(), t::feed_empty_hint()),
+        ListId::Library => (t::library_empty().to_owned(), hint),
     }
 }
 

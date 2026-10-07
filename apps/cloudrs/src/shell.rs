@@ -293,7 +293,14 @@ impl Shell {
             | Event::List { .. }
             | Event::TrackPage(_)
             | Event::UserPage(_)
-            | Event::PlaylistPage(_) => {}
+            | Event::PlaylistPage(_)
+            // The account screen arrives with the M3 UI.
+            | Event::SignedIn(_)
+            | Event::SignedOut
+            | Event::LikedIds(_)
+            | Event::FollowedIds(_)
+            | Event::Liked { .. }
+            | Event::Followed { .. } => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
@@ -394,6 +401,9 @@ impl Shell {
             Problem::PreviewOnly => (ToastKind::Info, t::preview_only()),
             Problem::CannotPlay => (ToastKind::Error, t::cannot_play()),
             Problem::StorageReset => (ToastKind::Warning, t::storage_reset()),
+            Problem::SignInFailed => (ToastKind::Error, t::sign_in_failed()),
+            Problem::SessionExpired => (ToastKind::Warning, t::session_expired()),
+            Problem::SignInRequired => (ToastKind::Info, t::sign_in_required()),
             Problem::Audio(detail) => {
                 tracing::warn!(%detail, "audio problem");
                 (ToastKind::Error, t::audio())

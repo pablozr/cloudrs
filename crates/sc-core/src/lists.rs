@@ -2,7 +2,7 @@
 //! API call behind each kind.
 
 use sc_api::SoundCloudApi;
-use sc_api::models::{Like, Page, Playlist, Track, User};
+use sc_api::models::{LibraryItem, Like, Page, Playlist, StreamItem, Track, User};
 use tokio::task::JoinHandle;
 
 use crate::types::{ListId, ListItems, SearchKind, TrackSummary};
@@ -69,6 +69,8 @@ pub enum Fetched {
     Users(Page<User>),
     Playlists(Page<Playlist>),
     Likes(Page<Like>),
+    Feed(Page<StreamItem>),
+    Library(Page<LibraryItem>),
 }
 
 impl Fetched {
@@ -78,6 +80,8 @@ impl Fetched {
             Self::Users(page) => page.next_href.clone(),
             Self::Playlists(page) => page.next_href.clone(),
             Self::Likes(page) => page.next_href.clone(),
+            Self::Feed(page) => page.next_href.clone(),
+            Self::Library(page) => page.next_href.clone(),
         }
     }
 }
@@ -120,6 +124,9 @@ pub async fn fetch<A: SoundCloudApi>(
             }
             | ListId::UserPlaylists(_) => more!(api, href).map(Fetched::Playlists),
             ListId::UserLikes(_) => more!(api, href).map(Fetched::Likes),
+            ListId::Followings(_) => more!(api, href).map(Fetched::Users),
+            ListId::Feed => more!(api, href).map(Fetched::Feed),
+            ListId::Library => more!(api, href).map(Fetched::Library),
             ListId::Search {
                 kind: SearchKind::Tracks,
             }
@@ -152,6 +159,9 @@ pub async fn fetch<A: SoundCloudApi>(
             .map(Fetched::Playlists),
         ListId::UserLikes(id) => api.user_likes(id.0, PAGE_SIZE).await.map(Fetched::Likes),
         ListId::Related(id) => api.related(id.0, PAGE_SIZE).await.map(Fetched::Tracks),
+        ListId::Followings(id) => api.followings(id.0, PAGE_SIZE).await.map(Fetched::Users),
+        ListId::Feed => api.feed(PAGE_SIZE).await.map(Fetched::Feed),
+        ListId::Library => api.library(PAGE_SIZE).await.map(Fetched::Library),
         ListId::Playlist(_) | ListId::History => Err(sc_api::Error::NotFound),
     }
 }

@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub use types::{
-    ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage, PlaylistSummary,
-    Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage,
-    UserSummary,
+    Account, ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage,
+    PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary,
+    UserId, UserPage, UserSummary,
 };
 
 /// What the UI asks for.
@@ -78,6 +78,22 @@ pub enum Command {
     Seek(Duration),
     /// 0.0 to 1.0.
     SetVolume(f32),
+    /// Sign in with a soundcloud.com `oauth_token`: answers with
+    /// [`Event::SignedIn`], or `Problem::SignInFailed` when it is refused.
+    SignIn(String),
+    /// Forget the token: answers with [`Event::SignedOut`].
+    SignOut,
+    /// Like or unlike a track. Answers at once with [`Event::Liked`] and
+    /// reverts it if SoundCloud refuses.
+    Like {
+        track: TrackId,
+        liked: bool,
+    },
+    /// Follow or unfollow someone, like [`Command::Like`].
+    Follow {
+        user: UserId,
+        following: bool,
+    },
 }
 
 /// What the UI renders.
@@ -119,6 +135,20 @@ pub enum Event {
     },
     /// The core saved its state and stopped, after [`Command::Shutdown`].
     Stopped,
+    /// Signed in, after [`Command::SignIn`] or with the token from
+    /// [`CoreConfig::oauth_token`]. The app keeps `token` in the keychain.
+    SignedIn(Account),
+    /// Signed out, asked for or because the token expired. The app forgets
+    /// the token.
+    SignedOut,
+    /// Every track the person liked, sent after signing in.
+    LikedIds(Vec<TrackId>),
+    /// Everyone the person follows, sent after signing in.
+    FollowedIds(Vec<UserId>),
+    /// A track's like changed (or a failed change was reverted).
+    Liked { track: TrackId, liked: bool },
+    /// A follow changed (or a failed change was reverted).
+    Followed { user: UserId, following: bool },
     /// Something the person should know about (playing, pasted links, audio).
     Problem(Problem),
 }
@@ -142,12 +172,28 @@ impl CoreHandle {
 }
 
 /// Settings the composition root decides.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CoreConfig {
     /// Folder for cached artwork, created if missing.
     pub cache_dir: PathBuf,
     /// Folder for the session and history database, created if missing.
     pub data_dir: PathBuf,
+    /// The token saved in the keychain, checked with SoundCloud at start.
+    pub oauth_token: Option<String>,
+}
+
+/// Hides the token so it never reaches a log.
+impl std::fmt::Debug for CoreConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CoreConfig")
+            .field("cache_dir", &self.cache_dir)
+            .field("data_dir", &self.data_dir)
+            .field(
+                "oauth_token",
+                &self.oauth_token.as_ref().map(|_| "<hidden>"),
+            )
+            .finish()
+    }
 }
 
 /// Starts the core with the real SoundCloud client and the default audio device.

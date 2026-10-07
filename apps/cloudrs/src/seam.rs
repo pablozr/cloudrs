@@ -79,6 +79,13 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
         }
         // The player bar and the queue own these.
         Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) | Event::Stopped => false,
+        // The account screen arrives with the M3 UI.
+        Event::SignedIn(_)
+        | Event::SignedOut
+        | Event::LikedIds(_)
+        | Event::FollowedIds(_)
+        | Event::Liked { .. }
+        | Event::Followed { .. } => false,
     }
 }
 
