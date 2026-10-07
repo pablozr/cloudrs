@@ -11,9 +11,9 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyView, App, Bounds, Context, Div, ElementId, Hsla, MouseButton,
-    MouseDownEvent, ObjectFit, PathBuilder, Pixels, Render, Role, SharedString, Stateful, Window,
-    canvas, div, fill, img, linear_color_stop, linear_gradient, point, px,
+    Animation, AnimationExt, AnyElement, AnyView, App, Bounds, ClickEvent, Context, Div, ElementId,
+    Hsla, MouseButton, MouseDownEvent, ObjectFit, PathBuilder, Pixels, Render, Role, SharedString,
+    Stateful, Window, canvas, div, fill, img, linear_color_stop, linear_gradient, point, px,
 };
 
 use crate::tokens::{self, radius, size, space, typography};
@@ -137,6 +137,174 @@ fn paint_play_glyph(bounds: Bounds<Pixels>, playing: bool, color: Hsla, window: 
             window.paint_path(path, color);
         }
     }
+}
+
+/// Glyphs of the icon buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Icon {
+    Previous,
+    Next,
+    Shuffle,
+    Repeat,
+    /// Repeat with a mark: the same track plays again.
+    RepeatOne,
+    Queue,
+}
+
+fn paint_icon(bounds: Bounds<Pixels>, icon: Icon, color: Hsla, window: &mut Window) {
+    let side = bounds.size.width.min(bounds.size.height);
+    let unit = side / 24.0;
+    let origin = bounds.origin;
+    let at = |(x, y): (f32, f32)| point(origin.x + unit * x, origin.y + unit * y);
+    let stroke = |window: &mut Window, points: &[(f32, f32)]| {
+        let mut path = PathBuilder::stroke(unit * 2.0);
+        path.move_to(at(points[0]));
+        for point in &points[1..] {
+            path.line_to(at(*point));
+        }
+        if let Ok(path) = path.build() {
+            window.paint_path(path, color);
+        }
+    };
+    let triangle = |window: &mut Window, a: (f32, f32), b: (f32, f32), c: (f32, f32)| {
+        let mut path = PathBuilder::fill();
+        path.move_to(at(a));
+        path.line_to(at(b));
+        path.line_to(at(c));
+        path.close();
+        if let Ok(path) = path.build() {
+            window.paint_path(path, color);
+        }
+    };
+    let bar = |window: &mut Window, from: (f32, f32), to: (f32, f32)| {
+        let rect = Bounds::from_corners(at(from), at(to));
+        window.paint_quad(fill(rect, color).corner_radii(unit));
+    };
+    match icon {
+        Icon::Previous => {
+            bar(window, (6.0, 6.0), (8.5, 18.0));
+            triangle(window, (18.0, 6.0), (18.0, 18.0), (9.5, 12.0));
+        }
+        Icon::Next => {
+            bar(window, (15.5, 6.0), (18.0, 18.0));
+            triangle(window, (6.0, 6.0), (6.0, 18.0), (14.5, 12.0));
+        }
+        Icon::Queue => {
+            bar(window, (4.0, 6.0), (18.0, 8.0));
+            bar(window, (4.0, 11.0), (18.0, 13.0));
+            bar(window, (4.0, 16.0), (11.0, 18.0));
+            triangle(window, (15.0, 14.0), (21.0, 17.0), (15.0, 20.0));
+        }
+        Icon::Shuffle => {
+            stroke(
+                window,
+                &[(3.0, 7.0), (8.0, 7.0), (15.0, 17.0), (18.0, 17.0)],
+            );
+            stroke(
+                window,
+                &[(3.0, 17.0), (8.0, 17.0), (15.0, 7.0), (18.0, 7.0)],
+            );
+            triangle(window, (17.0, 4.0), (22.0, 7.0), (17.0, 10.0));
+            triangle(window, (17.0, 14.0), (22.0, 17.0), (17.0, 20.0));
+        }
+        Icon::Repeat | Icon::RepeatOne => {
+            stroke(window, &[(4.0, 12.0), (4.0, 8.0), (17.0, 8.0)]);
+            stroke(window, &[(20.0, 12.0), (20.0, 16.0), (7.0, 16.0)]);
+            triangle(window, (16.0, 4.5), (21.0, 8.0), (16.0, 11.5));
+            triangle(window, (8.0, 12.5), (3.0, 16.0), (8.0, 19.5));
+            if icon == Icon::RepeatOne {
+                bar(window, (11.0, 10.0), (13.0, 14.0));
+            }
+        }
+    }
+}
+
+/// A round icon-only button. Callers add the `aria_label` and a `tooltip`.
+/// `active` marks a toggle that is on.
+pub fn icon_button(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    icon: Icon,
+    active: bool,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    let color = if active { c.accent } else { c.text_muted };
+    div()
+        .id(id)
+        .flex_none()
+        .size(size::ICON_BUTTON)
+        .p(space::S2)
+        .rounded(radius::FULL)
+        .tab_index(0)
+        .focus_visible(move |s| s.shadow(tokens::focus_ring(c.accent)))
+        .cursor_pointer()
+        .hover(move |s| s.bg(c.surface_hover))
+        .child(
+            canvas(
+                |_, _, _| (),
+                move |bounds, (), window, _| paint_icon(bounds, icon, color, window),
+            )
+            .size_full(),
+        )
+}
+
+/// A small text action shown on a row while it is hovered ("Play next").
+/// It handles its own click, so the row's click does not fire.
+pub fn row_action(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    label: &'static str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    theme
+        .text(div(), typography::BODY_MUTED)
+        .id(id)
+        .px(space::S2)
+        .py(space::S1)
+        .rounded(radius::S)
+        .text_color(c.text_muted)
+        .cursor_pointer()
+        .tab_index(0)
+        .focus_visible(move |s| s.shadow(tokens::focus_ring(c.accent)))
+        .hover(move |s| s.bg(c.surface_hover).text_color(c.text))
+        .aria_label(label)
+        .child(label)
+        .on_click(move |event, window, cx| {
+            cx.stop_propagation();
+            on_click(event, window, cx);
+        })
+}
+
+/// What follows the pointer while a row is dragged: lifted (shadow) with an
+/// accent outline.
+pub fn drag_preview(theme: &Theme, title: SharedString, artist: SharedString) -> Div {
+    let c = theme.colors;
+    div()
+        .w(size::DRAG_PREVIEW_WIDTH)
+        .flex()
+        .flex_col()
+        .px(space::S3)
+        .py(space::S2)
+        .rounded(radius::M)
+        .border_1()
+        .border_color(c.accent)
+        .bg(c.surface_raised)
+        .shadow(tokens::floating_shadow())
+        .child(
+            theme
+                .text(div(), typography::BODY)
+                .truncate()
+                .text_color(c.text)
+                .child(title),
+        )
+        .child(
+            theme
+                .text(div(), typography::BODY_MUTED)
+                .truncate()
+                .text_color(c.text_muted)
+                .child(artist),
+        )
 }
 
 /// Horizontal position of `x` inside `left..left + width`, clamped to 0..=1.
@@ -269,12 +437,15 @@ pub fn waveform(
             if samples.is_empty() {
                 return;
             }
-            let gap = px(2.0);
+            // Bars share the width evenly; on a narrow strip the gap shrinks
+            // instead of the bars running past the end.
             let count = samples.len() as f32;
-            let bar = ((bounds.size.width - gap * (count - 1.0)) / count).max(px(1.0));
+            let pitch = bounds.size.width / count;
+            let gap = (pitch * 0.4).min(px(2.0));
+            let bar = (pitch - gap).max(px(0.5));
             let height = bounds.size.height;
             for (i, sample) in samples.iter().enumerate() {
-                let x = bounds.origin.x + (bar + gap) * i as f32;
+                let x = bounds.origin.x + pitch * i as f32;
                 let h = (height * sample.clamp(0.08, 1.0)).max(px(2.0));
                 let y = bounds.origin.y + (height - h) / 2.0;
                 let color = match bar_kind((i as f32 + 0.5) / count, progress, hover) {
@@ -460,6 +631,8 @@ pub struct TrackRowData<'a> {
     pub playing: bool,
     /// Label of the "preview only" badge, when the track has one.
     pub preview_badge: Option<&'a str>,
+    /// Shown only while the row is hovered (see [`row_action`]).
+    pub actions: Vec<AnyElement>,
 }
 
 /// The "now playing" equalizer: three bars, moving only while `playing`.
@@ -500,6 +673,9 @@ fn equalizer_level(t: f32, bar: usize) -> f32 {
     0.25 + 0.75 * wave
 }
 
+/// Group name rows share, so their hover actions react to their own row.
+const ROW_GROUP: &str = "track-row";
+
 /// One result row: index (or equalizer), cover, title and artist, duration.
 /// Fixed height ([`size::ROW_HEIGHT`]) so it fits `uniform_list`.
 pub fn track_row(theme: &Theme, id: impl Into<ElementId>, row: TrackRowData) -> Stateful<Div> {
@@ -532,6 +708,8 @@ pub fn track_row(theme: &Theme, id: impl Into<ElementId>, row: TrackRowData) -> 
     theme
         .text(div(), typography::BODY)
         .id(id)
+        .group(ROW_GROUP)
+        .relative()
         .flex()
         .items_center()
         .gap(space::S3)
@@ -577,6 +755,25 @@ pub fn track_row(theme: &Theme, id: impl Into<ElementId>, row: TrackRowData) -> 
                 .text_color(c.text_subtle)
                 .child(row.duration.to_owned()),
         )
+        .when(!row.actions.is_empty(), |el| {
+            // Laid out over the row's right edge, not in the flow, so the title
+            // keeps its width. (Toggling `display` on hover breaks GPUI's
+            // prepaint/paint pairing, so visibility is used instead.)
+            el.child(
+                div()
+                    .absolute()
+                    .right(space::S2)
+                    .flex()
+                    .items_center()
+                    .gap(space::S1)
+                    .p(space::S1)
+                    .rounded(radius::S)
+                    .bg(c.surface_raised)
+                    .invisible()
+                    .group_hover(ROW_GROUP, |s| s.visible())
+                    .children(row.actions),
+            )
+        })
 }
 
 /// A track row in loading state: the same shape with a soft shimmer. The

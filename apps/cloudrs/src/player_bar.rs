@@ -6,19 +6,24 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cloudrs_ui::Theme;
-use cloudrs_ui::components::{play_button, slider, tooltip, waveform};
+use cloudrs_ui::components::{Icon, icon_button, play_button, slider, tooltip, waveform};
 use cloudrs_ui::tokens::{self, radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{Context, EventEmitter, ObjectFit, Window, div, img, px};
-use sc_core::Event;
+use sc_core::{Event, Repeat};
 
 use crate::i18n::player as t;
-use crate::state::{ArtworkMap, PlayerState, format_time, seek_target};
+use crate::state::{ArtworkMap, PlayerState, format_time, next_repeat, seek_target};
 
 /// What the person asked of the player.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlayerAction {
     TogglePlay,
+    Previous,
+    Next,
+    SetShuffle(bool),
+    SetRepeat(Repeat),
+    ToggleQueue,
     Seek(Duration),
     /// 0.0 to 1.0.
     SetVolume(f32),
@@ -31,6 +36,8 @@ pub struct PlayerBar {
     /// Fraction of the waveform under the pointer. Kept here, not in the
     /// element, so the preview re-renders only this bar.
     hover: Option<f32>,
+    /// The queue panel is open (the queue button shows it).
+    queue_open: bool,
 }
 
 impl EventEmitter<PlayerAction> for PlayerBar {}
@@ -41,7 +48,13 @@ impl PlayerBar {
             state: PlayerState::new(),
             flat_waveform: vec![tokens::PLACEHOLDER_LEVEL; tokens::PLACEHOLDER_BARS].into(),
             hover: None,
+            queue_open: false,
         }
+    }
+
+    pub fn set_queue_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.queue_open = open;
+        cx.notify();
     }
 
     pub fn apply(&mut self, event: &Event, artwork: &ArtworkMap, cx: &mut Context<Self>) {
@@ -104,6 +117,54 @@ impl Render for PlayerBar {
                             .child(subtitle.to_owned()),
                     ),
             );
+
+        let dim = |active: bool| {
+            if active {
+                1.0
+            } else {
+                tokens::DISABLED_OPACITY
+            }
+        };
+        let previous = icon_button(&theme, "previous", Icon::Previous, false)
+            .aria_label(t::previous())
+            .tooltip(tooltip(t::previous()))
+            .opacity(dim(active))
+            .when(active, |button| {
+                button.on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerAction::Previous)))
+            });
+        let next = icon_button(&theme, "next", Icon::Next, false)
+            .aria_label(t::next())
+            .tooltip(tooltip(t::next()))
+            .opacity(dim(active))
+            .when(active, |button| {
+                button.on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerAction::Next)))
+            });
+        let shuffle_label = if state.shuffle {
+            t::shuffle_on()
+        } else {
+            t::shuffle_off()
+        };
+        let shuffle = icon_button(&theme, "shuffle", Icon::Shuffle, state.shuffle)
+            .aria_label(shuffle_label)
+            .tooltip(tooltip(shuffle_label))
+            .on_click(cx.listener(|this, _, _, cx| {
+                cx.emit(PlayerAction::SetShuffle(!this.state.shuffle));
+            }));
+        let (repeat_icon, repeat_label) = match state.repeat {
+            Repeat::Off => (Icon::Repeat, t::repeat_off()),
+            Repeat::All => (Icon::Repeat, t::repeat_all()),
+            Repeat::One => (Icon::RepeatOne, t::repeat_one()),
+        };
+        let repeat = icon_button(&theme, "repeat", repeat_icon, state.repeat != Repeat::Off)
+            .aria_label(repeat_label)
+            .tooltip(tooltip(repeat_label))
+            .on_click(cx.listener(|this, _, _, cx| {
+                cx.emit(PlayerAction::SetRepeat(next_repeat(this.state.repeat)));
+            }));
+        let queue = icon_button(&theme, "queue", Icon::Queue, self.queue_open)
+            .aria_label(t::queue())
+            .tooltip(tooltip(t::queue()))
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerAction::ToggleQueue)));
 
         let play = play_button(&theme, "play", playing, size::PLAY_BUTTON)
             .aria_label(toggle_label)
@@ -184,8 +245,20 @@ impl Render for PlayerBar {
             .border_t_1()
             .border_color(c.line)
             .child(info)
-            .child(play)
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(space::S1)
+                    .child(shuffle)
+                    .child(previous)
+                    .child(play)
+                    .child(next)
+                    .child(repeat),
+            )
             .child(timeline)
             .child(volume)
+            .child(queue)
     }
 }

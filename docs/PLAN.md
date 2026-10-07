@@ -329,10 +329,15 @@ Before ticking M1:
       progress and the pointer get a muted accent tint.
 
 ### M2 — Navigation
+Design: [ADR 0007](./adr/0007-m2-queue-and-persistence.md).
+
 - [ ] Track, Profile, Playlist and Album screens.
-- [ ] Full queue (next/previous, play next, shuffle, repeat, reorder).
-- [ ] Autoplay from related tracks.
-- [ ] History and session restore.
+- [x] Full queue (next/previous, play next, shuffle, repeat, reorder): side panel with drag and
+      drop (lifted row with an accent outline and a highlighted drop target; neighbors do not
+      spring aside yet).
+- [x] Autoplay from related tracks.
+- [x] History (recorded after 30 s of listening; its screen comes with the other screens) and
+      session restore (queue, position and volume, paused at start).
 
 ### M3 — User account
 - [ ] Sign in with a token + keychain.

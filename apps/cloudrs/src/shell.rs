@@ -5,7 +5,7 @@
 use std::ops::Range;
 
 use cloudrs_ui::components::{
-    ButtonKind, ToastKind, TrackRowData, button, skeleton_row, toast, track_row,
+    ButtonKind, ToastKind, TrackRowData, button, row_action, skeleton_row, toast, track_row,
 };
 use cloudrs_ui::search_field::{SearchChanged, SearchField};
 use cloudrs_ui::tokens::{size, space, typography};
@@ -19,7 +19,9 @@ use sc_core::{Command, CoreConfig, CoreHandle, Event, Problem, StartError};
 
 use crate::i18n;
 use crate::player_bar::{PlayerAction, PlayerBar};
-use crate::state::{Phase, ResultsState, format_time, is_soundcloud_url};
+use crate::state::{Phase, QueueState, ResultsState, format_time, is_soundcloud_url};
+
+mod queue_panel;
 
 actions!(shell, [FocusSearch]);
 
@@ -61,6 +63,9 @@ pub struct Shell {
     player: Entity<PlayerBar>,
     results: ResultsState,
     scroll: UniformListScrollHandle,
+    queue: QueueState,
+    queue_open: bool,
+    queue_scroll: UniformListScrollHandle,
     toast: Option<ToastState>,
     toast_timer: Option<Task<()>>,
     toasts_shown: usize,
@@ -86,12 +91,25 @@ impl Shell {
         .detach();
 
         let player = cx.new(|_| PlayerBar::new());
-        cx.subscribe(&player, |this, _, action: &PlayerAction, _| {
-            this.send(match *action {
+        cx.subscribe(&player, |this, _, action: &PlayerAction, cx| {
+            let command = match *action {
                 PlayerAction::TogglePlay => Command::TogglePlay,
+                PlayerAction::Previous => Command::Previous,
+                PlayerAction::Next => Command::Next,
                 PlayerAction::Seek(to) => Command::Seek(to),
                 PlayerAction::SetVolume(volume) => Command::SetVolume(volume),
-            });
+                PlayerAction::SetShuffle(on) => Command::SetShuffle(on),
+                PlayerAction::SetRepeat(repeat) => Command::SetRepeat(repeat),
+                PlayerAction::ToggleQueue => {
+                    this.queue_open = !this.queue_open;
+                    let open = this.queue_open;
+                    this.player
+                        .update(cx, |bar, cx| bar.set_queue_open(open, cx));
+                    cx.notify();
+                    return;
+                }
+            };
+            this.send(command);
         })
         .detach();
 
@@ -106,6 +124,9 @@ impl Shell {
             player,
             results: ResultsState::new(),
             scroll: UniformListScrollHandle::new(),
+            queue: QueueState::default(),
+            queue_open: false,
+            queue_scroll: UniformListScrollHandle::new(),
             toast: None,
             toast_timer: None,
             toasts_shown: 0,
@@ -142,6 +163,7 @@ impl Shell {
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         // Results first: the player reads the artwork they collect.
         let changed = self.results.apply(&event);
+        let queue_changed = self.queue.apply(&event);
         if matches!(&event, Event::Searching { .. }) {
             self.scroll.scroll_to_item(0, ScrollStrategy::Top);
         }
@@ -149,6 +171,7 @@ impl Shell {
             Event::NowPlaying(_)
             | Event::Waveform { .. }
             | Event::Playback(_)
+            | Event::Queue(_)
             | Event::Artwork { .. } => {
                 let artwork = &self.results.artwork;
                 self.player
@@ -162,13 +185,11 @@ impl Shell {
                 problem,
                 ..
             } => self.show_problem(problem, cx),
-            Event::SearchFailed { .. }
-            | Event::Searching { .. }
-            | Event::Results { .. }
-            | Event::Queue(_) => {}
+            Event::SearchFailed { .. } | Event::Searching { .. } | Event::Results { .. } => {}
         }
-        // Playback ticks leave `changed` false: they must not re-render the list.
-        if changed {
+        // Playback ticks leave both false: they must not re-render the list or
+        // the queue panel. Only the play/pause flip (inside `changed`) does.
+        if changed || (queue_changed && self.queue_open) {
             cx.notify();
         }
     }
@@ -253,6 +274,22 @@ impl Shell {
                     active,
                     playing: active && self.results.playing,
                     preview_badge: track.preview_only.then(i18n::search::preview_badge),
+                    actions: vec![
+                        row_action(
+                            &theme,
+                            ("play-next", ix),
+                            i18n::queue::play_next(),
+                            cx.listener(move |this, _, _, _| this.send(Command::PlayNext(id))),
+                        )
+                        .into_any_element(),
+                        row_action(
+                            &theme,
+                            ("add-to-queue", ix),
+                            i18n::queue::add_to_queue(),
+                            cx.listener(move |this, _, _, _| this.send(Command::AddToQueue(id))),
+                        )
+                        .into_any_element(),
+                    ],
                 };
                 track_row(&theme, ("track", ix), row)
                     .aria_label(i18n::search::play_track(&track.title, &track.artist))
@@ -440,6 +477,7 @@ impl Render for Shell {
         }
 
         let results = self.results_view(&theme, cx);
+        let queue_panel = self.queue_open.then(|| self.queue_panel(&theme, cx));
         let toast = self
             .toast
             .as_ref()
@@ -447,21 +485,28 @@ impl Render for Shell {
         root.child(self.header(&theme))
             .child(
                 div()
-                    .relative()
+                    .flex()
                     .flex_1()
                     .min_h(px(0.0))
-                    .child(results)
-                    .when_some(toast, |body, toast| {
-                        body.child(
-                            div()
-                                .absolute()
-                                .bottom(space::S4)
-                                .w_full()
-                                .flex()
-                                .justify_center()
-                                .child(toast),
-                        )
-                    }),
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .child(results)
+                            .when_some(toast, |body, toast| {
+                                body.child(
+                                    div()
+                                        .absolute()
+                                        .bottom(space::S4)
+                                        .w_full()
+                                        .flex()
+                                        .justify_center()
+                                        .child(toast),
+                                )
+                            }),
+                    )
+                    .children(queue_panel),
             )
             .child(self.player.clone())
     }
