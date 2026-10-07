@@ -329,9 +329,11 @@ Before ticking M1:
       progress and the pointer get a muted accent tint.
 
 ### M2 — Navigation
-Design: [ADR 0007](./adr/0007-m2-queue-and-persistence.md).
+Design: [ADR 0007](./adr/0007-m2-queue-and-persistence.md),
+[ADR 0008](./adr/0008-m2-screens-and-lists.md).
 
-- [ ] Track, Profile, Playlist and Album screens.
+- [x] Track, Profile, Playlist, Album and History screens, search tabs (tracks, people,
+      playlists, albums), sidebar and back/forward navigation.
 - [x] Full queue (next/previous, play next, shuffle, repeat, reorder): side panel with drag and
       drop (lifted row with an accent outline and a highlighted drop target; neighbors do not
       spring aside yet).
