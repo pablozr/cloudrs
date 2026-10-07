@@ -96,6 +96,7 @@ pub mod nav {
         following { en: "Following" }
         sign_in { en: "Sign in" }
         jam { en: "Jam" }
+        your_playlists { en: "YOUR PLAYLISTS" }
     }
 }
 
@@ -343,5 +344,19 @@ pub mod genre {
         latin { en: "Latin" }
         r_n_b { en: "R&B" }
         trap { en: "Trap" }
+    }
+}
+
+/// The Library screen.
+pub mod library {
+    strings! {
+        title { en: "Your library" }
+        tab_all { en: "All" }
+        tab_playlists { en: "Playlists" }
+        tab_albums { en: "Albums" }
+    }
+    formats! {
+        playlists(count) { en: "{count} playlists" }
+        albums(count) { en: "{count} albums" }
     }
 }

@@ -559,3 +559,40 @@ pub fn quick_tile(
                 ),
         )
 }
+
+/// A playlist in the sidebar's "Your playlists": small cover and title, the
+/// accent title when it is the screen showing. Callers add `on_click` and the
+/// `aria_label`.
+pub fn sidebar_collection(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    title: &str,
+    cover: Option<Arc<Path>>,
+    active: bool,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    theme
+        .text(div(), typography::BODY)
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(space::S3)
+        .h(size::SIDEBAR_ITEM_HEIGHT)
+        .px(space::S3)
+        .rounded(radius::M)
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .tab_index(0)
+        .focus_visible(move |s| s.border_color(c.accent))
+        .cursor_pointer()
+        .hover(move |s| s.bg(c.surface_raised).text_color(c.text))
+        .text_color(if active { c.accent } else { c.text_muted })
+        .child(picture(theme, size::SIDEBAR_COVER, radius::S, cover))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .truncate()
+                .child(title.to_owned()),
+        )
+}

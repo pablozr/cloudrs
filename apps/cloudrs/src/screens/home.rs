@@ -96,6 +96,17 @@ impl Shell {
         if let Some(tiles) = self.home_tiles(theme, cx) {
             page = page.child(tiles);
         }
+        if self.models.account.is_some() {
+            // Your playlists come first: the thing most often opened.
+            page = page.child(self.list_shelf(
+                theme,
+                "library",
+                t::your_playlists(),
+                ListId::Library,
+                Route::Library,
+                cx,
+            ));
+        }
         page = page.child(self.home_trending(theme, cx));
 
         let recent = self.tracks(ListId::History);
@@ -129,14 +140,6 @@ impl Shell {
                     t::liked_tracks(),
                     ListId::UserLikes(me),
                     Route::Likes(me),
-                    cx,
-                ))
-                .child(self.list_shelf(
-                    theme,
-                    "library",
-                    t::your_playlists(),
-                    ListId::Library,
-                    Route::Library,
                     cx,
                 ));
         }
@@ -231,18 +234,32 @@ impl Shell {
         )
     }
 
-    /// Shortcuts: your playlists first, then what you played last.
+    /// Shortcuts to play right away: what you played last, then your likes.
+    /// Your playlists have their own shelf (and the sidebar), so they only
+    /// fill in when there is nothing else.
     fn home_tiles(&mut self, theme: &Theme, cx: &mut Context<Self>) -> Option<Div> {
         enum Tile {
             Playlist(PlaylistSummary),
-            Track(TrackSummary),
+            Track(ListId, TrackSummary),
         }
-        let mut tiles: Vec<Tile> = self
-            .playlists(ListId::Library)
+        let mut sources = vec![ListId::History];
+        if let Some(me) = &self.models.account {
+            sources.push(ListId::UserLikes(me.id));
+        }
+        let mut seen = std::collections::HashSet::new();
+        let mut tiles: Vec<Tile> = sources
             .into_iter()
-            .map(Tile::Playlist)
+            .flat_map(|list| self.tracks(list).into_iter().map(move |t| (list, t)))
+            .filter(|(_, t)| seen.insert(t.id))
+            .map(|(list, t)| Tile::Track(list, t))
             .collect();
-        tiles.extend(self.tracks(ListId::History).into_iter().map(Tile::Track));
+        if tiles.len() < TILES_PER_ROW {
+            tiles.extend(
+                self.playlists(ListId::Library)
+                    .into_iter()
+                    .map(Tile::Playlist),
+            );
+        }
         // Whole rows only: a lone tile stretched across a row looks broken.
         let whole = tiles.len().min(TILES) / TILES_PER_ROW * TILES_PER_ROW;
         tiles.truncate(whole);
@@ -267,7 +284,7 @@ impl Shell {
                     .on_click(open_playlist(id, cx))
                     .into_any_element()
                 }
-                Tile::Track(track) => {
+                Tile::Track(list, track) => {
                     let id = track.id;
                     quick_tile(
                         theme,
@@ -276,7 +293,6 @@ impl Shell {
                         self.models.art.tracks.get(&id).cloned(),
                         false,
                         cx.listener(move |this, _, _, cx| {
-                            let list = ListId::History;
                             this.dispatch(UiIntent::Play { list, track: id }, cx);
                         }),
                     )
@@ -508,7 +524,7 @@ impl Shell {
         .into_any_element()
     }
 
-    fn playlist_card(
+    pub(crate) fn playlist_card(
         &self,
         key: &SharedString,
         ix: usize,

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use cloudrs_ui::assets;
-use cloudrs_ui::browse::sidebar_item;
+use cloudrs_ui::browse::{sidebar_collection, sidebar_item};
 use cloudrs_ui::components::{
     ButtonKind, Icon, ToastKind, artwork_tint, button, icon, icon_button, toast, tooltip,
 };
@@ -97,6 +97,8 @@ pub struct Shell {
     pub(crate) scrolls: HashMap<ListId, UniformListScrollHandle>,
     /// The profile tab showing (Tracks, Playlists, Likes).
     pub(crate) user_tab: usize,
+    /// The Library filter showing (All, Playlists, Albums).
+    pub(crate) library_tab: usize,
     pub(crate) wave: Entity<TrackWave>,
     queue: QueueState,
     queue_open: bool,
@@ -192,6 +194,7 @@ impl Shell {
             nav_seq: 0,
             scrolls: HashMap::new(),
             user_tab: 0,
+            library_tab: 0,
             wave,
             queue: QueueState::default(),
             queue_open: false,
@@ -722,7 +725,7 @@ impl Shell {
                             }))
                     }))
             }))
-            .child(div().flex_1())
+            .child(self.sidebar_playlists(theme, cx))
             .child({
                 let label = self
                     .models
@@ -741,6 +744,56 @@ impl Shell {
             })
     }
 
+    /// "Your playlists": every playlist of the library, one click away. Fills
+    /// the space between the navigation and the account item, and scrolls.
+    fn sidebar_playlists(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let c = theme.colors;
+        let playlists = match self.models.lists.get(&ListId::Library).map(|l| &l.items) {
+            Some(sc_core::ListItems::Playlists(playlists)) if self.models.account.is_some() => {
+                playlists.clone()
+            }
+            _ => Vec::new(),
+        };
+        let open = match self.router.current() {
+            Route::Playlist(id) => Some(*id),
+            _ => None,
+        };
+        let items = playlists.iter().enumerate().map(|(ix, playlist)| {
+            let id = playlist.id;
+            sidebar_collection(
+                theme,
+                ("nav-playlist", ix),
+                &playlist.title,
+                self.models.art.playlists.get(&id).cloned(),
+                open == Some(id),
+            )
+            .aria_label(i18n::playlist::open_playlist(&playlist.title))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(UiIntent::OpenPlaylist(id), cx);
+            }))
+        });
+        div()
+            .id("sidebar-playlists")
+            .flex_1()
+            .min_h(px(0.0))
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .gap(space::S1)
+            .pt(space::S4)
+            .when(!playlists.is_empty(), |list| {
+                list.child(
+                    theme
+                        .text(div(), typography::LABEL)
+                        .px(space::S4)
+                        .pb(space::S2)
+                        .text_color(c.text_subtle)
+                        .child(i18n::nav::your_playlists()),
+                )
+            })
+            .children(items)
+            .into_any_element()
+    }
     /// Opens Feed, Likes, Library or Following; the list loads the first time.
     fn open_account_list(&mut self, route: Route, cx: &mut Context<Self>) {
         let Some(list) = route.account_list() else {

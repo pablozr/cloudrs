@@ -280,6 +280,8 @@ pub mod size {
     pub const SIDEBAR_WIDTH: Pixels = px(220.0);
     pub const SIDEBAR_ITEM_HEIGHT: Pixels = px(40.0);
     pub const SIDEBAR_RAIL: Pixels = px(3.0);
+    /// Cover of a playlist in the sidebar.
+    pub const SIDEBAR_COVER: Pixels = px(28.0);
     /// Artwork or avatar of a page header.
     pub const HEADER_ART: Pixels = px(160.0);
     /// The waveform of a track page.
