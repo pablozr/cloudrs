@@ -34,8 +34,10 @@ pub fn sidebar_item(
         .h(size::SIDEBAR_ITEM_HEIGHT)
         .px(space::S4)
         .rounded(radius::M)
+        .border_1()
+        .border_color(gpui::transparent_black())
         .tab_index(0)
-        .focus_visible(move |s| s.shadow(tokens::focus_ring(c.accent)))
+        .focus_visible(move |s| s.border_color(c.accent))
         .cursor_pointer()
         .when(active, |item| item.bg(c.surface_raised).text_color(c.text))
         .when(!active, |item| {
@@ -65,6 +67,7 @@ pub fn tabs(
     on_select: impl Fn(usize, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let on_select = Rc::new(on_select);
+    let accent = theme.colors.accent;
     div()
         .id(id)
         .flex()
@@ -76,6 +79,7 @@ pub fn tabs(
             crate::components::pill(theme, (id, i), *label, i == selected)
                 .role(Role::Tab)
                 .tab_index(0)
+                .focus_visible(move |s| s.border_color(accent))
                 .aria_label(*label)
                 .on_click(move |_, window, cx| on_select(i, window, cx))
         }))
