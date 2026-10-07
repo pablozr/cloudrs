@@ -98,6 +98,23 @@ impl Queue {
         }
     }
 
+    /// Brings back a saved queue. The pre-shuffle order is not saved, so turning
+    /// shuffle off afterwards keeps the restored order.
+    pub fn restore(
+        &mut self,
+        tracks: Vec<TrackSummary>,
+        current: Option<usize>,
+        shuffle: bool,
+        repeat: Repeat,
+    ) {
+        self.entries = tracks.into_iter().map(|t| self.entry(t)).collect();
+        self.current = current.filter(|i| *i < self.entries.len());
+        self.up_next = 0;
+        self.shuffle = shuffle;
+        self.repeat = repeat;
+        self.original = self.entries.iter().map(|e| e.key).collect();
+    }
+
     /// Replaces the queue with a list, starting at `start`. With shuffle on,
     /// the start track goes first and the rest is shuffled.
     pub fn set_context(&mut self, tracks: Vec<TrackSummary>, start: usize) {
@@ -483,5 +500,17 @@ mod tests {
         assert_eq!(q.previous(), None);
         q.set_context(Vec::new(), 0);
         assert_eq!(q.snapshot().current, None);
+    }
+
+    #[test]
+    fn restore_brings_back_the_saved_state() {
+        let mut q = Queue::new(1);
+        q.restore(vec![track(1), track(2)], Some(1), true, Repeat::All);
+        let snapshot = q.snapshot();
+        assert_eq!(snapshot.current, Some(1));
+        assert!(snapshot.shuffle);
+        assert_eq!(snapshot.repeat, Repeat::All);
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), [1, 2]);
     }
 }

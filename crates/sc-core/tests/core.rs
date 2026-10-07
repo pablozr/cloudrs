@@ -122,6 +122,13 @@ impl SoundCloudApi for FakeApi {
     }
 }
 
+fn config(root: &std::path::Path) -> CoreConfig {
+    CoreConfig {
+        cache_dir: root.to_path_buf(),
+        data_dir: root.join("data"),
+    }
+}
+
 struct Harness {
     core: CoreHandle,
     api: FakeApi,
@@ -138,13 +145,7 @@ impl Harness {
         let cache =
             std::env::temp_dir().join(format!("cloudrs-core-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cache);
-        let core = sc_core::spawn(
-            api.clone(),
-            (audio_tx, audio_rx),
-            CoreConfig {
-                cache_dir: cache.clone(),
-            },
-        );
+        let core = sc_core::spawn(api.clone(), (audio_tx, audio_rx), config(&cache));
         Self {
             core,
             api,
@@ -504,4 +505,118 @@ fn repeat_one_replays_the_same_track() {
         _ => None,
     });
     assert_eq!(again.id, TrackId(1));
+}
+
+/// The database opens off the actor loop; saves before that are skipped, so
+/// tests that read the disk wait for the schema first.
+fn wait_for_store(h: &Harness) {
+    let db = h.cache.join("data/cloudrs.db");
+    for _ in 0..50 {
+        if let Ok(conn) = rusqlite::Connection::open(&db)
+            && let Ok(version) =
+                conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+            && version == 1
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+}
+
+/// Starts a second core on the same folders, as a restart would.
+fn restart(h: &Harness) -> (CoreHandle, flume::Receiver<sc_audio::Command>) {
+    let (audio_tx, audio_commands) = flume::unbounded();
+    let (_audio_events, audio_rx) = flume::unbounded();
+    let core = sc_core::spawn(h.api.clone(), (audio_tx, audio_rx), config(&h.cache));
+    (core, audio_commands)
+}
+
+#[test]
+fn restores_the_session_paused_and_resumes_from_the_saved_position() {
+    let h = Harness::new("restore");
+    wait_for_store(&h);
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.audio_events
+        .send(sc_audio::Event::Position(Duration::from_secs(42)))
+        .unwrap();
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Paused))
+        .unwrap();
+
+    // The write happens off the actor loop: restart until the latest has landed.
+    let mut restored = None;
+    for _ in 0..30 {
+        let (core, audio) = restart(&h);
+        let (mut queue, mut now, mut paused_at) = (None, None, None);
+        while let Ok(event) = core.events().recv_timeout(Duration::from_millis(300)) {
+            match event {
+                Event::Queue(q) => queue = Some(q),
+                Event::NowPlaying(track) => now = Some(track),
+                Event::Playback(p) if p.state == PlayState::Paused => {
+                    paused_at = Some(p.position);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if paused_at == Some(Duration::from_secs(42)) {
+            restored = Some((core, audio, queue, now));
+            break;
+        }
+    }
+    let (core, audio, queue, now) = restored.expect("the session was saved");
+    let queue = queue.unwrap();
+    assert_eq!(queue_ids(&queue), [1, 2]);
+    assert_eq!(queue.current, Some(0));
+    assert_eq!(now.unwrap().id, TrackId(1));
+
+    // The first play resolves the stream and starts at the saved position.
+    core.send(Command::TogglePlay);
+    let commands: Vec<_> = audio
+        .iter()
+        .filter(|c| !matches!(c, sc_audio::Command::SetVolume(_)))
+        .take(2)
+        .collect();
+    assert!(matches!(commands[0], sc_audio::Command::Load(_)));
+    assert!(matches!(
+        commands[1],
+        sc_audio::Command::Seek(at) if at == Duration::from_secs(42)
+    ));
+}
+
+#[test]
+fn records_a_track_in_the_history_after_thirty_seconds() {
+    let h = Harness::new("history");
+    wait_for_store(&h);
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    for second in 1..=31 {
+        h.audio_events
+            .send(sc_audio::Event::Position(Duration::from_secs(second)))
+            .unwrap();
+    }
+    h.wait(|e| match e {
+        Event::Playback(p) if p.position == Duration::from_secs(31) => Some(()),
+        _ => None,
+    });
+
+    let db = h.cache.join("data/cloudrs.db");
+    let mut titles = Vec::new();
+    for _ in 0..30 {
+        if let Ok(conn) = rusqlite::Connection::open(&db)
+            && let Ok(mut query) = conn.prepare("SELECT title FROM history")
+            && let Ok(rows) = query.query_map([], |row| row.get::<_, String>(0))
+        {
+            titles = rows.filter_map(Result::ok).collect();
+            if !titles.is_empty() {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(titles, ["One"]);
 }
