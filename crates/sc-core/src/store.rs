@@ -9,8 +9,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::types::{Repeat, TrackId, TrackSummary};
 
+/// Name of the database file inside the data folder.
+pub const FILE_NAME: &str = "cloudrs.db";
 /// Bumped with every schema change; `migrate` upgrades older files.
 const SCHEMA_VERSION: i32 = 1;
+/// How long a query waits when another instance has the file locked.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// A queued track with what is needed to show it without the network.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,16 +34,81 @@ pub struct Session {
     pub repeat: Repeat,
 }
 
-pub fn open(path: &Path) -> rusqlite::Result<Connection> {
-    let conn = Connection::open(path)?;
+/// Why the database could not be opened.
+#[derive(Debug)]
+pub enum OpenError {
+    /// The file is not a database (or is damaged): it can be set aside.
+    Corrupt,
+    /// Written by a newer build. It is left untouched and not used, so an older
+    /// build never downgrades it.
+    Newer(i32),
+    Io(std::io::Error),
+    Other(rusqlite::Error),
+}
+
+impl std::fmt::Display for OpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Corrupt => write!(f, "the file is not a valid database"),
+            Self::Newer(version) => write!(f, "the schema (version {version}) is newer"),
+            Self::Io(error) => write!(f, "{error}"),
+            Self::Other(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+fn classify(error: rusqlite::Error) -> OpenError {
+    use rusqlite::ErrorCode::{DatabaseCorrupt, NotADatabase};
+    match error.sqlite_error_code() {
+        Some(NotADatabase | DatabaseCorrupt) => OpenError::Corrupt,
+        _ => OpenError::Other(error),
+    }
+}
+
+/// Opens (and migrates) the database at `path`.
+pub fn open(path: &Path) -> Result<Connection, OpenError> {
+    let conn = Connection::open(path).map_err(classify)?;
+    conn.busy_timeout(BUSY_TIMEOUT).map_err(classify)?;
     migrate(&conn)?;
     Ok(conn)
 }
 
-fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-    let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+/// Like [`open`], but a damaged file is renamed to `<name>.corrupt-<unix time>`
+/// and a new one is created. The flag says the data was reset.
+pub fn open_or_reset(path: &Path) -> Result<(Connection, bool), OpenError> {
+    match open(path) {
+        Ok(conn) => Ok((conn, false)),
+        Err(OpenError::Corrupt) => {
+            let stamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let name = path.file_name().map_or_else(
+                || FILE_NAME.to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            std::fs::rename(path, path.with_file_name(format!("{name}.corrupt-{stamp}")))
+                .map_err(OpenError::Io)?;
+            Ok((open(path)?, true))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Upgrades the schema in one transaction, `user_version` included, so a
+/// failure leaves the old version intact.
+fn migrate(conn: &Connection) -> Result<(), OpenError> {
+    let version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(classify)?;
+    if version > SCHEMA_VERSION {
+        return Err(OpenError::Newer(version));
+    }
+    if version == SCHEMA_VERSION {
+        return Ok(());
+    }
+    let tx = conn.unchecked_transaction().map_err(classify)?;
     if version < 1 {
-        conn.execute_batch(
+        tx.execute_batch(
             "CREATE TABLE session (
                  id INTEGER PRIMARY KEY CHECK (id = 1),
                  current INTEGER,
@@ -65,9 +134,12 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
                  played_at INTEGER NOT NULL
              );
              CREATE INDEX history_played_at ON history (played_at);",
-        )?;
+        )
+        .map_err(classify)?;
     }
-    conn.pragma_update(None, "user_version", SCHEMA_VERSION)
+    tx.pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(classify)?;
+    tx.commit().map_err(classify)
 }
 
 fn repeat_to_int(repeat: Repeat) -> i64 {
@@ -193,6 +265,13 @@ mod tests {
         conn
     }
 
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("cloudrs-store-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     fn item(id: u64, art: Option<&str>) -> SessionTrack {
         SessionTrack {
             track: TrackSummary {
@@ -262,10 +341,8 @@ mod tests {
 
     #[test]
     fn opening_twice_keeps_data_and_the_schema_version() {
-        let dir = std::env::temp_dir().join(format!("cloudrs-store-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("twice");
         let path = dir.join("test.db");
-        let _ = std::fs::remove_file(&path);
 
         let mut conn = open(&path).unwrap();
         save_session(&mut conn, &session(&[1])).unwrap();
@@ -279,5 +356,71 @@ mod tests {
         assert!(load_session(&conn).unwrap().is_some());
         drop(conn);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_damaged_file_is_set_aside_and_replaced() {
+        let dir = temp_dir("corrupt");
+        let path = dir.join(FILE_NAME);
+        std::fs::write(
+            &path,
+            b"this is not a sqlite database, just text".repeat(50),
+        )
+        .unwrap();
+
+        let (conn, reset) = open_or_reset(&path).unwrap();
+        assert!(reset);
+        assert_eq!(load_session(&conn).unwrap(), None);
+        drop(conn);
+
+        let aside: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("cloudrs.db.corrupt-"))
+            .collect();
+        assert_eq!(aside.len(), 1);
+
+        // The next start opens the new file normally.
+        assert!(!open_or_reset(&path).unwrap().1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_newer_database_is_left_alone() {
+        let dir = temp_dir("newer");
+        let path = dir.join(FILE_NAME);
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", 99).unwrap();
+        drop(conn);
+
+        assert!(matches!(open_or_reset(&path), Err(OpenError::Newer(99))));
+        let conn = Connection::open(&path).unwrap();
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 99, "not downgraded");
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_failed_migration_leaves_the_version_unchanged() {
+        let conn = Connection::open_in_memory().unwrap();
+        // A table in the way makes the schema creation fail halfway.
+        conn.execute_batch("CREATE TABLE history (x INTEGER);")
+            .unwrap();
+        assert!(migrate(&conn).is_err());
+        let version: i32 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 0);
+        let tables: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 0, "the first tables were rolled back");
     }
 }
