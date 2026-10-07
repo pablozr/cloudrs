@@ -344,10 +344,12 @@ Design: [ADR 0007](./adr/0007-m2-queue-and-persistence.md),
 ### M3 — User account
 Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 
-- [ ] Sign in through a SoundCloud web sign-in window (`cloudrs --sign-in`, `wry`), with a pasted
+- [x] Sign in through a SoundCloud web sign-in window (`cloudrs --sign-in`, `wry`), with a pasted
       token as the fallback; token in the keychain (`sc-platform`).
-- [ ] Likes, Library, Feed, Following.
-- [ ] Like/unlike, follow/unfollow.
+- [x] Likes, Library, Feed, Following.
+- [x] Like/unlike, follow/unfollow.
+- [x] Tried on Windows 11 with a real account by the maintainer (2026-10-07).
+- [ ] Screenshots of the account screens in both themes.
 
 ### M4 — Desktop integration
 - [ ] MPRIS / Now Playing / SMTC.
