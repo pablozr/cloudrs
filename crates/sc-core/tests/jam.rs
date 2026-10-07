@@ -1,3 +1,4 @@
+#![cfg(feature = "jam")]
 //! A Jam between two cores in this process (ADR 0011): a real session over
 //! loopback, fake SoundCloud and fake audio engines.
 

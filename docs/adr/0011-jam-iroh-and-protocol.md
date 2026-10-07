@@ -131,3 +131,6 @@ host leaves.
 - Verified with two cores in one process over a loopback session: start together (under
   100 ms apart in the test), a late guest catching up, requests and permission, drift
   correction, leaving either way, a bad link.
+- The `jam` feature is on by default in `sc-session`, `sc-core` and the app. Without it,
+  `sc-session` builds none of iroh's crates and a session ends at once as unreachable, so the
+  core and the UI need no `cfg` of their own.

@@ -1,3 +1,4 @@
+#![cfg(feature = "jam")]
 //! A host and guests on this machine, without relays or internet.
 
 use std::time::Duration;

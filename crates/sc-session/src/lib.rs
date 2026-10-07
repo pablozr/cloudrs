@@ -11,8 +11,11 @@
 //! thread with a small Tokio runtime and talks through flume channels, so no
 //! async type crosses the boundary. Dropping the [`Session`] ends it.
 
+#[cfg(feature = "jam")]
 mod guest;
+#[cfg(feature = "jam")]
 mod host;
+#[cfg(feature = "jam")]
 mod net;
 pub mod protocol;
 
@@ -130,17 +133,37 @@ pub struct Session {
 impl Session {
     /// Starts hosting. [`SessionEvent::Started`] carries the link.
     pub fn host(network: Network) -> Self {
-        Self::spawn(move |clock, commands, events, stop| {
+        #[cfg(feature = "jam")]
+        return Self::spawn(move |clock, commands, events, stop| {
             host::run(network, clock, commands, events, stop)
-        })
+        });
+        #[cfg(not(feature = "jam"))]
+        {
+            let _ = network;
+            Self::unavailable()
+        }
     }
 
     /// Joins the Jam behind `link`, introducing this person as `name`.
     pub fn join(link: &str, name: String) -> Self {
-        let link = link.trim().to_owned();
-        Self::spawn(move |clock, commands, events, stop| {
-            guest::run(link, name, clock, commands, events, stop)
-        })
+        #[cfg(feature = "jam")]
+        {
+            let link = link.trim().to_owned();
+            Self::spawn(move |clock, commands, events, stop| {
+                guest::run(link, name, clock, commands, events, stop)
+            })
+        }
+        #[cfg(not(feature = "jam"))]
+        {
+            let _ = (link, name);
+            Self::unavailable()
+        }
+    }
+
+    /// A build without the `jam` feature: the session ends at once.
+    #[cfg(not(feature = "jam"))]
+    fn unavailable() -> Self {
+        Self::spawn(|_, _, _, _| async { Ended::Unreachable("built without Jam".into()) })
     }
 
     fn spawn<F, Fut>(run: F) -> Self
