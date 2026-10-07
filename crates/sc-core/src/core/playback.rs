@@ -214,6 +214,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     pub(super) fn start_stream(&mut self, track: Track, start_at: Option<Duration>) {
         let id = TrackId(track.id);
+        self.emit(Event::NowPlayingLinks {
+            track: id,
+            cover_url: track.artwork("t500x500"),
+            page_url: Some(track.permalink_url.clone()).filter(|url| !url.is_empty()),
+        });
         let generation = self.play_gen;
         let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
         let waveform_url = track.waveform_url.clone();

@@ -424,3 +424,21 @@ pub mod playlists {
         new_cover(name) { en: "New cover for {name}" }
     }
 }
+
+/// What Discord shows (ADR 0015), and the Account screen's switch.
+pub mod discord {
+    strings! {
+        listen_on_soundcloud { en: "Listen on SoundCloud" }
+        get_cloudrs { en: "Get cloudrs" }
+        playing { en: "Playing on cloudrs" }
+        paused { en: "Paused" }
+        setting { en: "Show what I play on Discord" }
+        setting_hint { en: "Your Discord profile shows the track, its cover and a link to it. Nothing goes through a server of ours." }
+        on { en: "On" }
+        off { en: "Off" }
+    }
+    formats! {
+        by(artist) { en: "by {artist}" }
+        in_jam(artist, people) { en: "by {artist} \u{b7} in a Jam of {people}" }
+    }
+}

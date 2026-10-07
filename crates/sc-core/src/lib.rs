@@ -222,6 +222,13 @@ pub enum Event {
         playlist: PlaylistSummary,
         change: PlaylistChange,
     },
+    /// Where the current track lives on the web: its cover (500 px) and its
+    /// page, for the system's and Discord's "now playing".
+    NowPlayingLinks {
+        track: TrackId,
+        cover_url: Option<String>,
+        page_url: Option<String>,
+    },
     /// The Jam changed (people, link, permissions); `None` once it is over.
     Jam(Option<JamState>),
     /// Something the person should know about (playing, pasted links, audio).

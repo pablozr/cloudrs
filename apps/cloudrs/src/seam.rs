@@ -130,7 +130,7 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             }
         }
         // The toast comes from the shell; the page and list follow as events.
-        Event::PlaylistSaved { .. } => false,
+        Event::PlaylistSaved { .. } | Event::NowPlayingLinks { .. } => false,
         Event::HomeShelves(shelves) => {
             models.home_shelves.clone_from(shelves);
             true

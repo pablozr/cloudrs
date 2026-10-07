@@ -34,6 +34,7 @@ use crate::state::{QueueState, is_soundcloud_url};
 use crate::tint::{self, Rgb};
 
 pub(crate) mod playlist_ui;
+pub(crate) mod presence;
 pub(crate) mod queue_panel;
 
 actions!(shell, [FocusSearch, GoBack, GoForward]);
@@ -118,6 +119,8 @@ pub struct Shell {
     pub(crate) form: playlist_ui::PlaylistForm,
     /// Puts back the last track removed from a playlist ("Undo").
     pub(crate) pending_undo: Option<Command>,
+    /// What plays, shown on Discord.
+    pub(crate) discord: presence::DiscordPresence,
     toast: Option<ToastState>,
     toast_timer: Option<Task<()>>,
     toasts_shown: usize,
@@ -199,6 +202,7 @@ impl Shell {
                 .unwrap_or(true)
         });
 
+        let discord = presence::DiscordPresence::new(&config.data_dir);
         let mut shell = Self {
             core: start_core(&config),
             config,
@@ -223,6 +227,7 @@ impl Shell {
             name_field,
             form,
             pending_undo: None,
+            discord,
             toast: None,
             toast_timer: None,
             toasts_shown: 0,
@@ -291,6 +296,7 @@ impl Shell {
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         // Models first: the player reads the artwork they collect.
         let changed = seam::apply(&mut self.models, &event);
+        self.discord_event(&event);
         let queue_changed = self.queue.apply(&event);
         if let Event::Searching { kind, .. } = &event
             && let Some(scroll) = self.scrolls.get(&ListId::Search { kind: *kind })
@@ -352,7 +358,8 @@ impl Shell {
             | Event::Liked { .. }
             | Event::Followed { .. }
             | Event::Jam(_)
-            | Event::HomeShelves(_) => {}
+            | Event::HomeShelves(_)
+            | Event::NowPlayingLinks { .. } => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
