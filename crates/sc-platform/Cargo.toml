@@ -1,0 +1,13 @@
+[package]
+name = "sc-platform"
+description = "cloudrs OS integration: keychain and the SoundCloud sign-in window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+keyring = "4"
+tao = "0.37"
+tracing = "0.1"
+wry = "0.57"

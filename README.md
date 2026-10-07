@@ -72,11 +72,13 @@ GPUI's native animations. Colors, type, motion and components are documented in
 
 ## Getting started
 
-**Requirements:** stable Rust. On Linux, the audio and windowing development packages:
+**Requirements:** stable Rust. On Linux, the audio, windowing and webview (sign-in window)
+development packages:
 
 ```sh
 sudo apt install libasound2-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
-  libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig-dev libzstd-dev
+  libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig-dev libzstd-dev \
+  libwebkit2gtk-4.1-dev libgtk-3-dev
 ```
 
 ```sh

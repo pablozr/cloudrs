@@ -6,6 +6,7 @@ members = [
     "crates/sc-api",
     "crates/sc-audio",
     "crates/sc-core",
+    "crates/sc-platform",
     "tests/architecture",
 ]
 

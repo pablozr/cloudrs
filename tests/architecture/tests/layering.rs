@@ -1,7 +1,8 @@
 //! Layering rules (docs/PLAN.md §3, ADR 0001):
 //! - only the app and the UI kit may depend on GPUI;
 //! - `sc-api` and `sc-audio` never depend on each other;
-//! - library crates never depend on the app.
+//! - library crates never depend on the app;
+//! - `sc-platform` stands alone and only the app uses it.
 
 use std::path::{Path, PathBuf};
 
@@ -96,6 +97,27 @@ fn the_core_knows_nothing_about_the_ui() {
         if name == "sc-core" {
             assert!(!depends_on(&deps, "gpui"));
             assert!(!deps.contains(&"cloudrs-ui".to_owned()));
+        }
+    }
+}
+
+#[test]
+fn the_platform_layer_stands_alone() {
+    for (name, deps) in members() {
+        if name == "sc-platform" {
+            for other in ["sc-api", "sc-audio", "sc-core", "cloudrs-ui", "cloudrs"] {
+                assert!(
+                    !deps.contains(&other.to_owned()),
+                    "sc-platform depends on {other}"
+                );
+            }
+            assert!(!depends_on(&deps, "gpui"));
+        }
+        if name != "cloudrs" {
+            assert!(
+                !deps.contains(&"sc-platform".to_owned()),
+                "only the app may use sc-platform, not {name}"
+            );
         }
     }
 }
