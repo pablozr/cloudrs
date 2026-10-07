@@ -6,149 +6,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sc_core::{
-    ArtKey, Event, ListId, ListItems, PlayState, Playback, QueueSnapshot, Repeat, SearchKind,
-    TrackId, TrackSummary,
-};
-
-/// The only list the screen draws for now: the track results of the search.
-pub const TRACK_SEARCH: ListId = ListId::Search {
-    kind: SearchKind::Tracks,
-};
+use sc_core::{ArtKey, Event, PlayState, Playback, QueueSnapshot, Repeat, TrackId, TrackSummary};
 
 /// Artwork files by track, as the core reports them.
 pub type ArtworkMap = HashMap<TrackId, Arc<Path>>;
-
-/// How close to the end of the list (in rows) the next page is requested.
-const LOAD_MORE_MARGIN: usize = 5;
-
-/// What the results area shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
-    /// Nothing searched yet, or the query was cleared.
-    Empty,
-    Searching,
-    Ready,
-    /// The search failed; the person can try again.
-    Failed,
-}
-
-#[derive(Debug)]
-pub struct ResultsState {
-    pub phase: Phase,
-    /// The query the core is working on or showed last.
-    pub query: String,
-    pub tracks: Vec<TrackSummary>,
-    pub has_more: bool,
-    pub loading_more: bool,
-    /// Never cleared: the core sends each artwork once, so a repeated search
-    /// would otherwise come back without covers.
-    pub artwork: ArtworkMap,
-    /// The track the player is on, for the active row.
-    pub current: Option<TrackId>,
-    /// The player is playing (the equalizer moves), not paused or loading.
-    pub playing: bool,
-}
-
-impl ResultsState {
-    pub fn new() -> Self {
-        Self {
-            phase: Phase::Empty,
-            query: String::new(),
-            tracks: Vec::new(),
-            has_more: false,
-            loading_more: false,
-            artwork: HashMap::new(),
-            current: None,
-            playing: false,
-        }
-    }
-
-    /// Applies a core event. Returns whether anything the list shows changed,
-    /// so playback ticks never re-render it.
-    pub fn apply(&mut self, event: &Event) -> bool {
-        match event {
-            Event::Searching {
-                query,
-                kind: SearchKind::Tracks,
-            } => {
-                self.query.clone_from(query);
-                self.phase = Phase::Searching;
-                self.loading_more = false;
-                true
-            }
-            Event::List {
-                list: TRACK_SEARCH,
-                items: ListItems::Tracks(tracks),
-                append,
-                has_more,
-            } => {
-                if *append {
-                    self.tracks.extend(tracks.iter().cloned());
-                } else {
-                    self.tracks.clone_from(tracks);
-                    // A list without a preceding `Searching` is a cleared query.
-                    self.phase = if self.phase == Phase::Searching {
-                        Phase::Ready
-                    } else {
-                        Phase::Empty
-                    };
-                }
-                self.has_more = *has_more;
-                self.loading_more = false;
-                true
-            }
-            Event::ListFailed {
-                list: TRACK_SEARCH,
-                append,
-                ..
-            } => {
-                if *append {
-                    // The core drops the next page when loading it fails and will
-                    // not offer it again, so stop asking.
-                    self.loading_more = false;
-                    self.has_more = false;
-                    return true;
-                }
-                if self.phase != Phase::Searching {
-                    return false;
-                }
-                self.phase = Phase::Failed;
-                true
-            }
-            Event::NowPlaying(track) => {
-                self.current = Some(track.id);
-                self.playing = false;
-                true
-            }
-            Event::Playback(playback) => {
-                let playing = playback.state == PlayState::Playing;
-                std::mem::replace(&mut self.playing, playing) != playing
-            }
-            Event::Artwork {
-                key: ArtKey::Track(track),
-                path,
-            } => {
-                self.artwork.insert(*track, Arc::from(path.as_path()));
-                self.tracks.iter().any(|t| t.id == *track)
-            }
-            // Playback problems only drive the toast, never the results; the
-            // other screens' events are not drawn yet.
-            _ => false,
-        }
-    }
-
-    /// True once per page: when the rows on screen end near the end of the
-    /// list and the core has more. Marks the page as loading.
-    pub fn take_load_more(&mut self, visible_end: usize) -> bool {
-        let near_end = visible_end + LOAD_MORE_MARGIN >= self.tracks.len();
-        if self.phase != Phase::Ready || !self.has_more || self.loading_more || !near_end {
-            return false;
-        }
-        self.loading_more = true;
-        true
-    }
-}
 
 /// The queue as the core last reported it: the one source of truth.
 #[derive(Debug, Default)]
@@ -285,6 +146,22 @@ pub fn format_time(time: Duration) -> String {
     }
 }
 
+/// `842`, `1.2K`, `3.4M`: a count short enough for a meta line.
+pub fn compact_count(count: u64) -> String {
+    let (unit, suffix) = match count {
+        0..=999 => return count.to_string(),
+        1_000..=999_499 => (1_000.0, "K"),
+        _ => (1_000_000.0, "M"),
+    };
+    let value = count as f64 / unit;
+    // One decimal below 10, none above (`12K`), and `1K` rather than `1.0K`.
+    if value < 10.0 && (value * 10.0).round() % 10.0 != 0.0 {
+        format!("{value:.1}{suffix}")
+    } else {
+        format!("{value:.0}{suffix}")
+    }
+}
+
 /// Whether pasted search text is a soundcloud.com link (`http(s)://`, with an
 /// optional `www.` or `m.`) that should be played instead of searched.
 pub fn is_soundcloud_url(text: &str) -> bool {
@@ -318,33 +195,9 @@ mod tests {
             id: TrackId(id),
             title: format!("Track {id}"),
             artist: "Artist".into(),
-            artist_id: None,
             duration: Duration::from_secs(200),
+            artist_id: None,
             preview_only: false,
-        }
-    }
-
-    fn searching(query: &str) -> Event {
-        Event::Searching {
-            query: query.into(),
-            kind: SearchKind::Tracks,
-        }
-    }
-
-    fn results(ids: &[u64], append: bool, has_more: bool) -> Event {
-        Event::List {
-            list: TRACK_SEARCH,
-            items: ListItems::Tracks(ids.iter().map(|id| track(*id)).collect()),
-            append,
-            has_more,
-        }
-    }
-
-    fn search_failed(append: bool) -> Event {
-        Event::ListFailed {
-            list: TRACK_SEARCH,
-            append,
-            problem: Problem::Offline,
         }
     }
 
@@ -355,135 +208,6 @@ mod tests {
             duration: Duration::from_secs(duration),
             volume: 0.5,
         })
-    }
-
-    fn ready(ids: &[u64], has_more: bool) -> ResultsState {
-        let mut state = ResultsState::new();
-        state.apply(&searching("house"));
-        state.apply(&results(ids, false, has_more));
-        state
-    }
-
-    #[test]
-    fn a_search_shows_loading_then_replaces_the_results() {
-        let mut state = ready(&[1, 2], false);
-        assert!(state.apply(&searching("techno")));
-        assert_eq!(state.phase, Phase::Searching);
-
-        state.apply(&results(&[3], false, true));
-        assert_eq!(state.phase, Phase::Ready);
-        assert_eq!(state.tracks, vec![track(3)]);
-        assert!(state.has_more);
-    }
-
-    #[test]
-    fn a_next_page_is_appended() {
-        let mut state = ready(&[1, 2], true);
-        state.loading_more = true;
-        state.apply(&results(&[3, 4], true, false));
-        let ids: Vec<u64> = state.tracks.iter().map(|t| t.id.0).collect();
-        assert_eq!(ids, [1, 2, 3, 4]);
-        assert!(!state.has_more);
-        assert!(!state.loading_more);
-    }
-
-    #[test]
-    fn an_empty_query_returns_to_the_initial_state() {
-        let mut state = ready(&[1], false);
-        state.apply(&results(&[], false, false));
-        assert_eq!(state.phase, Phase::Empty);
-        assert!(state.tracks.is_empty());
-    }
-
-    #[test]
-    fn a_failed_search_leaves_loading_and_can_be_retried() {
-        let mut state = ResultsState::new();
-        state.apply(&searching("house"));
-        assert!(state.apply(&search_failed(false)));
-        assert_eq!(state.phase, Phase::Failed);
-        assert_eq!(state.query, "house");
-    }
-
-    #[test]
-    fn an_audio_problem_during_a_search_keeps_the_skeleton() {
-        let mut state = ResultsState::new();
-        state.apply(&searching("house"));
-        let audio = Event::Problem(Problem::Audio("device lost".into()));
-        assert!(!state.apply(&audio));
-        assert_eq!(state.phase, Phase::Searching);
-    }
-
-    #[test]
-    fn a_playback_problem_keeps_the_results() {
-        let mut state = ready(&[1], false);
-        assert!(!state.apply(&Event::Problem(Problem::CannotPlay)));
-        assert_eq!(state.phase, Phase::Ready);
-    }
-
-    #[test]
-    fn a_failed_next_page_stops_asking_for_more() {
-        let mut state = ready(&[1, 2], true);
-        assert!(state.take_load_more(2));
-        assert!(state.apply(&search_failed(true)));
-        assert!(!state.loading_more);
-        assert!(!state.take_load_more(2));
-        assert_eq!(state.phase, Phase::Ready);
-    }
-
-    #[test]
-    fn a_playback_problem_during_load_more_keeps_paging() {
-        let mut state = ready(&[1, 2], true);
-        assert!(state.take_load_more(2));
-        assert!(!state.apply(&Event::Problem(Problem::CannotPlay)));
-        assert!(state.loading_more);
-        assert!(state.has_more);
-    }
-
-    #[test]
-    fn load_more_fires_once_near_the_end() {
-        let ids: Vec<u64> = (1..=30).collect();
-        let mut state = ready(&ids, true);
-        assert!(!state.take_load_more(10), "far from the end");
-        assert!(state.take_load_more(26), "within the margin");
-        assert!(!state.take_load_more(30), "already loading");
-
-        state.apply(&results(&[31], true, true));
-        assert!(state.take_load_more(31), "the next page can be requested");
-    }
-
-    #[test]
-    fn load_more_needs_more_pages_and_ready_results() {
-        let mut last_page = ready(&[1, 2], false);
-        assert!(!last_page.take_load_more(2));
-
-        let mut state = ready(&[1, 2], true);
-        state.apply(&searching("x"));
-        assert!(!state.take_load_more(2));
-    }
-
-    #[test]
-    fn the_active_row_follows_the_player_without_ticks_re_rendering() {
-        let mut state = ready(&[1, 2], false);
-        assert!(state.apply(&Event::NowPlaying(track(2))));
-        assert_eq!(state.current, Some(TrackId(2)));
-
-        assert!(state.apply(&playback(PlayState::Playing, 0, 200)));
-        assert!(state.playing);
-        assert!(!state.apply(&playback(PlayState::Playing, 1, 200)), "tick");
-        assert!(state.apply(&playback(PlayState::Paused, 1, 200)));
-        assert!(!state.playing);
-    }
-
-    #[test]
-    fn artwork_is_kept_and_only_visible_rows_re_render() {
-        let mut state = ready(&[1], false);
-        let artwork = |id: u64| Event::Artwork {
-            key: ArtKey::Track(TrackId(id)),
-            path: PathBuf::from(format!("/cache/{id}.jpg")),
-        };
-        assert!(state.apply(&artwork(1)));
-        assert!(!state.apply(&artwork(9)), "not in the list");
-        assert!(state.artwork.contains_key(&TrackId(9)));
     }
 
     #[test]
@@ -610,6 +334,22 @@ mod tests {
         assert_eq!(format_time(Duration::from_secs(0)), "00:00");
         assert_eq!(format_time(Duration::from_secs(225)), "03:45");
         assert_eq!(format_time(Duration::from_secs(3725)), "1:02:05");
+    }
+
+    #[test]
+    fn counts_are_shortened() {
+        for (count, text) in [
+            (0, "0"),
+            (999, "999"),
+            (1_000, "1K"),
+            (1_234, "1.2K"),
+            (12_400, "12K"),
+            (999_499, "999K"),
+            (999_999, "1M"),
+            (3_400_000, "3.4M"),
+        ] {
+            assert_eq!(compact_count(count), text, "{count}");
+        }
     }
 
     #[test]

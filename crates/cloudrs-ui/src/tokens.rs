@@ -249,4 +249,15 @@ pub mod size {
     /// Skeleton text blocks.
     pub const SKELETON_TITLE_WIDTH: Pixels = px(220.0);
     pub const SKELETON_ARTIST_WIDTH: Pixels = px(140.0);
+    pub const SKELETON_HEADER_TITLE_WIDTH: Pixels = px(320.0);
+    /// The sidebar, and the accent rail on its active item.
+    pub const SIDEBAR_WIDTH: Pixels = px(220.0);
+    pub const SIDEBAR_ITEM_HEIGHT: Pixels = px(40.0);
+    pub const SIDEBAR_RAIL: Pixels = px(3.0);
+    /// Artwork or avatar of a page header.
+    pub const HEADER_ART: Pixels = px(160.0);
+    /// The waveform of a track page.
+    pub const WAVEFORM_LARGE_HEIGHT: Pixels = px(96.0);
+    /// Longest the text of a track description grows on a page.
+    pub const DESCRIPTION_MAX_WIDTH: Pixels = px(720.0);
 }

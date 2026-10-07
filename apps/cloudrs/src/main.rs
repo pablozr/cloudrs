@@ -1,7 +1,12 @@
 //! cloudrs: the desktop app and composition root.
 
 mod i18n;
+mod intent;
+mod models;
+mod nav;
 mod player_bar;
+mod screens;
+mod seam;
 mod shell;
 mod state;
 

@@ -1,0 +1,53 @@
+//! The screens of the router (ADR 0008), drawn from the app-local view
+//! models. Each is an `impl Shell` block in its own file; the one list
+//! component they share is in `list`.
+
+mod history;
+mod list;
+mod playlist;
+mod search;
+mod track;
+mod user;
+
+use cloudrs_ui::browse::skeleton_header;
+use cloudrs_ui::tokens::space;
+use cloudrs_ui::{Theme, motion};
+use gpui::prelude::*;
+use gpui::{AnyElement, Context, div};
+
+pub use track::{TrackWave, WaveAction};
+
+use crate::i18n;
+use crate::nav::Route;
+use crate::shell::{Shell, status_view};
+
+impl Shell {
+    /// The screen of the current route. A new `nav_seq` replays the entrance.
+    pub(crate) fn screen(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let page = match self.router.current().clone() {
+            Route::Search => self.search_screen(theme, cx),
+            Route::Track(id) => self.track_screen(id, theme, cx),
+            Route::User(id) => self.user_screen(id, theme, cx),
+            Route::Playlist(id) => self.playlist_screen(id, theme, cx),
+            Route::History => self.history_screen(theme, cx),
+            Route::Resolving(_) => div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(div().pt(space::S6).child(skeleton_header(
+                    theme,
+                    "resolving-skeleton",
+                    false,
+                )))
+                .child(div().flex_1().child(status_view(
+                    theme,
+                    "resolving",
+                    i18n::page::resolving_title(),
+                    i18n::page::resolving_hint(),
+                    None,
+                )))
+                .into_any_element(),
+        };
+        motion::page_in(("page", self.nav_seq), div().size_full().child(page)).into_any_element()
+    }
+}

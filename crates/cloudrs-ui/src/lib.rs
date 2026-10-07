@@ -5,6 +5,7 @@
 //! - Screens reach tokens through [`Theme`], never by value.
 //! - Motion goes through [`motion`]; GPUI honours the OS "reduce motion" setting.
 
+pub mod browse;
 pub mod components;
 pub mod fonts;
 pub mod motion;
