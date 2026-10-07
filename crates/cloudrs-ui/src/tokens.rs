@@ -200,6 +200,9 @@ pub const DISABLED_OPACITY: f32 = 0.4;
 pub const PLACEHOLDER_BARS: usize = 96;
 pub const PLACEHOLDER_LEVEL: f32 = 0.18;
 
+/// Share of a waveform bar's slot taken by the gap, up to `size::WAVEFORM_GAP`.
+pub const WAVEFORM_GAP_RATIO: f32 = 0.4;
+
 /// Fixed dimensions of components.
 pub mod size {
     use super::*;
@@ -216,6 +219,10 @@ pub mod size {
     pub const PLAYER_INFO_WIDTH: Pixels = px(260.0);
     pub const PLAY_BUTTON: Pixels = px(44.0);
     pub const WAVEFORM_HEIGHT: Pixels = px(32.0);
+    /// Widest gap between waveform bars, and the thinnest a bar gets on a
+    /// narrow strip.
+    pub const WAVEFORM_GAP: Pixels = px(2.0);
+    pub const WAVEFORM_BAR_MIN: Pixels = px(0.5);
     /// Round icon buttons (previous, next, shuffle, repeat, queue).
     pub const ICON_BUTTON: Pixels = px(34.0);
     /// The queue side panel.

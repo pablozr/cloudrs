@@ -150,6 +150,15 @@ impl QueueState {
         true
     }
 
+    /// Whether `event` brings the cover of a queued track, so an open panel
+    /// must redraw (restored, autoplay and older-search tracks included).
+    pub fn shows_artwork_of(&self, event: &Event) -> bool {
+        let Event::Artwork { track, .. } = event else {
+            return false;
+        };
+        self.snapshot.tracks.iter().any(|t| t.id == *track)
+    }
+
     /// The current track cannot be removed (the core refuses it too).
     pub fn can_remove(&self, index: usize) -> bool {
         self.snapshot.current != Some(index)
@@ -525,6 +534,19 @@ mod tests {
         assert!(queue.apply(&snapshot(&[1, 2, 3], Some(1))));
         assert_eq!(queue.snapshot.current, Some(1));
         assert_eq!(queue.snapshot.tracks.len(), 3);
+    }
+
+    #[test]
+    fn a_cover_of_a_queued_track_redraws_the_panel() {
+        let mut queue = QueueState::default();
+        queue.apply(&snapshot(&[1, 2], Some(0)));
+        let artwork = |id: u64| Event::Artwork {
+            track: TrackId(id),
+            path: PathBuf::from("/cache/x.jpg"),
+        };
+        assert!(queue.shows_artwork_of(&artwork(2)));
+        assert!(!queue.shows_artwork_of(&artwork(9)));
+        assert!(!queue.shows_artwork_of(&Event::Problem(Problem::Offline)));
     }
 
     #[test]
