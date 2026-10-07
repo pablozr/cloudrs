@@ -422,13 +422,17 @@ impl SoundCloudApi for ScClient {
         self.get_json(&format!("system-playlists/{urn}"), &[]).await
     }
 
-    async fn create_playlist(&self, title: &str, public: bool, tracks: &[u64]) -> Result<Playlist> {
-        let body = serde_json::json!({ "playlist": {
-            "title": title,
-            "sharing": crate::models::sharing(public),
-            "tracks": tracks,
-        }});
+    async fn create_playlist(&self, playlist: &PlaylistEdit) -> Result<Playlist> {
+        let body = serde_json::json!({ "playlist": playlist });
         self.send_json(Method::POST, "playlists", &body).await
+    }
+
+    async fn set_playlist_artwork(&self, id: u64, image: &[u8]) -> Result<()> {
+        // As soundcloud.com does: the bytes in base64, in JSON.
+        let body = serde_json::json!({ "image_data": crate::base64::encode(image) });
+        let url = format!("playlists/soundcloud:playlists:{id}/artwork");
+        self.send(Method::PUT, &url, &[], Some(&body)).await?;
+        Ok(())
     }
 
     async fn edit_playlist(&self, id: u64, edit: &PlaylistEdit) -> Result<Playlist> {

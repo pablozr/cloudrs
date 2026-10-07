@@ -292,7 +292,9 @@ pub mod size {
     pub const MENU_MAX_HEIGHT: Pixels = px(320.0);
     pub const MENU_ITEM_HEIGHT: Pixels = px(36.0);
     /// A dialog (name a playlist, confirm a delete).
-    pub const DIALOG_WIDTH: Pixels = px(420.0);
+    pub const DIALOG_WIDTH: Pixels = px(520.0);
+    /// The cover picked for a new playlist.
+    pub const COVER_PICKER: Pixels = px(120.0);
     /// Avatars of the people in a Jam: in the title bar pill, and on its screen.
     pub const AVATAR_S: Pixels = px(24.0);
     pub const AVATAR_M: Pixels = px(40.0);

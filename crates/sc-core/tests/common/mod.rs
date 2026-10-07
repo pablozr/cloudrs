@@ -426,19 +426,18 @@ impl SoundCloudApi for FakeApi {
         })
     }
 
-    async fn create_playlist(
-        &self,
-        title: &str,
-        public: bool,
-        tracks: &[u64],
-    ) -> sc_api::Result<Playlist> {
-        self.log(format!("create_playlist {title} {public} {tracks:?}"));
+    async fn create_playlist(&self, playlist: &PlaylistEdit) -> sc_api::Result<Playlist> {
+        self.log(format!("create_playlist {playlist:?}"));
         Ok(Playlist {
             id: 40,
-            title: title.into(),
-            sharing: Some(sc_api::models::sharing(public).into()),
+            title: playlist.title.clone().unwrap_or_default(),
+            sharing: playlist.sharing.clone(),
             ..Playlist::default()
         })
+    }
+    async fn set_playlist_artwork(&self, id: u64, image: &[u8]) -> sc_api::Result<()> {
+        self.log(format!("set_playlist_artwork {id} {} bytes", image.len()));
+        Ok(())
     }
 
     async fn edit_playlist(&self, id: u64, edit: &PlaylistEdit) -> sc_api::Result<Playlist> {

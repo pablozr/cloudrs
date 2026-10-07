@@ -114,6 +114,8 @@ pub struct Shell {
     pub(crate) dialog: Option<playlist_ui::Dialog>,
     /// The name of a playlist being created or renamed.
     pub(crate) name_field: Entity<SearchField>,
+    /// The rest of a new playlist: description, genre, tags, privacy, cover.
+    pub(crate) form: playlist_ui::PlaylistForm,
     /// Puts back the last track removed from a playlist ("Undo").
     pub(crate) pending_undo: Option<Command>,
     toast: Option<ToastState>,
@@ -150,6 +152,7 @@ impl Shell {
         let name_field = cx.new(|cx| {
             SearchField::new(i18n::playlists::name_placeholder(), "", cx).with_icon(Icon::Rename)
         });
+        let form = playlist_ui::PlaylistForm::new(cx);
 
         let token_field = cx.new(|cx| {
             SearchField::new(i18n::account::token_placeholder(), "", cx).with_icon(Icon::SignIn)
@@ -218,6 +221,7 @@ impl Shell {
             playlist_menu: None,
             dialog: None,
             name_field,
+            form,
             pending_undo: None,
             toast: None,
             toast_timer: None,
@@ -461,6 +465,9 @@ impl Shell {
             Problem::SessionExpired => (ToastKind::Warning, t::session_expired()),
             Problem::SignInRequired => (ToastKind::Info, t::sign_in_required()),
             Problem::PlaylistNotSaved => (ToastKind::Error, t::playlist_not_saved()),
+            Problem::PlaylistCoverNotSaved => {
+                (ToastKind::Warning, i18n::playlists::cover_not_saved())
+            }
             Problem::JamUnreachable => (ToastKind::Error, t::jam_unreachable()),
             Problem::JamBadLink => (ToastKind::Error, t::jam_bad_link()),
             Problem::JamEnded => (ToastKind::Info, t::jam_ended()),

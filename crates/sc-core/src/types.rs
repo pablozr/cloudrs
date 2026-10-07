@@ -231,6 +231,7 @@ pub struct PlaylistPage {
     pub is_album: bool,
     /// Public or private (only its owner sees a private one).
     pub public: bool,
+    pub description: Option<String>,
 }
 
 impl PlaylistPage {
@@ -244,6 +245,10 @@ impl PlaylistPage {
             duration: Duration::from_millis(playlist.duration),
             is_album: is_album(playlist),
             public: playlist.sharing.as_deref() != Some("private"),
+            description: playlist
+                .description
+                .clone()
+                .filter(|d| !d.trim().is_empty()),
         }
     }
 }
@@ -294,6 +299,9 @@ pub enum Problem {
     SignInRequired,
     /// A change to one of the person's playlists could not be saved.
     PlaylistNotSaved,
+    /// The playlist was saved, but its cover image was not (too large, or
+    /// not an image SoundCloud takes).
+    PlaylistCoverNotSaved,
     /// The Jam could not start or its host could not be reached.
     JamUnreachable,
     /// The text is not a Jam link.
@@ -476,4 +484,41 @@ pub enum PlaylistChange {
         public: bool,
     },
     Deleted,
+    Described,
+    /// A new cover image.
+    Cover,
+}
+
+/// What a new playlist starts with (`Command::CreatePlaylist`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewPlaylist {
+    pub title: String,
+    pub description: String,
+    pub public: bool,
+    pub genre: String,
+    pub tags: Vec<String>,
+    /// An image file for the cover; SoundCloud's default (the first track's)
+    /// without one.
+    pub cover: Option<std::path::PathBuf>,
+    /// A first track.
+    pub track: Option<TrackId>,
+}
+
+impl NewPlaylist {
+    /// SoundCloud's tag list: space-separated, a tag with spaces in quotes.
+    pub(crate) fn tag_list(&self) -> String {
+        self.tags
+            .iter()
+            .map(|tag| tag.trim())
+            .filter(|tag| !tag.is_empty())
+            .map(|tag| {
+                if tag.contains(' ') {
+                    format!("\"{tag}\"")
+                } else {
+                    tag.to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }

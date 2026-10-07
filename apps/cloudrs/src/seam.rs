@@ -444,6 +444,7 @@ mod tests {
             duration: Duration::from_secs(600),
             is_album: false,
             public: true,
+            description: None,
         };
         models.expect_track(TrackId(5));
         assert!(apply(&mut models, &Event::TrackPage(track_page.clone())));

@@ -152,6 +152,9 @@ pub struct Playlist {
     pub set_type: Option<String>,
     /// `public` or `private`.
     pub sharing: Option<String>,
+    pub description: Option<String>,
+    pub genre: Option<String>,
+    pub tag_list: Option<String>,
     pub user: Option<UserSummary>,
     /// The first tracks come complete; the rest only carry an `id`.
     pub tracks: Vec<Track>,
@@ -251,9 +254,16 @@ pub enum SelectionItem {
 pub struct PlaylistEdit {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// `public` or `private`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sharing: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub genre: Option<String>,
+    /// Tags separated by spaces; one with spaces goes in double quotes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_list: Option<String>,
     /// The whole track list, in order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tracks: Option<Vec<u64>>,

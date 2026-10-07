@@ -47,7 +47,7 @@ type AudioLink = (
 enum Input {
     /// SoundCloud's answer to a change of one of the person's playlists.
     PlaylistEdited {
-        result: sc_api::Result<Box<(Playlist, crate::types::PlaylistChange)>>,
+        result: sc_api::Result<Box<playlists::Saved>>,
     },
     /// SoundCloud's home rows and charts, in that order.
     HomeFetched {
@@ -542,13 +542,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Command::SignOut => self.sign_out(),
             Command::Like { track, liked } => self.like(track, liked),
             Command::Follow { user, following } => self.follow(user, following),
-            Command::CreatePlaylist { title, track } => self.edit_playlist(
-                None,
-                playlists::Edit::Create {
-                    title: title.trim().to_owned(),
-                    track,
-                },
-            ),
+            Command::CreatePlaylist(new) => {
+                self.edit_playlist(None, playlists::Edit::Create(Box::new(new)));
+            }
+            Command::SetPlaylistDescription {
+                playlist,
+                description,
+            } => self.edit_playlist(Some(playlist), playlists::Edit::Describe(description)),
+            Command::SetPlaylistCover { playlist, cover } => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Cover(cover));
+            }
             Command::AddToPlaylist {
                 playlist,
                 track,

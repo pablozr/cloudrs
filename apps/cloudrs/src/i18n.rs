@@ -385,7 +385,17 @@ pub mod playlists {
         new_playlist { en: "New playlist\u{2026}" }
         new_playlist_title { en: "New playlist" }
         name_placeholder { en: "Playlist name" }
-        private_hint { en: "It starts private: only you can see it until you make it public." }
+        private_hint { en: "Private: only you can see it, until you make it public." }
+        public_hint { en: "Public: anyone on SoundCloud can find and play it." }
+        description_placeholder { en: "Description (optional)" }
+        genre_placeholder { en: "Genre" }
+        tags_placeholder { en: "Tags, separated by commas" }
+        choose_cover { en: "Choose a cover image" }
+        cover_label { en: "COVER" }
+        change_cover { en: "Change cover" }
+        edit_description { en: "Description" }
+        description_title { en: "Playlist description" }
+        cover_not_saved { en: "The playlist was saved, but not its cover. Try another image (JPEG or PNG)." }
         create { en: "Create" }
         cancel { en: "Cancel" }
         save { en: "Save" }
@@ -410,5 +420,7 @@ pub mod playlists {
         now_public(name) { en: "{name} is now public" }
         now_private(name) { en: "{name} is now private" }
         deleted(name) { en: "Deleted {name}" }
+        described(name) { en: "Description of {name} saved" }
+        new_cover(name) { en: "New cover for {name}" }
     }
 }

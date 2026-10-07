@@ -546,7 +546,10 @@ async fn creates_edits_and_deletes_playlists() {
         .and(path("/api/playlists"))
         .and(header("authorization", "OAuth t"))
         .and(body_json(serde_json::json!({
-            "playlist": { "title": "Night", "sharing": "private", "tracks": [5, 6] }
+            "playlist": {
+                "title": "Night", "description": "late", "sharing": "private",
+                "genre": "House", "tag_list": "deep \"after hours\"", "tracks": [5, 6]
+            }
         })))
         .respond_with(json(r#"{"id":40,"title":"Night","sharing":"private"}"#))
         .expect(1)
@@ -569,7 +572,15 @@ async fn creates_edits_and_deletes_playlists() {
         .await;
     let sc = client(&server, Some(OLD_ID), Some("t"));
 
-    let created = sc.create_playlist("Night", false, &[5, 6]).await.unwrap();
+    let new = PlaylistEdit {
+        title: Some("Night".into()),
+        description: Some("late".into()),
+        sharing: Some("private".into()),
+        genre: Some("House".into()),
+        tag_list: Some("deep \"after hours\"".into()),
+        tracks: Some(vec![5, 6]),
+    };
+    let created = sc.create_playlist(&new).await.unwrap();
     assert_eq!(created.id, 40);
     assert_eq!(created.sharing.as_deref(), Some("private"));
     let edit = PlaylistEdit {
@@ -582,4 +593,21 @@ async fn creates_edits_and_deletes_playlists() {
         "Late night"
     );
     sc.delete_playlist(40).await.unwrap();
+}
+
+#[tokio::test]
+async fn uploads_a_playlist_cover() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/api/playlists/soundcloud:playlists:40/artwork"))
+        .and(body_json(serde_json::json!({ "image_data": "/9j/" })))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let sc = client(&server, Some(OLD_ID), Some("t"));
+    // The first bytes of a JPEG.
+    sc.set_playlist_artwork(40, &[0xff, 0xd8, 0xff])
+        .await
+        .unwrap();
 }

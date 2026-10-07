@@ -5,6 +5,7 @@
 //! playable stream. Everything goes through the [`SoundCloudApi`] trait so a
 //! backend for the official API can be added later.
 
+mod base64;
 mod client;
 mod client_id;
 mod error;
@@ -138,14 +139,19 @@ pub trait SoundCloudApi: Send + Sync {
     /// A playlist SoundCloud makes, by urn. Its tracks only carry an id.
     fn system_playlist(&self, urn: &str) -> impl Future<Output = Result<SystemPlaylist>> + Send;
 
-    /// Creates a playlist for the signed-in user, private unless `public`,
-    /// with these tracks in order. Answers the new playlist.
+    /// Creates a playlist for the signed-in user from `playlist` (title,
+    /// description, privacy, genre, tags, tracks). Answers the new playlist.
     fn create_playlist(
         &self,
-        title: &str,
-        public: bool,
-        tracks: &[u64],
+        playlist: &PlaylistEdit,
     ) -> impl Future<Output = Result<Playlist>> + Send;
+
+    /// Sets a playlist's cover from an image file's bytes (JPEG or PNG).
+    fn set_playlist_artwork(
+        &self,
+        id: u64,
+        image: &[u8],
+    ) -> impl Future<Output = Result<()>> + Send;
 
     /// Changes a playlist of the signed-in user: only what `edit` sets.
     /// `tracks` replaces the whole list, so it must start from the current one.

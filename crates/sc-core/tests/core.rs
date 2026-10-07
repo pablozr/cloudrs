@@ -1125,10 +1125,12 @@ fn adding_to_a_playlist_sends_the_whole_list() {
 #[test]
 fn a_new_playlist_is_private_and_reloads_the_library() {
     let h = Harness::signed_in("playlist-create");
-    h.core.send(Command::CreatePlaylist {
+    h.core.send(Command::CreatePlaylist(sc_core::NewPlaylist {
         title: "  Night  ".into(),
+        genre: "House".into(),
         track: Some(TrackId(7)),
-    });
+        ..sc_core::NewPlaylist::default()
+    }));
     let (playlist, change) = saved(&h);
     assert_eq!(change, sc_core::PlaylistChange::Created);
     assert_eq!(playlist.title, "Night");
@@ -1136,11 +1138,16 @@ fn a_new_playlist_is_private_and_reloads_the_library() {
         ListItems::Playlists(rows) => Some(rows),
         _ => None,
     });
-    assert!(
-        h.api
-            .calls()
-            .contains(&"create_playlist Night false [7]".to_owned())
-    );
+    let calls = h.api.calls();
+    let created = calls
+        .iter()
+        .find(|c| c.starts_with("create_playlist"))
+        .expect("created");
+    for part in ["\"Night\"", "\"private\"", "\"House\"", "[7]"] {
+        assert!(created.contains(part), "{created}");
+    }
+    // No cover: nothing uploaded.
+    assert!(!calls.iter().any(|c| c.starts_with("set_playlist_artwork")));
 }
 
 #[test]

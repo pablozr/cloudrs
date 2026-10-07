@@ -1,18 +1,63 @@
 //! Your playlists in the shell (ADR 0014): the "Add to playlist" menu, the
 //! dialogs to name or delete one, and the toasts after each change.
 
+use std::path::PathBuf;
+
 use cloudrs_ui::Theme;
 use cloudrs_ui::components::{
-    ButtonKind, Icon, ToastKind, button, dialog, menu, menu_item, menu_separator,
+    ButtonKind, Icon, ToastKind, button, dialog, icon, menu, menu_item, menu_separator, pill,
+    tooltip,
 };
+use cloudrs_ui::search_field::SearchField;
+use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Pixels, Point, anchored, deferred, div};
-use sc_core::{Command, ListItems, PlaylistChange, PlaylistId, PlaylistSummary, TrackId};
+use gpui::{
+    AnyElement, Context, Entity, ObjectFit, PathPromptOptions, Pixels, Point, anchored, deferred,
+    div, img, px,
+};
+use sc_core::{
+    Command, ListItems, NewPlaylist, PlaylistChange, PlaylistId, PlaylistSummary, TrackId,
+};
 
 use super::Shell;
 use crate::i18n::playlists as t;
 use crate::models::ListId;
 use crate::nav::Route;
+
+/// The rest of a new playlist, beside its name: what the dialog fills.
+pub struct PlaylistForm {
+    pub description: Entity<SearchField>,
+    pub genre: Entity<SearchField>,
+    /// Comma-separated.
+    pub tags: Entity<SearchField>,
+    pub public: bool,
+    /// The image picked for the cover.
+    pub cover: Option<PathBuf>,
+}
+
+impl PlaylistForm {
+    pub fn new(cx: &mut Context<Shell>) -> Self {
+        let field = |placeholder: &'static str, glyph: Icon, cx: &mut Context<Shell>| {
+            cx.new(|cx| SearchField::new(placeholder, "", cx).with_icon(glyph))
+        };
+        Self {
+            description: field(t::description_placeholder(), Icon::Rename, cx),
+            genre: field(t::genre_placeholder(), Icon::Queue, cx),
+            tags: field(t::tags_placeholder(), Icon::Plus, cx),
+            public: false,
+            cover: None,
+        }
+    }
+
+    /// Empty again, for the next playlist.
+    fn reset(&mut self, cx: &mut Context<Shell>) {
+        for field in [&self.description, &self.genre, &self.tags] {
+            field.update(cx, |field, cx| field.reset(cx));
+        }
+        self.public = false;
+        self.cover = None;
+    }
+}
 
 /// A dialog over the window.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +67,8 @@ pub enum Dialog {
         track: Option<TrackId>,
     },
     Rename(PlaylistId),
+    /// Write the description of one of the person's playlists.
+    Describe(PlaylistId),
     /// Confirm deleting a playlist (its title, to name it).
     Delete(PlaylistId, String),
 }
@@ -73,6 +120,15 @@ impl Shell {
         };
         self.name_field
             .update(cx, |field, cx| field.set_value(&name, cx));
+        if matches!(dialog, Dialog::NewPlaylist { .. }) {
+            self.form.reset(cx);
+        }
+        if let Dialog::Describe(id) = &dialog {
+            let text = self.playlist_description(*id);
+            self.form
+                .description
+                .update(cx, |field, cx| field.set_value(&text, cx));
+        }
         self.playlist_menu = None;
         self.dialog = Some(dialog);
         cx.notify();
@@ -157,7 +213,22 @@ impl Shell {
                         if title.is_empty() {
                             return;
                         }
-                        this.send(Command::CreatePlaylist { title, track });
+                        let read = |field: &Entity<SearchField>, cx: &Context<Shell>| {
+                            field.read(cx).value().trim().to_owned()
+                        };
+                        let new = NewPlaylist {
+                            title,
+                            description: read(&this.form.description, cx),
+                            public: this.form.public,
+                            genre: read(&this.form.genre, cx),
+                            tags: read(&this.form.tags, cx)
+                                .split(',')
+                                .map(str::to_owned)
+                                .collect(),
+                            cover: this.form.cover.clone(),
+                            track,
+                        };
+                        this.send(Command::CreatePlaylist(new));
                         this.close_dialog(cx);
                     }))
                     .into_any_element();
@@ -165,10 +236,7 @@ impl Shell {
                     theme,
                     "dialog-new",
                     t::new_playlist_title(),
-                    vec![
-                        self.name_field.clone().into_any_element(),
-                        hint(theme, t::private_hint()),
-                    ],
+                    vec![self.new_playlist_form(theme, cx)],
                     vec![cancel, create],
                     dismiss,
                 )
@@ -193,6 +261,27 @@ impl Shell {
                     "dialog-rename",
                     t::rename_title(),
                     vec![self.name_field.clone().into_any_element()],
+                    vec![cancel, save],
+                    dismiss,
+                )
+            }
+            Dialog::Describe(id) => {
+                let save = button(theme, "dialog-save", t::save(), ButtonKind::Primary)
+                    .aria_label(t::save())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let description = this.form.description.read(cx).value().to_owned();
+                        this.send(Command::SetPlaylistDescription {
+                            playlist: id,
+                            description,
+                        });
+                        this.close_dialog(cx);
+                    }))
+                    .into_any_element();
+                dialog(
+                    theme,
+                    "dialog-describe",
+                    t::description_title(),
+                    vec![self.form.description.clone().into_any_element()],
                     vec![cancel, save],
                     dismiss,
                 )
@@ -237,6 +326,8 @@ impl Shell {
             PlaylistChange::Privacy { public: true } => t::now_public(name),
             PlaylistChange::Privacy { public: false } => t::now_private(name),
             PlaylistChange::Deleted => t::deleted(name),
+            PlaylistChange::Described => t::described(name),
+            PlaylistChange::Cover => t::new_cover(name),
         };
         let undo = match change {
             PlaylistChange::Removed => self.pending_undo.take(),
@@ -251,10 +342,160 @@ impl Shell {
     }
 }
 
+impl Shell {
+    /// The cover picker beside the name and description, then genre and
+    /// tags, then public or private.
+    fn new_playlist_form(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let c = theme.colors;
+        let cover = div()
+            .id("dialog-cover")
+            .flex_none()
+            .size(size::COVER_PICKER)
+            .rounded(radius::L)
+            .overflow_hidden()
+            .border_1()
+            .border_color(c.line_strong)
+            .bg(c.surface_raised)
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(space::S1)
+            .cursor_pointer()
+            .tab_index(0)
+            .focus_visible(move |s| s.border_color(c.accent))
+            .hover(move |s| s.border_color(c.accent))
+            .aria_label(t::choose_cover())
+            .tooltip(tooltip(t::choose_cover()))
+            .map(|cover| match &self.form.cover {
+                Some(path) => cover.child(
+                    img(path.clone())
+                        .size_full()
+                        .rounded(radius::L)
+                        .object_fit(ObjectFit::Cover),
+                ),
+                None => cover
+                    .child(icon(Icon::Plus, size::ICON_M, c.text_muted))
+                    .child(
+                        theme
+                            .text(div(), typography::LABEL)
+                            .text_color(c.text_muted)
+                            .child(t::cover_label()),
+                    ),
+            })
+            .on_click(cx.listener(|this, _, _, cx| this.pick_cover(cx)));
+        let public = self.form.public;
+        let privacy = |ix: usize, label: &'static str, on: bool| {
+            pill(theme, ("dialog-privacy", ix), label, on)
+                .tab_index(0)
+                .aria_label(label)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.form.public = ix == 1;
+                    cx.notify();
+                }))
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap(space::S3)
+            .child(
+                div().flex().gap(space::S3).child(cover).child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .flex()
+                        .flex_col()
+                        .gap(space::S2)
+                        .child(self.name_field.clone())
+                        .child(self.form.description.clone()),
+                ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap(space::S2)
+                    .child(div().flex_1().child(self.form.genre.clone()))
+                    .child(div().flex_1().child(self.form.tags.clone())),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(space::S2)
+                    .child(privacy(0, t::private_label(), !public))
+                    .child(privacy(1, t::public_label(), public)),
+            )
+            .child(hint(
+                theme,
+                if public {
+                    t::public_hint()
+                } else {
+                    t::private_hint()
+                },
+            ))
+            .into_any_element()
+    }
+
+    /// The system's file picker, for the cover image.
+    fn pick_cover(&mut self, cx: &mut Context<Self>) {
+        let picked = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(t::choose_cover().into()),
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = picked.await
+                && let Some(path) = paths.into_iter().next()
+            {
+                this.update(cx, |this, cx| {
+                    this.form.cover = Some(path);
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+}
+
 fn hint(theme: &Theme, text: &'static str) -> AnyElement {
     theme
-        .text(div(), cloudrs_ui::tokens::typography::BODY_MUTED)
+        .text(div(), typography::BODY_MUTED)
         .text_color(theme.colors.text_muted)
         .child(text)
         .into_any_element()
+}
+
+impl Shell {
+    fn playlist_description(&self, id: PlaylistId) -> String {
+        match self.models.playlists.get(&id) {
+            Some(crate::models::Page::Ready(page)) => page.description.clone().unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    /// Picks an image and sends it as the cover of one of the person's playlists.
+    pub(crate) fn change_playlist_cover(&mut self, id: PlaylistId, cx: &mut Context<Self>) {
+        let picked = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(t::choose_cover().into()),
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(Ok(Some(paths))) = picked.await
+                && let Some(cover) = paths.into_iter().next()
+            {
+                this.update(cx, |this, _| {
+                    this.send(Command::SetPlaylistCover {
+                        playlist: id,
+                        cover,
+                    });
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
 }

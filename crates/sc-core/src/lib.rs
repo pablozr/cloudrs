@@ -18,9 +18,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub use types::{
-    Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems, PlayState,
-    Playback, PlaylistChange, PlaylistId, PlaylistPage, PlaylistSummary, Problem, QueueSnapshot,
-    Repeat, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage, UserSummary,
+    Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems,
+    NewPlaylist, PlayState, Playback, PlaylistChange, PlaylistId, PlaylistPage, PlaylistSummary,
+    Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage,
+    UserSummary,
 };
 
 /// What the UI asks for.
@@ -97,11 +98,20 @@ pub enum Command {
         user: UserId,
         following: bool,
     },
-    /// Create a playlist of the signed-in person, private, with this track in
-    /// it if given. Answers with [`Event::PlaylistSaved`].
-    CreatePlaylist {
-        title: String,
-        track: Option<TrackId>,
+    /// Create a playlist of the signed-in person: name, description, privacy,
+    /// genre, tags, an optional cover image and first track. Answers with
+    /// [`Event::PlaylistSaved`]; a cover that could not be sent also says
+    /// `Problem::PlaylistCoverNotSaved`.
+    CreatePlaylist(NewPlaylist),
+    /// Change the description of one of the person's playlists.
+    SetPlaylistDescription {
+        playlist: PlaylistId,
+        description: String,
+    },
+    /// Set the cover of one of the person's playlists from an image file.
+    SetPlaylistCover {
+        playlist: PlaylistId,
+        cover: std::path::PathBuf,
     },
     /// Add a track to one of the person's playlists: at the end, or at this
     /// place (to undo a removal).

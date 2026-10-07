@@ -100,6 +100,7 @@ impl Shell {
         } else {
             Vec::new()
         };
+        let description = header.description.clone();
         let meta = meta(header);
         let page = page_header(
             theme,
@@ -122,6 +123,17 @@ impl Shell {
             .flex_col()
             .pt(space::S2)
             .child(page)
+            .when_some(description, |view, text| {
+                view.child(
+                    theme
+                        .text(div(), cloudrs_ui::tokens::typography::BODY_MUTED)
+                        .px(space::S5)
+                        .pb(space::S3)
+                        .max_w(cloudrs_ui::tokens::size::DESCRIPTION_MAX_WIDTH)
+                        .text_color(theme.colors.text_muted)
+                        .child(text),
+                )
+            })
             .child(div().flex_1().min_h(px(0.0)).px(space::S5).child(list))
             .into_any_element()
     }
@@ -171,9 +183,31 @@ impl Shell {
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.open_dialog(Dialog::Delete(id, title.clone()), cx);
             }));
+        let cover = button(
+            theme,
+            "playlist-cover",
+            p::change_cover(),
+            ButtonKind::Ghost,
+        )
+        .aria_label(p::change_cover())
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.change_playlist_cover(id, cx);
+        }));
+        let describe = button(
+            theme,
+            "playlist-describe",
+            p::edit_description(),
+            ButtonKind::Ghost,
+        )
+        .aria_label(p::description_title())
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.open_dialog(Dialog::Describe(id), cx);
+        }));
         vec![
             privacy.into_any_element(),
             rename.into_any_element(),
+            describe.into_any_element(),
+            cover.into_any_element(),
             delete.into_any_element(),
         ]
     }
