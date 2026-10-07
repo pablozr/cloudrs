@@ -69,3 +69,10 @@ uses.
 - The title bar is ours on Windows and Linux. Window resizing at the edges stays the
   platform's (GPUI handles the hit test).
 - Not yet captured in the light theme or on Linux and macOS.
+
+## Later decision
+
+- The maintainer approved `time` (0.3, `local-offset`, already in the lock through other
+  crates) for the greeting: "Good morning" from 5:00, "Good afternoon" from 12:00, "Good
+  evening" from 18:00, with the person's name when signed in. Where the system will not give
+  the local hour, it stays "Welcome back".

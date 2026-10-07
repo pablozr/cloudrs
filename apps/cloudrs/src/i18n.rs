@@ -309,6 +309,9 @@ pub mod jam {
 pub mod home {
     strings! {
         welcome { en: "Welcome to cloudrs" }
+        good_morning { en: "Good morning" }
+        good_afternoon { en: "Good afternoon" }
+        good_evening { en: "Good evening" }
         subtitle { en: "Pick up where you left off, or find something new." }
         recently_played { en: "Recently played" }
         your_playlists { en: "Your playlists" }
@@ -328,6 +331,9 @@ pub mod home {
     }
     formats! {
         welcome_back(name) { en: "Welcome back, {name}" }
+        good_morning_name(name) { en: "Good morning, {name}" }
+        good_afternoon_name(name) { en: "Good afternoon, {name}" }
+        good_evening_name(name) { en: "Good evening, {name}" }
         see_all_of(shelf) { en: "See all: {shelf}" }
     }
 }

@@ -59,10 +59,8 @@ impl Shell {
 
     pub(crate) fn home_screen(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let c = theme.colors;
-        let greeting = match &self.models.account {
-            Some(me) => t::welcome_back(&me.username),
-            None => t::welcome().to_owned(),
-        };
+        let name = self.models.account.as_ref().map(|me| me.username.as_str());
+        let greeting = greeting(local_hour(), name);
         let mut page = div()
             .w_full()
             .max_w(size::HOME_MAX_WIDTH)
@@ -687,5 +685,58 @@ fn genre_label(genre: Genre) -> &'static str {
         Genre::Latin => g::latin(),
         Genre::RnB => g::r_n_b(),
         Genre::Trap => g::trap(),
+    }
+}
+
+/// Part of the day, from the local hour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DayPart {
+    Morning,
+    Afternoon,
+    Evening,
+}
+
+fn day_part(hour: u8) -> DayPart {
+    match hour {
+        5..=11 => DayPart::Morning,
+        12..=17 => DayPart::Afternoon,
+        _ => DayPart::Evening,
+    }
+}
+
+/// The local hour; `None` where the system will not say (some Unix setups
+/// refuse it in a multi-threaded process).
+fn local_hour() -> Option<u8> {
+    time::OffsetDateTime::now_local().ok().map(|now| now.hour())
+}
+
+/// "Good evening, Ana", or a plain welcome without the hour.
+fn greeting(hour: Option<u8>, name: Option<&str>) -> String {
+    match (hour.map(day_part), name) {
+        (Some(DayPart::Morning), Some(name)) => t::good_morning_name(name),
+        (Some(DayPart::Afternoon), Some(name)) => t::good_afternoon_name(name),
+        (Some(DayPart::Evening), Some(name)) => t::good_evening_name(name),
+        (Some(DayPart::Morning), None) => t::good_morning().to_owned(),
+        (Some(DayPart::Afternoon), None) => t::good_afternoon().to_owned(),
+        (Some(DayPart::Evening), None) => t::good_evening().to_owned(),
+        (None, Some(name)) => t::welcome_back(name),
+        (None, None) => t::welcome().to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_greeting_follows_the_hour() {
+        assert_eq!(day_part(5), DayPart::Morning);
+        assert_eq!(day_part(11), DayPart::Morning);
+        assert_eq!(day_part(12), DayPart::Afternoon);
+        assert_eq!(day_part(18), DayPart::Evening);
+        assert_eq!(day_part(2), DayPart::Evening);
+        assert_eq!(greeting(Some(20), Some("Ana")), "Good evening, Ana");
+        assert_eq!(greeting(Some(9), None), "Good morning");
+        assert_eq!(greeting(None, Some("Ana")), "Welcome back, Ana");
     }
 }
