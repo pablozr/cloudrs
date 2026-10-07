@@ -2,6 +2,7 @@
 //! models. Each is an `impl Shell` block in its own file; the one list
 //! component they share is in `list`.
 
+mod account;
 mod history;
 mod list;
 mod playlist;
@@ -31,6 +32,11 @@ impl Shell {
             Route::User(id) => self.user_screen(id, theme, cx),
             Route::Playlist(id) => self.playlist_screen(id, theme, cx),
             Route::History => self.history_screen(theme, cx),
+            Route::Account => self.account_screen(theme, cx),
+            route @ (Route::Feed | Route::Likes(_) | Route::Library | Route::Following(_)) => {
+                let list = route.account_list().expect("an account list route");
+                self.account_list_screen(list, account::account_list_title(list), theme, cx)
+            }
             Route::Resolving(_) => div()
                 .size_full()
                 .flex()

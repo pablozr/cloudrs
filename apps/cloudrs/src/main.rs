@@ -23,9 +23,17 @@ fn main() {
         )
         .init();
 
+    // The sign-in window runs as this same executable (ADR 0010).
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some(sc_platform::sign_in::ARG) {
+        let title = args.next().unwrap_or_default();
+        sc_platform::sign_in::run_window(&title);
+    }
+    let oauth_token = sc_platform::keychain::load_token();
+
     application()
         .with_assets(cloudrs_ui::assets::Assets)
-        .run(|cx: &mut App| {
+        .run(move |cx: &mut App| {
             cloudrs_ui::fonts::register(cx);
             cx.set_global(cloudrs_ui::ThemeMode::default());
             cloudrs_ui::search_field::bind_keys(cx);
@@ -34,8 +42,7 @@ fn main() {
             let config = CoreConfig {
                 cache_dir: app_dir(dirs::cache_dir(), "cache"),
                 data_dir: app_dir(dirs::data_dir(), "data"),
-                // The keychain arrives with sc-platform.
-                oauth_token: None,
+                oauth_token,
             };
             let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
             let opened = cx.open_window(

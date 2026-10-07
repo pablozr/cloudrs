@@ -79,6 +79,8 @@ pub struct SearchChanged(pub String);
 
 pub struct SearchField {
     placeholder: SharedString,
+    /// The glyph on the left; a magnifier unless [`SearchField::with_icon`] changes it.
+    glyph: Icon,
     /// Shown on the right while unfocused (e.g. the shortcut).
     hint: SharedString,
     focus: FocusHandle,
@@ -99,6 +101,7 @@ impl SearchField {
     ) -> Self {
         Self {
             placeholder: placeholder.into(),
+            glyph: Icon::Search,
             hint: hint.into(),
             focus: cx.focus_handle().tab_stop(true),
             edit: SearchEdit::default(),
@@ -107,6 +110,12 @@ impl SearchField {
             scroll_x: px(0.0),
             selecting: false,
         }
+    }
+
+    /// Shows `glyph` instead of the magnifier (a field that is not a search).
+    pub fn with_icon(mut self, glyph: Icon) -> Self {
+        self.glyph = glyph;
+        self
     }
 
     pub fn value(&self) -> &str {
@@ -239,6 +248,11 @@ impl SearchField {
     }
 
     fn clear(&mut self, _: &Clear, _: &mut Window, cx: &mut Context<Self>) {
+        self.reset(cx);
+    }
+
+    /// Empties the field (after its text was used, such as a token).
+    pub fn reset(&mut self, cx: &mut Context<Self>) {
         self.edit = SearchEdit::default();
         self.changed(cx);
     }
@@ -584,7 +598,7 @@ impl Render for SearchField {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
-            .child(icon(Icon::Search, size::ICON_S, c.text_subtle))
+            .child(icon(self.glyph, size::ICON_S, c.text_subtle))
             .child(
                 div()
                     .flex_1()

@@ -182,6 +182,15 @@ pub enum Icon {
     Remove,
     /// Something went wrong (error states).
     Alert,
+    /// Like (outline) and liked (filled).
+    Heart,
+    HeartFilled,
+    Feed,
+    Library,
+    People,
+    Account,
+    SignIn,
+    SignOut,
 }
 
 impl Icon {
@@ -205,6 +214,14 @@ impl Icon {
             Self::AddToQueue => "icons/list-plus.svg",
             Self::Remove => "icons/x.svg",
             Self::Alert => "icons/circle-alert.svg",
+            Self::Heart => "icons/heart.svg",
+            Self::HeartFilled => "icons/heart-filled.svg",
+            Self::Feed => "icons/rss.svg",
+            Self::Library => "icons/library.svg",
+            Self::People => "icons/users.svg",
+            Self::Account => "icons/circle-user.svg",
+            Self::SignIn => "icons/log-in.svg",
+            Self::SignOut => "icons/log-out.svg",
         }
     }
 }
@@ -254,7 +271,21 @@ pub fn row_action(
     label: &'static str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
+    row_toggle(theme, id, glyph, label, false, on_click)
+}
+
+/// A [`row_action`] that can be on (drawn in the accent), such as a filled
+/// heart on a liked track.
+pub fn row_toggle(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    label: &'static str,
+    on: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
     let c = theme.colors;
+    let color = if on { c.accent } else { c.text_muted };
     div()
         .id(id)
         .flex()
@@ -268,7 +299,7 @@ pub fn row_action(
         .hover(move |s| s.bg(c.surface_hover))
         .aria_label(label)
         .tooltip(tooltip(label))
-        .child(icon(glyph, size::ICON_S, c.text_muted))
+        .child(icon(glyph, size::ICON_S, color))
         .on_click(move |event, window, cx| {
             cx.stop_propagation();
             on_click(event, window, cx);

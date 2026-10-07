@@ -12,6 +12,7 @@ gpui.workspace = true
 gpui_platform.workspace = true
 sc-core = { path = "../../crates/sc-core" }
 dirs = "6"
+sc-platform = { path = "../../crates/sc-platform" }
 # Same version and codecs GPUI already compiles; decodes artwork to find its colour.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 tracing = "0.1"

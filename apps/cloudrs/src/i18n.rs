@@ -89,6 +89,11 @@ pub mod nav {
         history { en: "History" }
         back { en: "Back" }
         forward { en: "Forward" }
+        feed { en: "Feed" }
+        likes { en: "Likes" }
+        library { en: "Library" }
+        following { en: "Following" }
+        sign_in { en: "Sign in" }
     }
 }
 
@@ -226,5 +231,33 @@ pub mod problem {
         sign_in_failed { en: "SoundCloud didn{2019}t accept that sign-in. Try again." }
         session_expired { en: "Your SoundCloud session expired. Sign in again." }
         sign_in_required { en: "Sign in to like tracks and follow people." }
+        sign_in_window { en: "The sign-in window could not open. Try signing in with a token." }
+    }
+}
+
+/// The account screen (ADR 0010).
+pub mod account {
+    strings! {
+        title { en: "Account" }
+        signed_out_title { en: "Sign in to SoundCloud" }
+        signed_out_hint { en: "See your feed, likes and library, like tracks and follow people. You sign in on soundcloud.com in a small window; cloudrs only keeps the session in your system\u{2019}s keychain." }
+        sign_in { en: "Sign in with SoundCloud" }
+        waiting { en: "Finish signing in in the SoundCloud window\u{2026}" }
+        other_ways { en: "Other ways to sign in" }
+        token_steps { en: "1. Sign in on soundcloud.com in your browser.  2. Open the developer tools (F12) \u{2192} Application (Storage in Firefox) \u{2192} Cookies \u{2192} https://soundcloud.com.  3. Copy the value of the cookie named oauth_token and paste it here." }
+        token_placeholder { en: "Paste your oauth_token" }
+        token_sign_in { en: "Sign in with token" }
+        sign_out { en: "Sign out" }
+        signed_in_hint { en: "Signed in to SoundCloud. Signing out removes the session from this computer." }
+        unofficial { en: "cloudrs is an unofficial client, not made by SoundCloud." }
+    }
+}
+
+pub mod social {
+    strings! {
+        like { en: "Like" }
+        unlike { en: "Unlike" }
+        follow { en: "Follow" }
+        unfollow { en: "Unfollow" }
     }
 }

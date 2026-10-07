@@ -28,6 +28,17 @@ pub enum UiIntent {
     PlayNext(TrackId),
     AddToQueue(TrackId),
     LoadMore(ListId),
+    /// Sign in with a pasted token (the window flow sends the token it got).
+    SignIn(String),
+    SignOut,
+    Like {
+        track: TrackId,
+        liked: bool,
+    },
+    Follow {
+        user: UserId,
+        following: bool,
+    },
 }
 
 impl UiIntent {

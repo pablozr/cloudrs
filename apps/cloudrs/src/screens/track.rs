@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{PageHeaderData, page_header, skeleton_header};
-use cloudrs_ui::components::{ButtonKind, Icon, button, waveform};
+use cloudrs_ui::components::{ButtonKind, Icon, button, icon_button, tooltip, waveform};
 use cloudrs_ui::tokens::{self, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, EventEmitter, Window, div, px};
@@ -198,6 +198,27 @@ impl Shell {
             }))
             .into_any_element()
         });
+        let like = self.models.account.is_some().then(|| {
+            let liked = self.models.liked.contains(&id);
+            let (glyph, label) = if liked {
+                (Icon::HeartFilled, i18n::social::unlike())
+            } else {
+                (Icon::Heart, i18n::social::like())
+            };
+            icon_button(theme, "track-like", glyph, liked)
+                .aria_label(label)
+                .tooltip(tooltip(label))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        UiIntent::Like {
+                            track: id,
+                            liked: !liked,
+                        },
+                        cx,
+                    );
+                }))
+                .into_any_element()
+        });
         let meta = meta(header);
         let page = page_header(
             theme,
@@ -206,7 +227,7 @@ impl Shell {
                 round: false,
                 title: &header.track.title,
                 meta: &meta,
-                actions: artist.into_iter().collect(),
+                actions: artist.into_iter().chain(like).collect(),
             },
         );
         let description = header.description.as_ref().map(|text| {

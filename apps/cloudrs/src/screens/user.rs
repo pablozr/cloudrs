@@ -78,6 +78,32 @@ impl Shell {
         };
 
         let meta = meta(header);
+        let signed_in_elsewhere = self.models.account.as_ref().is_some_and(|me| me.id != id);
+        let actions = if signed_in_elsewhere {
+            let following = self.models.followed.contains(&id);
+            let (label, kind) = if following {
+                (i18n::social::unfollow(), ButtonKind::Secondary)
+            } else {
+                (i18n::social::follow(), ButtonKind::Primary)
+            };
+            vec![
+                button(theme, "follow", label, kind)
+                    .aria_label(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let following = !following;
+                        this.dispatch(
+                            UiIntent::Follow {
+                                user: id,
+                                following,
+                            },
+                            cx,
+                        );
+                    }))
+                    .into_any_element(),
+            ]
+        } else {
+            Vec::new()
+        };
         let page = page_header(
             theme,
             PageHeaderData {
@@ -85,7 +111,7 @@ impl Shell {
                 round: true,
                 title: &header.username,
                 meta: &meta,
-                actions: Vec::new(),
+                actions,
             },
         );
         let tab = self.user_tab;

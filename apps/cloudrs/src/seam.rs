@@ -73,19 +73,62 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             };
             true
         }
-        // A page still waiting for its header will not get one.
-        Event::Problem(Problem::Offline | Problem::RateLimited | Problem::NotFound) => {
-            models.fail_loading_pages()
+        // A sign-in was refused or could not be checked: the account screen
+        // offers it again. A page still waiting for its header will not get one.
+        Event::Problem(
+            problem @ (Problem::SignInFailed
+            | Problem::Offline
+            | Problem::RateLimited
+            | Problem::NotFound),
+        ) => {
+            let stopped_signing_in = std::mem::take(&mut models.signing_in);
+            let failed_pages = *problem != Problem::SignInFailed && models.fail_loading_pages();
+            stopped_signing_in || failed_pages
         }
         // The player bar and the queue own these.
         Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) | Event::Stopped => false,
-        // The account screen arrives with the M3 UI.
-        Event::SignedIn(_)
-        | Event::SignedOut
-        | Event::LikedIds(_)
-        | Event::FollowedIds(_)
-        | Event::Liked { .. }
-        | Event::Followed { .. } => false,
+        Event::SignedIn(account) => {
+            models.account = Some(account.user.clone());
+            models.signing_in = false;
+            true
+        }
+        Event::SignedOut => {
+            if let Some(me) = models.account.take() {
+                for list in [
+                    ListId::Feed,
+                    ListId::Library,
+                    ListId::UserLikes(me.id),
+                    ListId::Followings(me.id),
+                ] {
+                    models.lists.remove(&list);
+                }
+            }
+            models.liked.clear();
+            models.followed.clear();
+            true
+        }
+        Event::LikedIds(ids) => {
+            models.liked = ids.iter().copied().collect();
+            true
+        }
+        Event::FollowedIds(ids) => {
+            models.followed = ids.iter().copied().collect();
+            true
+        }
+        Event::Liked { track, liked } => {
+            if *liked {
+                models.liked.insert(*track)
+            } else {
+                models.liked.remove(track)
+            }
+        }
+        Event::Followed { user, following } => {
+            if *following {
+                models.followed.insert(*user)
+            } else {
+                models.followed.remove(user)
+            }
+        }
     }
 }
 
@@ -107,6 +150,16 @@ pub fn command(intent: &UiIntent) -> Command {
         },
         UiIntent::PlayNext(id) => Command::PlayNext(*id),
         UiIntent::AddToQueue(id) => Command::AddToQueue(*id),
+        UiIntent::SignIn(token) => Command::SignIn(token.clone()),
+        UiIntent::SignOut => Command::SignOut,
+        UiIntent::Like { track, liked } => Command::Like {
+            track: *track,
+            liked: *liked,
+        },
+        UiIntent::Follow { user, following } => Command::Follow {
+            user: *user,
+            following: *following,
+        },
     }
 }
 
@@ -149,7 +202,11 @@ pub fn take(models: &mut Models, intent: &UiIntent) -> Command {
         | UiIntent::PlayNext(_)
         | UiIntent::AddToQueue(_)
         | UiIntent::OpenUrl(_)
-        | UiIntent::LoadMore(_) => {}
+        | UiIntent::LoadMore(_)
+        | UiIntent::SignOut
+        | UiIntent::Like { .. }
+        | UiIntent::Follow { .. } => {}
+        UiIntent::SignIn(_) => models.signing_in = true,
     }
     command(intent)
 }

@@ -86,6 +86,8 @@ pub struct Shell {
     pump: Option<Task<()>>,
     focus: FocusHandle,
     search: Entity<SearchField>,
+    /// The fallback sign-in: a pasted `oauth_token`.
+    pub(crate) token_field: Entity<SearchField>,
     player: Entity<PlayerBar>,
     pub(crate) models: Models,
     pub(crate) router: Router,
@@ -131,6 +133,10 @@ impl Shell {
             this.show_search(cx);
         })
         .detach();
+
+        let token_field = cx.new(|cx| {
+            SearchField::new(i18n::account::token_placeholder(), "", cx).with_icon(Icon::SignIn)
+        });
 
         let wave = cx.new(|_| TrackWave::new());
         cx.subscribe(&wave, |this, _, action: &WaveAction, cx| match *action {
@@ -180,6 +186,7 @@ impl Shell {
             pump: None,
             focus: cx.focus_handle(),
             search,
+            token_field,
             player,
             models: Models::new(),
             router: Router::new(),
@@ -281,6 +288,18 @@ impl Shell {
             }
             Event::Problem(problem) => self.show_problem(problem, cx),
             Event::Stopped => self.stopped = true,
+            Event::SignedIn(account) => {
+                let token = account.token.clone();
+                keychain(cx, move || sc_platform::keychain::save_token(&token));
+                self.clear_token_field(cx);
+            }
+            Event::SignedOut => {
+                keychain(cx, sc_platform::keychain::delete_token);
+                // An account screen of the person who left shows nothing now.
+                if self.router.current().account_list().is_some() {
+                    self.navigate(Route::Account, cx);
+                }
+            }
             // A failed first page has its own error state; a failed next page
             // leaves the list in place, so it gets a toast.
             Event::ListFailed {
@@ -294,9 +313,6 @@ impl Shell {
             | Event::TrackPage(_)
             | Event::UserPage(_)
             | Event::PlaylistPage(_)
-            // The account screen arrives with the M3 UI.
-            | Event::SignedIn(_)
-            | Event::SignedOut
             | Event::LikedIds(_)
             | Event::FollowedIds(_)
             | Event::Liked { .. }
@@ -333,7 +349,13 @@ impl Shell {
             Route::Track(id) => ArtKey::Track(*id),
             Route::User(id) => ArtKey::User(*id),
             Route::Playlist(id) => ArtKey::Playlist(*id),
-            Route::Search | Route::History => ArtKey::Track(self.models.current?),
+            Route::Search
+            | Route::History
+            | Route::Feed
+            | Route::Likes(_)
+            | Route::Library
+            | Route::Following(_)
+            | Route::Account => ArtKey::Track(self.models.current?),
             Route::Resolving(_) => return None,
         };
         self.models.art.tint(key)
@@ -409,6 +431,10 @@ impl Shell {
                 (ToastKind::Error, t::audio())
             }
         };
+        self.show_toast(kind, text, cx);
+    }
+
+    fn show_toast(&mut self, kind: ToastKind, text: &'static str, cx: &mut Context<Self>) {
         self.toasts_shown += 1;
         self.toast = Some(ToastState {
             id: self.toasts_shown,
@@ -426,6 +452,51 @@ impl Shell {
             .ok();
         }));
         cx.notify();
+    }
+
+    /// Opens the SoundCloud sign-in window (a child process) and signs in
+    /// with the token it returns. Closing the window just stops waiting.
+    pub(crate) fn sign_in_with_window(&mut self, cx: &mut Context<Self>) {
+        if self.models.signing_in {
+            return;
+        }
+        self.models.signing_in = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async {
+                    sc_platform::sign_in::sign_in_with_window(i18n::account::signed_out_title())
+                })
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(Some(token)) => this.dispatch(UiIntent::SignIn(token), cx),
+                Ok(None) => {
+                    this.models.signing_in = false;
+                    cx.notify();
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "the sign-in window could not start");
+                    this.models.signing_in = false;
+                    this.show_toast(ToastKind::Error, i18n::problem::sign_in_window(), cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The fallback: signs in with the token pasted in the account screen.
+    pub(crate) fn sign_in_with_token(&mut self, cx: &mut Context<Self>) {
+        let token = self.token_field.read(cx).value().trim().to_owned();
+        if token.is_empty() || self.models.signing_in {
+            return;
+        }
+        self.dispatch(UiIntent::SignIn(token), cx);
+    }
+
+    fn clear_token_field(&mut self, cx: &mut Context<Self>) {
+        self.token_field.update(cx, |field, cx| field.reset(cx));
     }
 
     /// Typing in the search field shows the search screen, then searches (or
@@ -566,6 +637,72 @@ impl Shell {
                     this.dispatch(UiIntent::OpenHistory, cx);
                 })),
             )
+            .children(self.models.account.as_ref().map(|me| {
+                let me = me.id;
+                let items = [
+                    (Route::Feed, Section::Feed, Icon::Feed, i18n::nav::feed()),
+                    (
+                        Route::Likes(me),
+                        Section::Likes,
+                        Icon::Heart,
+                        i18n::nav::likes(),
+                    ),
+                    (
+                        Route::Library,
+                        Section::Library,
+                        Icon::Library,
+                        i18n::nav::library(),
+                    ),
+                    (
+                        Route::Following(me),
+                        Section::Following,
+                        Icon::People,
+                        i18n::nav::following(),
+                    ),
+                ];
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(space::S1)
+                    .pt(space::S4)
+                    .children(items.into_iter().map(|(route, item, glyph, label)| {
+                        sidebar_item(theme, label, glyph, label, section == item)
+                            .aria_label(label)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.open_account_list(route.clone(), cx);
+                            }))
+                    }))
+            }))
+            .child(div().flex_1())
+            .child({
+                let label = self
+                    .models
+                    .account
+                    .as_ref()
+                    .map_or(i18n::nav::sign_in().to_owned(), |me| me.username.clone());
+                sidebar_item(
+                    theme,
+                    "nav-account",
+                    Icon::Account,
+                    label.clone(),
+                    section == Section::Account,
+                )
+                .aria_label(label)
+                .on_click(cx.listener(|this, _, _, cx| this.navigate(Route::Account, cx)))
+            })
+    }
+
+    /// Opens Feed, Likes, Library or Following; the list loads the first time.
+    fn open_account_list(&mut self, route: Route, cx: &mut Context<Self>) {
+        let Some(list) = route.account_list() else {
+            return;
+        };
+        self.navigate(route, cx);
+        if self.models.lists.contains_key(&list) {
+            cx.notify();
+        } else {
+            self.dispatch(UiIntent::OpenList(list), cx);
+        }
     }
 
     fn header(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
@@ -632,6 +769,14 @@ impl Shell {
             )
             .child(theme_button)
     }
+}
+
+/// Keychain calls can wait on the OS (Secret Service on Linux), so they run
+/// off the UI thread.
+fn keychain(cx: &mut Context<Shell>, work: impl FnOnce() + Send + 'static) {
+    cx.background_executor()
+        .spawn(async move { work() })
+        .detach();
 }
 
 /// A centered title and hint, with an optional action: the empty and error

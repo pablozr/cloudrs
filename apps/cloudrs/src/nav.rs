@@ -1,7 +1,7 @@
 //! Where the person is, and the back/forward history (ADR 0008 §10). Plain
 //! data: no GPUI types.
 
-use sc_core::{PlaylistId, TrackId, UserId};
+use sc_core::{ListId, PlaylistId, TrackId, UserId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Route {
@@ -10,6 +10,13 @@ pub enum Route {
     User(UserId),
     Playlist(PlaylistId),
     History,
+    /// The signed-in person's feed, likes, library and followings.
+    Feed,
+    Likes(UserId),
+    Library,
+    Following(UserId),
+    /// Sign in, or the signed-in account and "Sign out".
+    Account,
     /// A pasted link the core is still resolving: shows a loading page until
     /// the core answers with the screen to open.
     Resolving(String),
@@ -20,6 +27,11 @@ pub enum Route {
 pub enum Section {
     Search,
     History,
+    Feed,
+    Likes,
+    Library,
+    Following,
+    Account,
 }
 
 impl Route {
@@ -28,7 +40,23 @@ impl Route {
     pub fn section(&self) -> Section {
         match self {
             Self::History => Section::History,
+            Self::Feed => Section::Feed,
+            Self::Likes(_) => Section::Likes,
+            Self::Library => Section::Library,
+            Self::Following(_) => Section::Following,
+            Self::Account => Section::Account,
             _ => Section::Search,
+        }
+    }
+
+    /// The list an account screen shows.
+    pub fn account_list(&self) -> Option<ListId> {
+        match self {
+            Self::Feed => Some(ListId::Feed),
+            Self::Likes(me) => Some(ListId::UserLikes(*me)),
+            Self::Library => Some(ListId::Library),
+            Self::Following(me) => Some(ListId::Followings(*me)),
+            _ => None,
         }
     }
 }
@@ -193,6 +221,21 @@ mod tests {
 
         router.resolve(Some(Route::History));
         assert_eq!(*router.current(), user(1), "only a loading step resolves");
+    }
+
+    #[test]
+    fn account_screens_have_their_section_and_list() {
+        let me = UserId(9);
+        assert_eq!(Route::Feed.account_list(), Some(ListId::Feed));
+        assert_eq!(Route::Likes(me).section(), Section::Likes);
+        assert_eq!(Route::Likes(me).account_list(), Some(ListId::UserLikes(me)));
+        assert_eq!(
+            Route::Following(me).account_list(),
+            Some(ListId::Followings(me))
+        );
+        assert_eq!(Route::Library.section(), Section::Library);
+        assert_eq!(Route::Account.section(), Section::Account);
+        assert_eq!(Route::Account.account_list(), None);
     }
 
     #[test]

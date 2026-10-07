@@ -7,7 +7,8 @@ use std::ops::Range;
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{CollectionRowData, UserRowData, collection_row, user_row};
 use cloudrs_ui::components::{
-    ButtonKind, Icon, RowLink, TrackRowData, button, row_action, skeleton_row, track_row,
+    ButtonKind, Icon, RowLink, TrackRowData, button, row_action, row_toggle, skeleton_row,
+    track_row,
 };
 use cloudrs_ui::tokens::space;
 use gpui::prelude::*;
@@ -15,7 +16,7 @@ use gpui::{AnyElement, Context, Role, SharedString, div, uniform_list};
 
 use crate::i18n;
 use crate::intent::UiIntent;
-use sc_core::{ListItems, PlaylistSummary, TrackSummary, UserSummary};
+use sc_core::{ListItems, PlaylistSummary, TrackId, TrackSummary, UserSummary};
 
 use crate::models::ListId;
 use crate::shell::{Shell, status_view};
@@ -191,24 +192,32 @@ impl Shell {
             active,
             playing: active && self.models.playing,
             preview_badge: track.preview_only.then(i18n::search::preview_badge),
-            actions: vec![
-                row_action(
-                    theme,
-                    ("play-next", ix),
-                    Icon::PlayNext,
-                    i18n::queue::play_next(),
-                    cx.listener(move |this, _, _, cx| this.dispatch(UiIntent::PlayNext(id), cx)),
-                )
-                .into_any_element(),
-                row_action(
-                    theme,
-                    ("add-to-queue", ix),
-                    Icon::AddToQueue,
-                    i18n::queue::add_to_queue(),
-                    cx.listener(move |this, _, _, cx| this.dispatch(UiIntent::AddToQueue(id), cx)),
-                )
-                .into_any_element(),
-            ],
+            actions: self
+                .like_toggle(id, ix, theme, cx)
+                .into_iter()
+                .chain([
+                    row_action(
+                        theme,
+                        ("play-next", ix),
+                        Icon::PlayNext,
+                        i18n::queue::play_next(),
+                        cx.listener(move |this, _, _, cx| {
+                            this.dispatch(UiIntent::PlayNext(id), cx)
+                        }),
+                    )
+                    .into_any_element(),
+                    row_action(
+                        theme,
+                        ("add-to-queue", ix),
+                        Icon::AddToQueue,
+                        i18n::queue::add_to_queue(),
+                        cx.listener(move |this, _, _, cx| {
+                            this.dispatch(UiIntent::AddToQueue(id), cx)
+                        }),
+                    )
+                    .into_any_element(),
+                ])
+                .collect(),
             title_link: Some(Box::new(cx.listener(move |this, _, _, cx| {
                 this.dispatch(UiIntent::OpenTrack(id), cx)
             }))),
@@ -226,6 +235,42 @@ impl Shell {
                 );
             }))
             .into_any_element()
+    }
+
+    /// The heart of a track row, once signed in.
+    fn like_toggle(
+        &self,
+        id: TrackId,
+        ix: usize,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        self.models.account.as_ref()?;
+        let liked = self.models.liked.contains(&id);
+        let (glyph, label) = if liked {
+            (Icon::HeartFilled, i18n::social::unlike())
+        } else {
+            (Icon::Heart, i18n::social::like())
+        };
+        Some(
+            row_toggle(
+                theme,
+                ("like", ix),
+                glyph,
+                label,
+                liked,
+                cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        UiIntent::Like {
+                            track: id,
+                            liked: !liked,
+                        },
+                        cx,
+                    );
+                }),
+            )
+            .into_any_element(),
+        )
     }
 
     fn user_item(

@@ -2,12 +2,12 @@
 //! core sent (`ListItems`, the page types) plus the UI's own loading flags.
 //! Only `seam.rs` fills it from core events.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
 pub use sc_core::{ArtKey, ListId, ListItems, PlaylistId, SearchKind, TrackId, UserId};
-use sc_core::{PlaylistPage, TrackPage, UserPage};
+use sc_core::{PlaylistPage, TrackPage, UserPage, UserSummary};
 
 use crate::state::ArtworkMap;
 use crate::tint::Rgb;
@@ -32,11 +32,13 @@ pub fn empty_items(list: ListId) -> ListItems {
     match list {
         ListId::Search {
             kind: SearchKind::People,
-        } => ListItems::Users(Vec::new()),
+        }
+        | ListId::Followings(_) => ListItems::Users(Vec::new()),
         ListId::Search {
             kind: SearchKind::Playlists | SearchKind::Albums,
         }
-        | ListId::UserPlaylists(_) => ListItems::Playlists(Vec::new()),
+        | ListId::UserPlaylists(_)
+        | ListId::Library => ListItems::Playlists(Vec::new()),
         _ => ListItems::Tracks(Vec::new()),
     }
 }
@@ -202,6 +204,13 @@ pub struct Models {
     pub current: Option<TrackId>,
     /// The player is playing (the equalizer moves), not paused or loading.
     pub playing: bool,
+    /// The signed-in person, once the core says so.
+    pub account: Option<UserSummary>,
+    /// The sign-in window is open or a token is being checked.
+    pub signing_in: bool,
+    /// The person's liked tracks and the people they follow.
+    pub liked: HashSet<TrackId>,
+    pub followed: HashSet<UserId>,
 }
 
 impl Models {
@@ -216,6 +225,10 @@ impl Models {
             art: Art::default(),
             current: None,
             playing: false,
+            account: None,
+            signing_in: false,
+            liked: HashSet::new(),
+            followed: HashSet::new(),
         }
     }
 
