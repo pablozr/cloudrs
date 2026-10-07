@@ -23,11 +23,19 @@ hold raw colors, sizes or durations.
 |---|---|
 | Symbol: "wave disc" (a circular waveform, echoing Rust's gear, around a play button) | [`assets/brand/logo.svg`](../../assets/brand/logo.svg) |
 | App icon | [`app-icon.svg`](../../assets/brand/app-icon.svg), [`256 px`](../../assets/brand/app-icon-256.png), [`512 px`](../../assets/brand/app-icon-512.png) |
+| Windows icon | [`app-icon.ico`](../../assets/brand/app-icon.ico) (16 to 256 px), embedded in the `.exe` by `apps/cloudrs/build.rs` |
 | README banner | [`banner.svg`](../../assets/brand/banner.svg), [`banner.png`](../../assets/brand/banner.png) |
 
 - **Wordmark:** `cloudrs` in lowercase, Bricolage Grotesque ExtraBold, tracking −4.5%, with
   `rs` in the accent color.
 - **Clear space:** at least 25% of the symbol's width on every side.
+- **In the app:** the sidebar shows the symbol (32 px, full colour, drawn with `img`) to the
+  left of the wordmark, with the clear space between them.
+- **Icons:** [Lucide](https://lucide.dev) (ISC), embedded from `assets/icons/`, drawn with
+  `svg()` as a mask tinted by a colour token. 24 px grid, 2 px stroke, round caps. Sizes:
+  `ICON_S` 16 (row actions, field), `ICON_M` 20 (buttons, sidebar, volume), `ICON_STATUS` 40
+  (muted, above an empty or error state). Every icon-only control has an `aria_label` and a
+  tooltip. The play/pause glyph of the gradient button is the one hand-painted glyph.
 - **Do not:** put the symbol inside a cloud, recolor it outside the accent gradient, or pair it
   with SoundCloud's logo.
 
@@ -150,6 +158,9 @@ The OS "reduce motion" setting turns every duration down to an instant change.
   - index, artwork, title/artist, duration;
   - actions appear on hover;
   - the active row shows the equalizer and the accent title.
+- **Page tint:** a soft vertical gradient behind the header and the screen, from the artwork's
+  dominant colour (the page's own, or the playing track's on Search and History) to nothing;
+  lower opacity on the light theme, cross-fade on change (ADR 0009).
 - **Card:** square cover; the play button rises on hover.
 - **Toast:** artwork or status icon, text, optional action ("Undo").
 - **PlayerBar:** about 100 px tall, in three blocks with the centre column in the middle:
