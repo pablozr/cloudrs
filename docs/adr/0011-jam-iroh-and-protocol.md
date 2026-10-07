@@ -103,3 +103,7 @@ host leaves.
 - `PlayNext` counts as adding, like `AddToQueue`: both are always allowed.
 - `examples/jam.rs` tries a connection between two machines without the app:
   `cargo run -p sc-session --example jam -- host`, then `-- join "<link>"` elsewhere.
+- `sc-audio` gets `Command::Prepare { source, at }` instead of a paused `Load`: the stream
+  opens straight at the position (one trip to the CDN, not a load then a seek), stays paused
+  with the ring buffer filled, and answers `State(Paused)` and a `Position` — the core's
+  "ready" for `Prepare` → `Ready`.

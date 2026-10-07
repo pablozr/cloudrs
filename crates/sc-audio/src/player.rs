@@ -16,6 +16,13 @@ use crate::{Error, Result, Source};
 pub enum Command {
     /// Stop what is playing and start this source.
     Load(Source),
+    /// Stop what is playing and get this source ready, paused at `at`, so
+    /// `Play` starts at once (a Jam starts everyone together). Answers with
+    /// `State(Paused)` and a `Position` once the samples are buffered.
+    Prepare {
+        source: Source,
+        at: Duration,
+    },
     Play,
     Pause,
     /// Jump to this position in the current source.
@@ -176,6 +183,21 @@ impl Engine {
                     Ok(track) => {
                         self.track = Some(track);
                         self.set_state(PlaybackState::Playing);
+                    }
+                    Err(error) => self.fail(error),
+                }
+            }
+            Command::Prepare { source, at } => {
+                self.clear();
+                self.set_state(PlaybackState::Loading);
+                match Stream::open(&source).and_then(|stream| track_at(stream, at, &self.output)) {
+                    Ok(track) => {
+                        self.track = Some(track);
+                        self.set_state(PlaybackState::Paused);
+                        if let Err(error) = self.feed() {
+                            return self.fail(error);
+                        }
+                        self.report_position();
                     }
                     Err(error) => self.fail(error),
                 }

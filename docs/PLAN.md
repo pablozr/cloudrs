@@ -376,7 +376,7 @@ Peer-to-peer, no cloudrs server; state is synced, audio never leaves SoundCloud.
 - [ ] Traversal test between two home networks and an hour-long relay-only session.
 - [x] `sc-session`: host creates an invite link, guests join with it (loopback tests; the
       example `jam` tries two machines).
-- [ ] `sc-audio`: load paused.
+- [x] `sc-audio`: `Prepare` loads a track paused at a position.
 - [ ] `sc-core`: host mode (broadcast, requests, start barrier) and guest mode (mirror,
       clock offset, drift correction, pre-Jam queue restored).
 - [ ] UI: Jam panel, copy link, people, cannot-play badges, Ctrl K.
