@@ -12,7 +12,7 @@ use url::Url;
 use crate::SoundCloudApi;
 use crate::client_id::{find_client_id, script_urls};
 use crate::error::{Error, Result};
-use crate::models::{Page, Resource, Track, Waveform};
+use crate::models::{Like, Page, Playlist, Resource, Track, User, Waveform};
 use crate::stream::{StreamSource, pick_transcoding, protocol};
 
 /// Where to reach SoundCloud and which credentials to start with.
@@ -176,6 +176,20 @@ impl ScClient {
 }
 
 impl ScClient {
+    /// First page of a collection, with `limit` capped at 200.
+    async fn paged<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        query: &[(&str, &str)],
+        limit: u32,
+    ) -> Result<Page<T>> {
+        let limit = limit.clamp(1, 200).to_string();
+        let mut query = query.to_vec();
+        query.push(("limit", &limit));
+        query.push(("linked_partitioning", "1"));
+        self.get_json(url, &query).await
+    }
+
     /// GET an absolute URL outside the API (CDN files): no `client_id`, no token.
     async fn get_cdn(&self, url: &str) -> Result<reqwest::Response> {
         let _permit = self.permits.acquire().await.expect("semaphore open");
@@ -205,6 +219,39 @@ impl SoundCloudApi for ScClient {
             ],
         )
         .await
+    }
+
+    async fn search_users(&self, query: &str, limit: u32) -> Result<Page<User>> {
+        self.paged("search/users", &[("q", query)], limit).await
+    }
+
+    async fn search_playlists(&self, query: &str, limit: u32) -> Result<Page<Playlist>> {
+        self.paged("search/playlists", &[("q", query)], limit).await
+    }
+
+    async fn search_albums(&self, query: &str, limit: u32) -> Result<Page<Playlist>> {
+        self.paged("search/albums", &[("q", query)], limit).await
+    }
+
+    async fn user(&self, id: u64) -> Result<User> {
+        self.get_json(&format!("users/{id}"), &[]).await
+    }
+
+    async fn user_tracks(&self, id: u64, limit: u32) -> Result<Page<Track>> {
+        self.paged(&format!("users/{id}/tracks"), &[], limit).await
+    }
+
+    async fn user_playlists(&self, id: u64, limit: u32) -> Result<Page<Playlist>> {
+        self.paged(&format!("users/{id}/playlists"), &[], limit)
+            .await
+    }
+
+    async fn user_likes(&self, id: u64, limit: u32) -> Result<Page<Like>> {
+        self.paged(&format!("users/{id}/likes"), &[], limit).await
+    }
+
+    async fn playlist(&self, id: u64) -> Result<Playlist> {
+        self.get_json(&format!("playlists/{id}"), &[]).await
     }
 
     async fn related(&self, id: u64, limit: u32) -> Result<Page<Track>> {

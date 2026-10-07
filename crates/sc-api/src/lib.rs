@@ -18,7 +18,7 @@ pub use stream::{StreamProtocol, StreamSource, pick_transcoding};
 
 use std::future::Future;
 
-use models::{Page, Resource, Track, Waveform};
+use models::{Like, Page, Playlist, Resource, Track, User, Waveform};
 
 /// What the rest of cloudrs may ask of SoundCloud.
 pub trait SoundCloudApi: Send + Sync {
@@ -28,6 +28,47 @@ pub trait SoundCloudApi: Send + Sync {
         query: &str,
         limit: u32,
     ) -> impl Future<Output = Result<Page<Track>>> + Send;
+
+    /// Searches people.
+    fn search_users(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> impl Future<Output = Result<Page<User>>> + Send;
+
+    /// Searches playlists.
+    fn search_playlists(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> impl Future<Output = Result<Page<Playlist>>> + Send;
+
+    /// Searches albums.
+    fn search_albums(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> impl Future<Output = Result<Page<Playlist>>> + Send;
+
+    /// Fetches a user's profile.
+    fn user(&self, id: u64) -> impl Future<Output = Result<User>> + Send;
+
+    /// A user's own tracks.
+    fn user_tracks(&self, id: u64, limit: u32) -> impl Future<Output = Result<Page<Track>>> + Send;
+
+    /// A user's playlists and albums.
+    fn user_playlists(
+        &self,
+        id: u64,
+        limit: u32,
+    ) -> impl Future<Output = Result<Page<Playlist>>> + Send;
+
+    /// A user's likes: tracks and playlists mixed (see [`Like`]).
+    fn user_likes(&self, id: u64, limit: u32) -> impl Future<Output = Result<Page<Like>>> + Send;
+
+    /// Fetches a playlist. Its tracks come partially: fill the ones that only
+    /// carry an `id` with [`SoundCloudApi::tracks`].
+    fn playlist(&self, id: u64) -> impl Future<Output = Result<Playlist>> + Send;
 
     /// Tracks SoundCloud suggests after `id` (autoplay). `limit` is capped at 200.
     fn related(&self, id: u64, limit: u32) -> impl Future<Output = Result<Page<Track>>> + Send;
