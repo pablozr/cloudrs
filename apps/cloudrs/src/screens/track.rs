@@ -1,5 +1,6 @@
 //! A track page: header, a large waveform, the description and related tracks.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,6 +18,9 @@ use crate::models::{ListId, Page};
 use crate::shell::{Shell, status_view};
 use crate::state::{compact_count, format_time, seek_target};
 
+/// Waveforms kept at most; the oldest are dropped all at once.
+const MAX_WAVEFORMS: usize = 16;
+
 /// What the person did with the large waveform.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WaveAction {
@@ -32,7 +36,8 @@ pub struct TrackWave {
     page: Option<TrackId>,
     /// The track the player is on.
     current: Option<TrackId>,
-    samples: Option<(TrackId, Arc<[f32]>)>,
+    /// Waveforms received, so a page keeps its bars while another track plays.
+    samples: HashMap<TrackId, Arc<[f32]>>,
     playback: Playback,
     flat: Arc<[f32]>,
     hover: Option<f32>,
@@ -45,7 +50,7 @@ impl TrackWave {
         Self {
             page: None,
             current: None,
-            samples: None,
+            samples: HashMap::new(),
             playback: Playback::default(),
             flat: vec![tokens::PLACEHOLDER_LEVEL; tokens::PLACEHOLDER_BARS].into(),
             hover: None,
@@ -64,7 +69,10 @@ impl TrackWave {
         match event {
             Event::NowPlaying(track) => self.current = Some(track.id),
             Event::Waveform { track, bars } => {
-                self.samples = Some((*track, Arc::from(bars.as_slice())));
+                if self.samples.len() >= MAX_WAVEFORMS {
+                    self.samples.clear();
+                }
+                self.samples.insert(*track, Arc::from(bars.as_slice()));
             }
             Event::Playback(playback) => self.playback = *playback,
             _ => return,
@@ -85,10 +93,9 @@ impl Render for TrackWave {
         let theme = Theme::of(cx);
         let current = self.is_current();
         let samples = self
-            .samples
-            .as_ref()
-            .filter(|(track, _)| Some(*track) == self.page)
-            .map_or_else(|| self.flat.clone(), |(_, bars)| bars.clone());
+            .page
+            .and_then(|page| self.samples.get(&page))
+            .map_or_else(|| self.flat.clone(), Arc::clone);
         let duration = self.playback.duration;
         let progress = if current && !duration.is_zero() {
             (self.playback.position.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0)
