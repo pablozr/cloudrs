@@ -282,6 +282,11 @@ pub mod size {
     pub const SIDEBAR_RAIL: Pixels = px(3.0);
     /// Cover of a playlist in the sidebar.
     pub const SIDEBAR_COVER: Pixels = px(28.0);
+    /// The app's own title bar (navigation, search, window controls).
+    pub const TITLEBAR_HEIGHT: Pixels = px(56.0);
+    /// A window control button (minimize, maximize, close), as on Windows 11.
+    pub const WINDOW_BUTTON_WIDTH: Pixels = px(46.0);
+    pub const WINDOW_BUTTON_HEIGHT: Pixels = px(32.0);
     /// Artwork or avatar of a page header.
     pub const HEADER_ART: Pixels = px(160.0);
     /// The waveform of a track page.

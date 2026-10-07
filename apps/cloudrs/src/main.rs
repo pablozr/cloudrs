@@ -14,7 +14,10 @@ mod shell;
 mod state;
 mod tint;
 
-use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use gpui::{
+    App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowDecorations, WindowOptions,
+    point, px, size,
+};
 use gpui_platform::application;
 use sc_core::CoreConfig;
 
@@ -54,8 +57,11 @@ fn main() {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
                         title: Some(i18n::app::window_title().into()),
-                        ..Default::default()
+                        // The app draws its own title bar (shell::title_bar).
+                        appears_transparent: true,
+                        traffic_light_position: Some(point(px(16.0), px(20.0))),
                     }),
+                    window_decorations: Some(WindowDecorations::Client),
                     app_id: Some("dev.cloudrs.cloudrs".into()),
                     window_min_size: Some(size(px(860.0), px(560.0))),
                     ..Default::default()

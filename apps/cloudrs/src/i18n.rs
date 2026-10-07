@@ -51,6 +51,9 @@ pub mod app {
         try_again { en: "Try again" }
         switch_to_light { en: "Light theme" }
         switch_to_dark { en: "Dark theme" }
+        minimize { en: "Minimize" }
+        maximize { en: "Maximize" }
+        close { en: "Close" }
     }
 }
 

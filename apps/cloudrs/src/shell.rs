@@ -9,7 +9,8 @@ use std::time::Duration;
 use cloudrs_ui::assets;
 use cloudrs_ui::browse::{sidebar_collection, sidebar_item};
 use cloudrs_ui::components::{
-    ButtonKind, Icon, ToastKind, artwork_tint, button, icon, icon_button, toast, tooltip,
+    ButtonKind, Icon, ToastKind, WindowButton, artwork_tint, button, icon, icon_button, toast,
+    tooltip, window_button,
 };
 use cloudrs_ui::search_field::{SearchChanged, SearchField};
 use cloudrs_ui::tokens::{self, size, space, typography};
@@ -18,7 +19,7 @@ use gpui::prelude::*;
 use gpui::{
     AnimationExt, AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding,
     MouseButton, NavigationDirection, Role, ScrollStrategy, Stateful, Task,
-    UniformListScrollHandle, Window, actions, div, img, px,
+    UniformListScrollHandle, Window, WindowControlArea, actions, div, img, px,
 };
 use sc_core::{ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, StartError};
 
@@ -620,7 +621,7 @@ impl Shell {
             .flex_col()
             .gap(space::S1)
             .px(space::S3)
-            .py(space::S4)
+            .pb(space::S4)
             .bg(c.canvas_deep)
             .border_r_1()
             .border_color(c.line)
@@ -631,7 +632,16 @@ impl Shell {
                     .items_center()
                     .gap(size::LOGO_CLEAR_SPACE)
                     .px(space::S4)
-                    .pb(space::S6)
+                    .h(size::TITLEBAR_HEIGHT)
+                    .mb(space::S4)
+                    // On macOS the traffic lights sit at the top left.
+                    .when(cfg!(target_os = "macos"), |logo| logo.pt(space::S8))
+                    .window_control_area(WindowControlArea::Drag)
+                    .on_mouse_down(MouseButton::Left, |_, window, _| {
+                        if cfg!(target_os = "linux") {
+                            window.start_window_move();
+                        }
+                    })
                     .text_color(c.text)
                     // Full colour: the symbol keeps its own gradient, so it is an
                     // image, not a tinted icon.
@@ -807,7 +817,10 @@ impl Shell {
         }
     }
 
-    fn header(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The app's own title bar: navigation, search, theme and the window
+    /// controls (macOS keeps its own traffic lights). Dragging it moves the
+    /// window.
+    fn header(&self, theme: &Theme, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         // The icon shows what a click switches to.
         let (toggle_icon, toggle_label) = match theme.mode {
             ThemeMode::Dark => (Icon::Sun, i18n::app::switch_to_light()),
@@ -847,17 +860,32 @@ impl Shell {
             .when(can_forward, |button| {
                 button.on_click(cx.listener(|this, _, _, cx| this.go_forward(cx)))
             });
+        let controls = (!cfg!(target_os = "macos")).then(|| window_controls(theme, window, cx));
         div()
+            .id("titlebar")
             .flex()
             .items_center()
             .gap(space::S4)
-            .px(space::S5)
-            .py(space::S4)
+            .h(size::TITLEBAR_HEIGHT)
+            .pl(space::S5)
+            .window_control_area(WindowControlArea::Drag)
+            .on_mouse_down(MouseButton::Left, |_, window, _| {
+                // Windows drags through the control area above; Linux asks.
+                if cfg!(target_os = "linux") {
+                    window.start_window_move();
+                }
+            })
+            .on_click(|event, window, _| {
+                if event.click_count() == 2 && !cfg!(target_os = "windows") {
+                    window.titlebar_double_click();
+                }
+            })
             .child(
                 div()
                     .flex()
                     .flex_none()
                     .gap(space::S1)
+                    .occlude()
                     .child(back)
                     .child(forward),
             )
@@ -866,10 +894,12 @@ impl Shell {
                     div()
                         .w_full()
                         .max_w(size::SEARCH_MAX_WIDTH)
+                        .occlude()
                         .child(self.search.clone()),
                 ),
             )
-            .child(theme_button)
+            .child(div().occlude().child(theme_button))
+            .children(controls)
     }
 }
 
@@ -923,7 +953,7 @@ pub(crate) fn status_view(
 }
 
 impl Render for Shell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::of(cx);
         let root = div()
             .size_full()
@@ -971,7 +1001,7 @@ impl Render for Shell {
             .as_ref()
             .map(|t| toast(&theme, ("toast", t.id), t.kind, t.text));
         let sidebar = self.sidebar(&theme, cx).into_any_element();
-        let header = self.header(&theme, cx).into_any_element();
+        let header = self.header(&theme, window, cx).into_any_element();
         root.on_action(cx.listener(Self::on_go_back))
             .on_action(cx.listener(Self::on_go_forward))
             .on_mouse_down(
@@ -1022,4 +1052,38 @@ impl Render for Shell {
             )
             .child(self.player.clone())
     }
+}
+
+/// Minimize, maximize (or restore) and close, flush with the top right
+/// corner. On Windows the platform handles the clicks through the control
+/// areas; elsewhere the buttons ask the window.
+fn window_controls(theme: &Theme, window: &Window, cx: &mut Context<Shell>) -> impl IntoElement {
+    let maximize = if window.is_maximized() {
+        WindowButton::Restore
+    } else {
+        WindowButton::Maximize
+    };
+    div()
+        .flex()
+        .self_start()
+        .ml(space::S2)
+        .child(
+            window_button(theme, WindowButton::Minimize)
+                .aria_label(i18n::app::minimize())
+                .on_click(|_, window, _| window.minimize_window()),
+        )
+        .child(
+            window_button(theme, maximize)
+                .aria_label(i18n::app::maximize())
+                .on_click(|_, window, _| window.zoom_window()),
+        )
+        .child(
+            window_button(theme, WindowButton::Close)
+                .aria_label(i18n::app::close())
+                .on_click(cx.listener(|this, _, window, cx| {
+                    if this.request_shutdown(cx) {
+                        window.remove_window();
+                    }
+                })),
+        )
 }

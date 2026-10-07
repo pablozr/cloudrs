@@ -13,8 +13,8 @@ use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, AnyView, App, Bounds, ClickEvent, Context, Div, ElementId,
     Hsla, MouseButton, MouseDownEvent, ObjectFit, PathBuilder, Pixels, Render, Role, SharedString,
-    Stateful, Svg, Window, canvas, div, fill, img, linear_color_stop, linear_gradient, point, px,
-    svg,
+    Stateful, Svg, Window, WindowControlArea, canvas, div, fill, img, linear_color_stop,
+    linear_gradient, point, px, svg,
 };
 
 use crate::tokens::{self, radius, size, space, typography};
@@ -195,6 +195,10 @@ pub enum Icon {
     /// Listening together.
     Jam,
     Copy,
+    /// Window controls: minimize, maximize, restore (two squares).
+    Minimize,
+    Maximize,
+    Restore,
 }
 
 impl Icon {
@@ -229,6 +233,9 @@ impl Icon {
             Self::SignOut => "icons/log-out.svg",
             Self::Jam => "icons/radio.svg",
             Self::Copy => "icons/copy.svg",
+            Self::Minimize => "icons/minus.svg",
+            Self::Maximize => "icons/square.svg",
+            Self::Restore => "icons/copy.svg",
         }
     }
 }
@@ -963,4 +970,52 @@ mod tests {
             assert!((0.45 - 1e-4..=1.0 + 1e-4).contains(&shimmer_opacity(t)));
         }
     }
+}
+
+/// A window control of the app's own title bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowButton {
+    Minimize,
+    Maximize,
+    /// Maximize while maximized: back to the window's size.
+    Restore,
+    Close,
+}
+
+/// A window control as on Windows 11: a wide, flat button at the top right,
+/// the close one turning red on hover. It tells the platform which control it
+/// is, so Windows keeps its own behaviour (Snap layouts on maximize); it
+/// blocks the drag area under it. Callers add `on_click` (for platforms
+/// without native control areas) and the `aria_label`.
+pub fn window_button(theme: &Theme, kind: WindowButton) -> Stateful<Div> {
+    let c = theme.colors;
+    let (id, glyph, area) = match kind {
+        WindowButton::Minimize => ("window-minimize", Icon::Minimize, WindowControlArea::Min),
+        WindowButton::Maximize => ("window-maximize", Icon::Maximize, WindowControlArea::Max),
+        WindowButton::Restore => ("window-restore", Icon::Restore, WindowControlArea::Max),
+        WindowButton::Close => ("window-close", Icon::Remove, WindowControlArea::Close),
+    };
+    let close = kind == WindowButton::Close;
+    let hover_bg = if close {
+        tokens::status::danger()
+    } else {
+        c.surface_hover
+    };
+    div()
+        .id(id)
+        .group(id)
+        .flex_none()
+        .w(size::WINDOW_BUTTON_WIDTH)
+        .h(size::WINDOW_BUTTON_HEIGHT)
+        .flex()
+        .items_center()
+        .justify_center()
+        .occlude()
+        .window_control_area(area)
+        .hover(move |s| s.bg(hover_bg))
+        .child(
+            icon(glyph, size::ICON_S, c.text_muted).group_hover(id, move |s| {
+                s.text_color(if close { c.on_accent } else { c.text })
+            }),
+        )
 }
