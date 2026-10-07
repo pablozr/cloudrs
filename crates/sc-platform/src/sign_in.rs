@@ -14,7 +14,7 @@ use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tao::window::WindowBuilder;
-use wry::WebViewBuilder;
+use wry::{NewWindowResponse, WebViewBuilder};
 
 /// The argument that makes the app run the sign-in window instead.
 pub const ARG: &str = "--sign-in";
@@ -64,6 +64,10 @@ pub fn run_window(title: &str) -> ! {
     let builder = WebViewBuilder::new()
         .with_url(SIGN_IN_URL)
         .with_incognito(true)
+        // Sign-in providers (Google, Apple, Facebook) open a popup and talk
+        // back to this page through it. Without a handler wry refuses every
+        // popup; the platform's own popup shares this private session.
+        .with_new_window_req_handler(|_, _| NewWindowResponse::Allow)
         .with_on_page_load_handler(move |_, _| {
             let _ = proxy.send_event(PageLoaded);
         });

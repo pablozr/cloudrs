@@ -71,3 +71,10 @@ person's default browser.
 - Any `Unauthorized` while signed in (a list page, a like, a follow) signs out with
   `Problem::SessionExpired`. Liking or following signed out sends `Problem::SignInRequired`.
 - The feed keeps tracks only (posts and reposts); playlists in the feed come later.
+
+## Refinements made while trying the sign-in window
+
+- The sign-in page and its providers (Google, Apple, Facebook) open popups and talk back to the
+  page through `window.opener`. wry refuses every `window.open` unless a handler says otherwise,
+  and SoundCloud then asks to "enable popup windows". The window allows them with the
+  platform's own popup (`NewWindowResponse::Allow`), which shares the private session.
