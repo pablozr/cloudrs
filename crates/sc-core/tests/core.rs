@@ -1095,6 +1095,7 @@ fn adding_to_a_playlist_sends_the_whole_list() {
     h.core.send(Command::AddToPlaylist {
         playlist: PlaylistId(5),
         track: TrackId(7),
+        at: None,
     });
     let (playlist, change) = saved(&h);
     assert_eq!(playlist.id, PlaylistId(5));
@@ -1113,6 +1114,7 @@ fn adding_to_a_playlist_sends_the_whole_list() {
     h.core.send(Command::AddToPlaylist {
         playlist: PlaylistId(5),
         track: TrackId(100),
+        at: None,
     });
     assert_eq!(
         saved(&h).1,

@@ -21,7 +21,8 @@ pub(super) enum Edit {
         title: String,
         track: Option<TrackId>,
     },
-    Add(TrackId),
+    /// At the end, or at this place.
+    Add(TrackId, Option<usize>),
     Remove(usize),
     Move {
         from: usize,
@@ -35,7 +36,10 @@ pub(super) enum Edit {
 /// Applies a change to a track list. `None` when there is nothing to do.
 fn edit_tracks(mut ids: Vec<u64>, edit: &Edit) -> Option<Vec<u64>> {
     match *edit {
-        Edit::Add(track) if !ids.contains(&track.0) => ids.push(track.0),
+        Edit::Add(track, at) if !ids.contains(&track.0) => {
+            let at = at.unwrap_or(ids.len()).min(ids.len());
+            ids.insert(at, track.0);
+        }
         Edit::Remove(index) if index < ids.len() => {
             ids.remove(index);
         }
@@ -82,11 +86,11 @@ async fn send<A: SoundCloudApi>(
             api.delete_playlist(id).await?;
             Ok((playlist, PlaylistChange::Deleted))
         }
-        Edit::Add(_) | Edit::Remove(_) | Edit::Move { .. } => {
+        Edit::Add(..) | Edit::Remove(_) | Edit::Move { .. } => {
             let current = api.playlist(id).await?;
             let ids = current.tracks.iter().map(|t| t.id).collect();
             let change = match edit {
-                Edit::Add(track) => PlaylistChange::Added(track),
+                Edit::Add(track, _) => PlaylistChange::Added(track),
                 Edit::Remove(_) => PlaylistChange::Removed,
                 _ => PlaylistChange::Moved,
             };
@@ -168,13 +172,18 @@ mod tests {
     fn track_edits_change_the_whole_list() {
         let ids = vec![1, 2, 3];
         assert_eq!(
-            edit_tracks(ids.clone(), &Edit::Add(TrackId(4))),
+            edit_tracks(ids.clone(), &Edit::Add(TrackId(4), None)),
             Some(vec![1, 2, 3, 4])
         );
         assert_eq!(
-            edit_tracks(ids.clone(), &Edit::Add(TrackId(2))),
+            edit_tracks(ids.clone(), &Edit::Add(TrackId(2), None)),
             None,
             "already there"
+        );
+        assert_eq!(
+            edit_tracks(ids.clone(), &Edit::Add(TrackId(9), Some(1))),
+            Some(vec![1, 9, 2, 3]),
+            "back where it was"
         );
         assert_eq!(edit_tracks(ids.clone(), &Edit::Remove(0)), Some(vec![2, 3]));
         assert_eq!(edit_tracks(ids.clone(), &Edit::Remove(9)), None);

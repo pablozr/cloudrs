@@ -287,6 +287,12 @@ pub mod size {
     /// A window control button (minimize, maximize, close), as on Windows 11.
     pub const WINDOW_BUTTON_WIDTH: Pixels = px(46.0);
     pub const WINDOW_BUTTON_HEIGHT: Pixels = px(32.0);
+    /// A floating menu (add to playlist) and its rows.
+    pub const MENU_WIDTH: Pixels = px(260.0);
+    pub const MENU_MAX_HEIGHT: Pixels = px(320.0);
+    pub const MENU_ITEM_HEIGHT: Pixels = px(36.0);
+    /// A dialog (name a playlist, confirm a delete).
+    pub const DIALOG_WIDTH: Pixels = px(420.0);
     /// Artwork or avatar of a page header.
     pub const HEADER_ART: Pixels = px(160.0);
     /// The waveform of a track page.

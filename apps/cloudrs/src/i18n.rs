@@ -49,6 +49,7 @@ pub mod app {
         brand_cloud { en: "cloud" }
         brand_rs { en: "rs" }
         try_again { en: "Try again" }
+        undo { en: "Undo" }
         switch_to_light { en: "Light theme" }
         switch_to_dark { en: "Dark theme" }
         minimize { en: "Minimize" }
@@ -368,5 +369,40 @@ pub mod library {
     formats! {
         playlists(count) { en: "{count} playlists" }
         albums(count) { en: "{count} albums" }
+    }
+}
+
+/// Your own playlists: the menu, the dialogs and the toasts (ADR 0014).
+pub mod playlists {
+    strings! {
+        add_to_playlist { en: "Add to playlist" }
+        new_playlist { en: "New playlist\u{2026}" }
+        new_playlist_title { en: "New playlist" }
+        name_placeholder { en: "Playlist name" }
+        private_hint { en: "It starts private: only you can see it until you make it public." }
+        create { en: "Create" }
+        cancel { en: "Cancel" }
+        save { en: "Save" }
+        rename { en: "Rename" }
+        rename_title { en: "Rename playlist" }
+        delete { en: "Delete" }
+        delete_hint { en: "It disappears from SoundCloud too. This can\u{2019}t be undone." }
+        make_public { en: "Make public" }
+        make_private { en: "Make private" }
+        public_label { en: "Public" }
+        private_label { en: "Private" }
+        remove_from { en: "Remove from playlist" }
+    }
+    formats! {
+        add_to(name) { en: "Add to {name}" }
+        delete_title(name) { en: "Delete \u{201c}{name}\u{201d}?" }
+        created(name) { en: "Created {name}" }
+        added(name) { en: "Added to {name}" }
+        already_there(name) { en: "Already in {name}" }
+        removed(name) { en: "Removed from {name}" }
+        renamed(name) { en: "Renamed to {name}" }
+        now_public(name) { en: "{name} is now public" }
+        now_private(name) { en: "{name} is now private" }
+        deleted(name) { en: "Deleted {name}" }
     }
 }

@@ -95,6 +95,11 @@ impl Shell {
             }))
             .into_any_element()
         });
+        let tools = if self.owns_playlist(id) {
+            self.owner_tools(id, header.public, &header.title, theme, cx)
+        } else {
+            Vec::new()
+        };
         let meta = meta(header);
         let page = page_header(
             theme,
@@ -106,6 +111,7 @@ impl Shell {
                 actions: [Some(play.into_any_element()), owner]
                     .into_iter()
                     .flatten()
+                    .chain(tools)
                     .collect(),
             },
         );
@@ -118,5 +124,57 @@ impl Shell {
             .child(page)
             .child(div().flex_1().min_h(px(0.0)).px(space::S5).child(list))
             .into_any_element()
+    }
+}
+
+impl Shell {
+    /// On the person's own playlist: its privacy (a click switches it),
+    /// rename and delete.
+    fn owner_tools(
+        &self,
+        id: PlaylistId,
+        public: bool,
+        title: &str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        use crate::i18n::playlists as p;
+        use crate::shell::playlist_ui::Dialog;
+        let (label, glyph, switch) = if public {
+            (p::public_label(), Icon::Public, p::make_private())
+        } else {
+            (p::private_label(), Icon::Private, p::make_public())
+        };
+        let c = theme.colors;
+        let privacy = button(theme, "playlist-privacy", label, ButtonKind::Secondary)
+            .child(cloudrs_ui::components::icon(
+                glyph,
+                tokens::size::ICON_S,
+                c.text_muted,
+            ))
+            .aria_label(switch)
+            .tooltip(cloudrs_ui::components::tooltip(switch))
+            .on_click(cx.listener(move |this, _, _, _| {
+                this.send(sc_core::Command::SetPlaylistPublic {
+                    playlist: id,
+                    public: !public,
+                });
+            }));
+        let rename = button(theme, "playlist-rename", p::rename(), ButtonKind::Ghost)
+            .aria_label(p::rename_title())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.open_dialog(Dialog::Rename(id), cx);
+            }));
+        let title = title.to_owned();
+        let delete = button(theme, "playlist-delete", p::delete(), ButtonKind::Ghost)
+            .aria_label(p::delete_title(&title))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.open_dialog(Dialog::Delete(id, title.clone()), cx);
+            }));
+        vec![
+            privacy.into_any_element(),
+            rename.into_any_element(),
+            delete.into_any_element(),
+        ]
     }
 }

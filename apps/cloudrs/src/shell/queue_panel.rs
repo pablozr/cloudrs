@@ -22,9 +22,9 @@ struct QueueDrag {
 }
 
 /// The view that follows the pointer while a row is dragged.
-struct DragView {
-    title: SharedString,
-    artist: SharedString,
+pub(crate) struct DragView {
+    pub(crate) title: SharedString,
+    pub(crate) artist: SharedString,
 }
 
 impl Render for DragView {

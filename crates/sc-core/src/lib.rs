@@ -103,10 +103,12 @@ pub enum Command {
         title: String,
         track: Option<TrackId>,
     },
-    /// Add a track at the end of one of the person's playlists.
+    /// Add a track to one of the person's playlists: at the end, or at this
+    /// place (to undo a removal).
     AddToPlaylist {
         playlist: PlaylistId,
         track: TrackId,
+        at: Option<usize>,
     },
     /// Remove the track at this place of one of the person's playlists.
     RemoveFromPlaylist {

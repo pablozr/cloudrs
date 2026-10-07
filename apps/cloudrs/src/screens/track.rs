@@ -219,6 +219,16 @@ impl Shell {
                 }))
                 .into_any_element()
         });
+        let add = self.models.account.is_some().then(|| {
+            let label = i18n::playlists::add_to_playlist();
+            icon_button(theme, "track-add-to-playlist", Icon::Plus, false)
+                .aria_label(label)
+                .tooltip(tooltip(label))
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.open_playlist_menu(id, window.mouse_position(), cx);
+                }))
+                .into_any_element()
+        });
         let meta = meta(header);
         let page = page_header(
             theme,
@@ -227,7 +237,7 @@ impl Shell {
                 round: false,
                 title: &header.track.title,
                 meta: &meta,
-                actions: artist.into_iter().chain(like).collect(),
+                actions: artist.into_iter().chain(like).chain(add).collect(),
             },
         );
         let description = header.description.as_ref().map(|text| {

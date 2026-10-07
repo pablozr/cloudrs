@@ -19,6 +19,7 @@ use crate::intent::UiIntent;
 use sc_core::{ListItems, PlaylistSummary, TrackId, TrackSummary, UserSummary};
 
 use crate::models::ListId;
+use crate::shell::queue_panel::DragView;
 use crate::shell::{Shell, status_view};
 use crate::state::{compact_count, format_time};
 
@@ -196,6 +197,7 @@ impl Shell {
             actions: self
                 .like_toggle(id, ix, theme, cx)
                 .into_iter()
+                .chain(self.playlist_row_actions(key, ix, id, theme, cx))
                 .chain([
                     row_action(
                         theme,
@@ -224,6 +226,7 @@ impl Shell {
             }))),
             artist_link,
         };
+        let drag = self.playlist_drag(key, ix, track);
         track_row(theme, ("track", ix), row)
             .aria_label(i18n::search::play_track(&track.title, &track.artist))
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -235,6 +238,25 @@ impl Shell {
                     cx,
                 );
             }))
+            .when_some(drag, |row, (playlist, drag)| {
+                let c = theme.colors;
+                row.on_drag(drag, |drag, _, _, cx| {
+                    cx.new(|_| DragView {
+                        title: drag.title.clone(),
+                        artist: drag.artist.clone(),
+                    })
+                })
+                .drag_over::<PlaylistDrag>(move |style, _, _, _| {
+                    style.bg(c.accent_soft).border_color(c.accent)
+                })
+                .on_drop(cx.listener(move |this, drag: &PlaylistDrag, _, _| {
+                    this.send(sc_core::Command::MoveInPlaylist {
+                        playlist,
+                        from: drag.from,
+                        to: ix,
+                    });
+                }))
+            })
             .into_any_element()
     }
 
@@ -321,5 +343,89 @@ impl Shell {
                 cx.listener(move |this, _, _, cx| this.dispatch(UiIntent::OpenPlaylist(id), cx)),
             )
             .into_any_element()
+    }
+}
+
+/// What a dragged row of the person's own playlist carries.
+pub(crate) struct PlaylistDrag {
+    from: usize,
+    title: SharedString,
+    artist: SharedString,
+}
+
+impl Shell {
+    /// "Add to playlist" once signed in, and "Remove" on the person's own
+    /// playlist.
+    fn playlist_row_actions(
+        &self,
+        key: ListId,
+        ix: usize,
+        id: TrackId,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let mut actions = Vec::new();
+        if self.models.account.is_none() {
+            return actions;
+        }
+        actions.push(
+            row_action(
+                theme,
+                ("add-to-playlist", ix),
+                Icon::Plus,
+                i18n::playlists::add_to_playlist(),
+                cx.listener(move |this, _, window, cx| {
+                    this.open_playlist_menu(id, window.mouse_position(), cx);
+                }),
+            )
+            .into_any_element(),
+        );
+        if let ListId::Playlist(playlist) = key
+            && self.owns_playlist(playlist)
+        {
+            actions.push(
+                row_action(
+                    theme,
+                    ("remove-from-playlist", ix),
+                    Icon::Remove,
+                    i18n::playlists::remove_from(),
+                    cx.listener(move |this, _, _, _| {
+                        this.pending_undo = Some(sc_core::Command::AddToPlaylist {
+                            playlist,
+                            track: id,
+                            at: Some(ix),
+                        });
+                        this.send(sc_core::Command::RemoveFromPlaylist {
+                            playlist,
+                            index: ix,
+                        });
+                    }),
+                )
+                .into_any_element(),
+            );
+        }
+        actions
+    }
+
+    /// Rows of the person's own playlist can be dragged to reorder it.
+    fn playlist_drag(
+        &self,
+        key: ListId,
+        ix: usize,
+        track: &TrackSummary,
+    ) -> Option<(sc_core::PlaylistId, PlaylistDrag)> {
+        let ListId::Playlist(playlist) = key else {
+            return None;
+        };
+        self.owns_playlist(playlist).then(|| {
+            (
+                playlist,
+                PlaylistDrag {
+                    from: ix,
+                    title: track.title.clone().into(),
+                    artist: track.artist.clone().into(),
+                },
+            )
+        })
     }
 }

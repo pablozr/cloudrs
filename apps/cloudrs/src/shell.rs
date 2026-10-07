@@ -18,7 +18,7 @@ use cloudrs_ui::{Theme, ThemeMode, motion};
 use gpui::prelude::*;
 use gpui::{
     AnimationExt, AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding,
-    MouseButton, NavigationDirection, Role, ScrollStrategy, Stateful, Task,
+    MouseButton, NavigationDirection, Role, ScrollStrategy, SharedString, Stateful, Task,
     UniformListScrollHandle, Window, WindowControlArea, actions, div, img, px,
 };
 use sc_core::{ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, StartError};
@@ -33,7 +33,8 @@ use crate::seam;
 use crate::state::{QueueState, is_soundcloud_url};
 use crate::tint::{self, Rgb};
 
-mod queue_panel;
+pub(crate) mod playlist_ui;
+pub(crate) mod queue_panel;
 
 actions!(shell, [FocusSearch, GoBack, GoForward]);
 
@@ -77,7 +78,9 @@ struct ToastState {
     /// Changes with every toast, so its entrance animation plays again.
     id: usize,
     kind: ToastKind,
-    text: &'static str,
+    text: SharedString,
+    /// "Undo" on the right, sending this command.
+    undo: Option<Command>,
 }
 
 pub struct Shell {
@@ -105,6 +108,14 @@ pub struct Shell {
     queue_open: bool,
     queue_scroll: UniformListScrollHandle,
     tint: TintFade,
+    /// "Add to playlist" open over this track, at this place.
+    pub(crate) playlist_menu: Option<(sc_core::TrackId, gpui::Point<gpui::Pixels>)>,
+    /// The dialog showing, if any.
+    pub(crate) dialog: Option<playlist_ui::Dialog>,
+    /// The name of a playlist being created or renamed.
+    pub(crate) name_field: Entity<SearchField>,
+    /// Puts back the last track removed from a playlist ("Undo").
+    pub(crate) pending_undo: Option<Command>,
     toast: Option<ToastState>,
     toast_timer: Option<Task<()>>,
     toasts_shown: usize,
@@ -136,6 +147,9 @@ impl Shell {
             this.show_search(cx);
         })
         .detach();
+        let name_field = cx.new(|cx| {
+            SearchField::new(i18n::playlists::name_placeholder(), "", cx).with_icon(Icon::Rename)
+        });
 
         let token_field = cx.new(|cx| {
             SearchField::new(i18n::account::token_placeholder(), "", cx).with_icon(Icon::SignIn)
@@ -201,6 +215,10 @@ impl Shell {
             queue_open: false,
             queue_scroll: UniformListScrollHandle::new(),
             tint: TintFade::default(),
+            playlist_menu: None,
+            dialog: None,
+            name_field,
+            pending_undo: None,
             toast: None,
             toast_timer: None,
             toasts_shown: 0,
@@ -294,6 +312,9 @@ impl Shell {
             }
             Event::Problem(problem) => self.show_problem(problem, cx),
             Event::Stopped => self.stopped = true,
+            Event::PlaylistSaved { playlist, change } => {
+                self.playlist_saved(playlist, *change, cx);
+            }
             Event::SignedIn(account) => {
                 let token = account.token.clone();
                 keychain(cx, move || sc_platform::keychain::save_token(&token));
@@ -326,10 +347,8 @@ impl Shell {
             | Event::FollowedIds(_)
             | Event::Liked { .. }
             | Event::Followed { .. }
-            // The Jam panel arrives with the Jam UI.
             | Event::Jam(_)
-            | Event::HomeShelves(_)
-            | Event::PlaylistSaved { .. } => {}
+            | Event::HomeShelves(_) => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
@@ -460,14 +479,26 @@ impl Shell {
     pub(crate) fn show_toast(
         &mut self,
         kind: ToastKind,
-        text: &'static str,
+        text: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_toast_undo(kind, text, None, cx);
+    }
+
+    /// A toast with "Undo", which sends `undo` and closes it.
+    pub(crate) fn show_toast_undo(
+        &mut self,
+        kind: ToastKind,
+        text: impl Into<SharedString>,
+        undo: Option<Command>,
         cx: &mut Context<Self>,
     ) {
         self.toasts_shown += 1;
         self.toast = Some(ToastState {
             id: self.toasts_shown,
             kind,
-            text,
+            text: text.into(),
+            undo,
         });
         // Replacing the timer drops the previous one, so a newer problem
         // always gets its full time on screen.
@@ -564,7 +595,7 @@ impl Shell {
         self.navigate(Route::Search, cx);
     }
 
-    fn go_back(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn go_back(&mut self, cx: &mut Context<Self>) {
         if self.router.back() {
             self.route_changed(cx);
         }
@@ -959,6 +990,7 @@ impl Render for Shell {
         let theme = Theme::of(cx);
         let root = div()
             .size_full()
+            .relative()
             .flex()
             .flex_col()
             .bg(theme.colors.canvas)
@@ -998,11 +1030,22 @@ impl Render for Shell {
         let queue_panel = self
             .queue_open
             .then(|| self.queue_panel(&theme, cx).into_any_element());
-        let toast = self
-            .toast
-            .as_ref()
-            .map(|t| toast(&theme, ("toast", t.id), t.kind, t.text));
+        let toast = self.toast.as_ref().map(|t| {
+            let undo = t.undo.clone().map(|command| {
+                button(&theme, "toast-undo", i18n::app::undo(), ButtonKind::Ghost)
+                    .aria_label(i18n::app::undo())
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.send(command.clone());
+                        this.toast = None;
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            });
+            toast(&theme, ("toast", t.id), t.kind, t.text.clone(), undo)
+        });
         let sidebar = self.sidebar(&theme, cx).into_any_element();
+        let playlist_menu = self.playlist_menu_view(&theme, cx);
+        let dialog = self.dialog_view(&theme, cx);
         let header = self.header(&theme, window, cx).into_any_element();
         root.on_action(cx.listener(Self::on_go_back))
             .on_action(cx.listener(Self::on_go_forward))
@@ -1053,6 +1096,8 @@ impl Render for Shell {
                 ),
             )
             .child(self.player.clone())
+            .children(playlist_menu)
+            .children(dialog)
     }
 }
 

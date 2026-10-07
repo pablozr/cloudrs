@@ -251,6 +251,13 @@ impl SearchField {
         self.reset(cx);
     }
 
+    /// Replaces the text (a playlist's name to rename), caret at the end.
+    pub fn set_value(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.edit = SearchEdit::default();
+        self.edit.replace(None, text);
+        self.changed(cx);
+    }
+
     /// Empties the field (after its text was used, such as a token).
     pub fn reset(&mut self, cx: &mut Context<Self>) {
         self.edit = SearchEdit::default();

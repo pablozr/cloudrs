@@ -199,6 +199,12 @@ pub enum Icon {
     Minimize,
     Maximize,
     Restore,
+    /// Playlists: add to one, rename, delete, public, private.
+    Plus,
+    Rename,
+    Delete,
+    Public,
+    Private,
 }
 
 impl Icon {
@@ -236,6 +242,11 @@ impl Icon {
             Self::Minimize => "icons/minus.svg",
             Self::Maximize => "icons/square.svg",
             Self::Restore => "icons/copy.svg",
+            Self::Plus => "icons/plus.svg",
+            Self::Rename => "icons/pencil.svg",
+            Self::Delete => "icons/trash-2.svg",
+            Self::Public => "icons/globe.svg",
+            Self::Private => "icons/lock.svg",
         }
     }
 }
@@ -620,13 +631,15 @@ pub enum ToastKind {
     Error,
 }
 
-/// A floating message entering from below. `id` must change for each new toast
+/// A floating message entering from below, with an optional action on the
+/// right ("Undo"). `id` must change for each new toast
 /// so the entrance plays again. Dismissal timing belongs to the caller.
 pub fn toast(
     theme: &Theme,
     id: impl Into<ElementId>,
     kind: ToastKind,
     text: impl Into<SharedString>,
+    action: Option<AnyElement>,
 ) -> impl IntoElement {
     let c = theme.colors;
     let color = match kind {
@@ -655,7 +668,8 @@ pub fn toast(
                 .rounded(radius::FULL)
                 .bg(theme.readable(color)),
         )
-        .child(text.into());
+        .child(div().flex_1().min_w(px(0.0)).child(text.into()))
+        .children(action);
     motion::pop_in(id, body)
 }
 
@@ -1018,4 +1032,116 @@ pub fn window_button(theme: &Theme, kind: WindowButton) -> Stateful<Div> {
                 s.text_color(if close { c.on_accent } else { c.text })
             }),
         )
+}
+
+/// A floating menu: a raised panel with a shadow that scrolls past its
+/// height. Callers place it (`anchored`) and add the items.
+pub fn menu(theme: &Theme, id: impl Into<ElementId>) -> Stateful<Div> {
+    let c = theme.colors;
+    div()
+        .id(id)
+        .occlude()
+        .w(size::MENU_WIDTH)
+        .max_h(size::MENU_MAX_HEIGHT)
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .p(space::S1)
+        .rounded(radius::L)
+        .border_1()
+        .border_color(c.line_strong)
+        .bg(c.surface_raised)
+        .shadow(tokens::floating_shadow())
+}
+
+/// A row of a [`menu`]: icon and label. Callers add `on_click` and the
+/// `aria_label`.
+pub fn menu_item(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    glyph: Icon,
+    label: impl Into<SharedString>,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    theme
+        .text(div(), typography::BODY)
+        .id(id)
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(space::S3)
+        .h(size::MENU_ITEM_HEIGHT)
+        .px(space::S3)
+        .rounded(radius::M)
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .tab_index(0)
+        .focus_visible(move |s| s.border_color(c.accent))
+        .cursor_pointer()
+        .text_color(c.text)
+        .hover(move |s| s.bg(c.surface_hover))
+        .child(icon(glyph, size::ICON_S, c.text_muted))
+        .child(div().flex_1().min_w(px(0.0)).truncate().child(label.into()))
+}
+
+/// A thin line between groups of menu items.
+pub fn menu_separator(theme: &Theme) -> Div {
+    div().h(px(1.0)).my(space::S1).bg(theme.colors.line)
+}
+
+/// A dialog over a dimmed window: title, content and actions on the right.
+/// It covers its positioned parent; a click on the dim area calls
+/// `on_dismiss`.
+pub fn dialog(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    title: impl Into<SharedString>,
+    content: Vec<AnyElement>,
+    actions: Vec<AnyElement>,
+    on_dismiss: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    div()
+        .id(id)
+        .absolute()
+        .top(px(0.0))
+        .left(px(0.0))
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(c.canvas.opacity(0.72))
+        .occlude()
+        .on_mouse_down(MouseButton::Left, on_dismiss)
+        .child(motion::pop_in(
+            "dialog-panel",
+            div()
+                .occlude()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .w(size::DIALOG_WIDTH)
+                .flex()
+                .flex_col()
+                .gap(space::S4)
+                .p(space::S6)
+                .rounded(radius::XL)
+                .border_1()
+                .border_color(c.line_strong)
+                .bg(c.surface)
+                .shadow(tokens::floating_shadow())
+                .child(
+                    theme
+                        .text(div(), typography::TITLE)
+                        .text_color(c.text)
+                        .child(title.into()),
+                )
+                .children(content)
+                .child(
+                    div()
+                        .flex()
+                        .justify_end()
+                        .gap(space::S2)
+                        .pt(space::S2)
+                        .children(actions),
+                ),
+        ))
 }

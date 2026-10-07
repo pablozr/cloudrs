@@ -549,8 +549,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     track,
                 },
             ),
-            Command::AddToPlaylist { playlist, track } => {
-                self.edit_playlist(Some(playlist), playlists::Edit::Add(track));
+            Command::AddToPlaylist {
+                playlist,
+                track,
+                at,
+            } => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Add(track, at));
             }
             Command::RemoveFromPlaylist { playlist, index } => {
                 self.edit_playlist(Some(playlist), playlists::Edit::Remove(index));

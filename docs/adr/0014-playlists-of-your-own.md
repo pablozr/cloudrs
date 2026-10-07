@@ -43,3 +43,18 @@ an account (the maintainer tries them).
 - Two calls per track change (read, then write). That is cheap for something done by hand.
 - A playlist over SoundCloud's 500-track limit is refused by SoundCloud and shows
   `PlaylistNotSaved`.
+
+## Refinements made while building the UI
+
+- `AddToPlaylist` takes an optional place (`at`), so "Undo" after a removal puts the track back
+  where it was.
+- The toast gains an optional action ("Undo"); `cloudrs-ui` gains `menu`, `menu_item`,
+  `menu_separator` and `dialog`. The menu floats where it was opened (`anchored`, kept in
+  the window) and closes on a click outside; the dialog dims the window and closes on a click
+  outside or Cancel.
+- The menu lists the person's own playlists (owned, not albums) from the library, which it
+  loads if needed. The Library has a "New playlist" button too.
+- On their own playlist the owner sees Public/Private (a click switches it), Rename and Delete
+  in the header; rows get Remove and can be dragged to a new place, as in the queue.
+- Toasts say what happened ("Added to Night", "Already in Night", "Night is now public"…);
+  deleting the playlist that is showing goes back.

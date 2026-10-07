@@ -131,7 +131,29 @@ impl Shell {
                             .child(meta),
                     ),
             )
-            .child(filter)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(space::S3)
+                    .child(filter)
+                    .child(
+                        button(
+                            theme,
+                            "library-new",
+                            i18n::playlists::new_playlist(),
+                            ButtonKind::Primary,
+                        )
+                        .aria_label(i18n::playlists::new_playlist_title())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.open_dialog(
+                                crate::shell::playlist_ui::Dialog::NewPlaylist { track: None },
+                                cx,
+                            );
+                        })),
+                    ),
+            )
             .child(body)
             .into_any_element()
     }
