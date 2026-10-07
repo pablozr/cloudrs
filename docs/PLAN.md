@@ -379,7 +379,8 @@ Peer-to-peer, no cloudrs server; state is synced, audio never leaves SoundCloud.
 - [x] `sc-audio`: `Prepare` loads a track paused at a position.
 - [x] `sc-core`: host mode (broadcast, requests, start barrier) and guest mode (mirror,
       clock offset, drift correction, pre-Jam queue restored).
-- [ ] UI: Jam panel, copy link, people, cannot-play badges, Ctrl K.
+- [x] UI: Jam screen in the sidebar, copy link, people, cannot-play badges, permission, end or
+      leave; a pasted link joins. (No command palette exists yet for Ctrl K.)
 
 ---
 

@@ -129,8 +129,10 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
                 models.followed.remove(user)
             }
         }
-        // The Jam panel arrives with the Jam UI.
-        Event::Jam(_) => false,
+        Event::Jam(state) => {
+            models.jam.clone_from(state);
+            true
+        }
     }
 }
 
@@ -154,6 +156,11 @@ pub fn command(intent: &UiIntent) -> Command {
         UiIntent::AddToQueue(id) => Command::AddToQueue(*id),
         UiIntent::SignIn(token) => Command::SignIn(token.clone()),
         UiIntent::SignOut => Command::SignOut,
+        UiIntent::StartJam => Command::StartJam,
+        UiIntent::JoinJam(link) => Command::JoinJam(link.clone()),
+        UiIntent::LeaveJam => Command::LeaveJam,
+        UiIntent::SetJamGuestsControl(on) => Command::SetJamGuestsControl(*on),
+        UiIntent::RemoveFromJam(id) => Command::RemoveFromJam(*id),
         UiIntent::Like { track, liked } => Command::Like {
             track: *track,
             liked: *liked,
@@ -207,7 +214,12 @@ pub fn take(models: &mut Models, intent: &UiIntent) -> Command {
         | UiIntent::LoadMore(_)
         | UiIntent::SignOut
         | UiIntent::Like { .. }
-        | UiIntent::Follow { .. } => {}
+        | UiIntent::Follow { .. }
+        | UiIntent::StartJam
+        | UiIntent::JoinJam(_)
+        | UiIntent::LeaveJam
+        | UiIntent::SetJamGuestsControl(_)
+        | UiIntent::RemoveFromJam(_) => {}
         UiIntent::SignIn(_) => models.signing_in = true,
     }
     command(intent)

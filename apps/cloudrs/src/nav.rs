@@ -17,6 +17,8 @@ pub enum Route {
     Following(UserId),
     /// Sign in, or the signed-in account and "Sign out".
     Account,
+    /// Start, share or leave a Jam.
+    Jam,
     /// A pasted link the core is still resolving: shows a loading page until
     /// the core answers with the screen to open.
     Resolving(String),
@@ -31,6 +33,7 @@ pub enum Section {
     Likes,
     Library,
     Following,
+    Jam,
     Account,
 }
 
@@ -45,6 +48,7 @@ impl Route {
             Self::Library => Section::Library,
             Self::Following(_) => Section::Following,
             Self::Account => Section::Account,
+            Self::Jam => Section::Jam,
             _ => Section::Search,
         }
     }

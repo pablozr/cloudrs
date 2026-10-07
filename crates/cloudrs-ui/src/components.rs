@@ -191,6 +191,9 @@ pub enum Icon {
     Account,
     SignIn,
     SignOut,
+    /// Listening together.
+    Jam,
+    Copy,
 }
 
 impl Icon {
@@ -222,6 +225,8 @@ impl Icon {
             Self::Account => "icons/circle-user.svg",
             Self::SignIn => "icons/log-in.svg",
             Self::SignOut => "icons/log-out.svg",
+            Self::Jam => "icons/radio.svg",
+            Self::Copy => "icons/copy.svg",
         }
     }
 }

@@ -30,10 +30,18 @@ pub const LINK_PREFIX: &str = "cloudrs:jam/";
 /// Most guests a host lets in (ADR 0011 §7); the host makes 16 people.
 pub const MAX_GUESTS: usize = 15;
 
-/// Whether `text` is a Jam link (not whether it can still be joined).
+/// Whether `text` looks like a whole Jam link (not whether it can still be
+/// joined). Half a link, as someone types it, is not one.
 pub fn is_link(text: &str) -> bool {
-    text.trim().starts_with(LINK_PREFIX)
+    text.trim().strip_prefix(LINK_PREFIX).is_some_and(|ticket| {
+        ticket.starts_with("endpoint")
+            && ticket.len() >= MIN_TICKET_LEN
+            && ticket.chars().all(|c| c.is_ascii_alphanumeric())
+    })
 }
+
+/// Shorter than any endpoint ticket (an id alone is 63 characters).
+const MIN_TICKET_LEN: usize = 60;
 
 /// How peers reach each other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

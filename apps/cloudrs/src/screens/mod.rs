@@ -4,6 +4,7 @@
 
 mod account;
 mod history;
+mod jam;
 mod list;
 mod playlist;
 mod search;
@@ -33,6 +34,7 @@ impl Shell {
             Route::Playlist(id) => self.playlist_screen(id, theme, cx),
             Route::History => self.history_screen(theme, cx),
             Route::Account => self.account_screen(theme, cx),
+            Route::Jam => self.jam_screen(theme, cx),
             route @ (Route::Feed | Route::Likes(_) | Route::Library | Route::Following(_)) => {
                 let list = route.account_list().expect("an account list route");
                 self.account_list_screen(list, account::account_list_title(list), theme, cx)

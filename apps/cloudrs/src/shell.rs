@@ -357,7 +357,8 @@ impl Shell {
             | Route::Likes(_)
             | Route::Library
             | Route::Following(_)
-            | Route::Account => ArtKey::Track(self.models.current?),
+            | Route::Account
+            | Route::Jam => ArtKey::Track(self.models.current?),
             Route::Resolving(_) => return None,
         };
         self.models.art.tint(key)
@@ -443,7 +444,12 @@ impl Shell {
         self.show_toast(kind, text, cx);
     }
 
-    fn show_toast(&mut self, kind: ToastKind, text: &'static str, cx: &mut Context<Self>) {
+    pub(crate) fn show_toast(
+        &mut self,
+        kind: ToastKind,
+        text: &'static str,
+        cx: &mut Context<Self>,
+    ) {
         self.toasts_shown += 1;
         self.toast = Some(ToastState {
             id: self.toasts_shown,
@@ -513,7 +519,9 @@ impl Shell {
     fn on_search(&mut self, text: &str, cx: &mut Context<Self>) {
         self.show_search(cx);
         let text = text.trim();
-        let intent = if is_soundcloud_url(text) {
+        let intent = if sc_core::is_jam_link(text) {
+            UiIntent::JoinJam(text.to_owned())
+        } else if is_soundcloud_url(text) {
             UiIntent::OpenUrl(text.to_owned())
         } else {
             UiIntent::Search(text.to_owned())
@@ -645,6 +653,17 @@ impl Shell {
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.dispatch(UiIntent::OpenHistory, cx);
                 })),
+            )
+            .child(
+                sidebar_item(
+                    theme,
+                    "nav-jam",
+                    Icon::Jam,
+                    i18n::nav::jam(),
+                    section == Section::Jam,
+                )
+                .aria_label(i18n::nav::jam())
+                .on_click(cx.listener(|this, _, _, cx| this.navigate(Route::Jam, cx))),
             )
             .children(self.models.account.as_ref().map(|me| {
                 let me = me.id;

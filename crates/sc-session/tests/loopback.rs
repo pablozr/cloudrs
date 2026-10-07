@@ -150,6 +150,10 @@ fn a_link_that_is_not_a_jam_ends_at_once() {
     });
     assert_eq!(ended, Ended::BadLink);
     assert!(!sc_session::is_link("https://soundcloud.com/a"));
+    assert!(
+        !sc_session::is_link("cloudrs:jam/endpointab"),
+        "half a link"
+    );
 }
 
 /// Through n0's public relays, as the app runs. Needs internet, so it does

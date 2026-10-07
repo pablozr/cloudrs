@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub use sc_core::{ArtKey, ListId, ListItems, PlaylistId, SearchKind, TrackId, UserId};
-use sc_core::{PlaylistPage, TrackPage, UserPage, UserSummary};
+use sc_core::{JamState, PlaylistPage, TrackPage, UserPage, UserSummary};
 
 use crate::state::ArtworkMap;
 use crate::tint::Rgb;
@@ -211,6 +211,8 @@ pub struct Models {
     /// The person's liked tracks and the people they follow.
     pub liked: HashSet<TrackId>,
     pub followed: HashSet<UserId>,
+    /// The Jam this person hosts or joined.
+    pub jam: Option<JamState>,
 }
 
 impl Models {
@@ -229,6 +231,7 @@ impl Models {
             signing_in: false,
             liked: HashSet::new(),
             followed: HashSet::new(),
+            jam: None,
         }
     }
 

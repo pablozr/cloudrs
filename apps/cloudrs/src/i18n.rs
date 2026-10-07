@@ -94,6 +94,7 @@ pub mod nav {
         library { en: "Library" }
         following { en: "Following" }
         sign_in { en: "Sign in" }
+        jam { en: "Jam" }
     }
 }
 
@@ -266,5 +267,34 @@ pub mod social {
         unlike { en: "Unlike" }
         follow { en: "Follow" }
         unfollow { en: "Unfollow" }
+    }
+}
+
+/// The Jam screen: listening together (ADR 0011).
+pub mod jam {
+    strings! {
+        title { en: "Jam" }
+        intro_title { en: "Listen together" }
+        intro_hint { en: "Start a Jam and share its link: friends hear the same track at the same moment, wherever they are, and can add to the queue. To join one, paste its link in the search field." }
+        start { en: "Start a Jam" }
+        going_online { en: "Going online\u{2026}" }
+        joining { en: "Joining the Jam\u{2026}" }
+        hosting { en: "You\u{2019}re hosting a Jam" }
+        share_hint { en: "Share this link. Anyone with cloudrs can join, from any network." }
+        copy_link { en: "Copy link" }
+        copied { en: "Link copied" }
+        people { en: "Listening" }
+        nobody_yet { en: "Nobody has joined yet." }
+        guests_control { en: "Guests can play, pause and skip" }
+        guests_add_only { en: "Guests can only add tracks" }
+        end { en: "End Jam" }
+        leave { en: "Leave Jam" }
+        guest_hint { en: "The host\u{2019}s queue plays here. Tracks you play are added to it." }
+        cannot_play { en: "can\u{2019}t play this track" }
+        remove { en: "Remove" }
+    }
+    formats! {
+        in_jam(host) { en: "In {host}\u{2019}s Jam" }
+        remove_person(name) { en: "Remove {name} from the Jam" }
     }
 }

@@ -39,6 +39,12 @@ pub enum UiIntent {
         user: UserId,
         following: bool,
     },
+    /// Host a Jam, or join one from its link: both open the Jam screen.
+    StartJam,
+    JoinJam(String),
+    LeaveJam,
+    SetJamGuestsControl(bool),
+    RemoveFromJam(u32),
 }
 
 impl UiIntent {
@@ -50,6 +56,7 @@ impl UiIntent {
             Self::OpenUser(id) => Some(Route::User(*id)),
             Self::OpenPlaylist(id) => Some(Route::Playlist(*id)),
             Self::OpenHistory => Some(Route::History),
+            Self::StartJam | Self::JoinJam(_) => Some(Route::Jam),
             _ => None,
         }
     }
