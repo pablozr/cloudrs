@@ -35,6 +35,7 @@ pub struct Track {
     /// JSON with the waveform samples drawn in the player.
     pub waveform_url: Option<String>,
     pub genre: Option<String>,
+    pub description: Option<String>,
     pub created_at: Option<String>,
     pub playback_count: Option<u64>,
     pub likes_count: Option<u64>,
@@ -59,13 +60,18 @@ impl Track {
                 .user
                 .as_ref()
                 .and_then(|user| user.avatar_url.as_deref()))
-            .map(|url| url.replace("-large.", &format!("-{size}.")))
+            .map(|url| resize(url, size))
     }
 
     /// Whether SoundCloud only allows a preview of this track.
     pub fn is_preview_only(&self) -> bool {
         self.policy.as_deref() == Some("SNIP")
     }
+}
+
+/// Swaps the `-large` size of a SoundCloud image URL for `size`.
+fn resize(url: &str, size: &str) -> String {
+    url.replace("-large.", &format!("-{size}."))
 }
 
 /// The audio renditions of a track.
@@ -125,6 +131,13 @@ pub struct User {
     pub verified: Option<bool>,
 }
 
+impl User {
+    /// Avatar URL at the requested size.
+    pub fn avatar(&self, size: &str) -> Option<String> {
+        self.avatar_url.as_deref().map(|url| resize(url, size))
+    }
+}
+
 /// A playlist or an album (`is_album`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -140,6 +153,29 @@ pub struct Playlist {
     pub user: Option<UserSummary>,
     /// The first tracks come complete; the rest only carry an `id`.
     pub tracks: Vec<Track>,
+}
+
+impl Playlist {
+    /// Cover URL at the requested size: the playlist's own, else the first
+    /// complete track's, else the owner's avatar.
+    pub fn artwork(&self, size: &str) -> Option<String> {
+        self.artwork_url
+            .as_deref()
+            .map(|url| resize(url, size))
+            .or_else(|| self.tracks.iter().find_map(|track| track.artwork(size)))
+            .or_else(|| {
+                let user = self.user.as_ref()?;
+                user.avatar_url.as_deref().map(|url| resize(url, size))
+            })
+    }
+}
+
+/// One entry of a user's likes. SoundCloud mixes tracks and playlists; only
+/// `track` is set for a liked track.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Like {
+    pub track: Option<Track>,
 }
 
 /// The waveform drawn in the player: one value per column, from 0 to `height`.
@@ -196,6 +232,33 @@ mod tests {
         assert!(matches!(playlist, Resource::Playlist(p) if p.tracks.len() == 1));
         let other: Resource = serde_json::from_str(r#"{"kind": "system-playlist"}"#).unwrap();
         assert!(matches!(other, Resource::Unknown));
+    }
+
+    #[test]
+    fn likes_keep_only_tracks() {
+        let page: Page<Like> = serde_json::from_str(
+            r#"{"collection":[{"track":{"id":1}},{"playlist":{"id":2}}],"next_href":null}"#,
+        )
+        .unwrap();
+        let tracks: Vec<u64> = page
+            .collection
+            .into_iter()
+            .filter_map(|like| like.track)
+            .map(|track| track.id)
+            .collect();
+        assert_eq!(tracks, [1]);
+    }
+
+    #[test]
+    fn playlist_artwork_falls_back_to_a_track() {
+        let playlist: Playlist = serde_json::from_str(
+            r#"{"id":1,"tracks":[{"id":5},{"id":6,"artwork_url":"https://i1/a-large.jpg"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            playlist.artwork("t300x300").as_deref(),
+            Some("https://i1/a-t300x300.jpg")
+        );
     }
 
     #[test]

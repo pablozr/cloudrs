@@ -267,3 +267,112 @@ async fn downloads_waveforms_and_files_without_credentials() {
     let missing = sc.download(&format!("{}/art/none.jpg", server.uri())).await;
     assert!(matches!(missing, Err(Error::NotFound)));
 }
+
+fn json(body: &str) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_raw(body.to_owned(), "application/json")
+}
+
+#[tokio::test]
+async fn searches_people_playlists_and_albums() {
+    let server = MockServer::start().await;
+    for (endpoint, body) in [
+        (
+            "users",
+            r#"{"collection":[{"id":1,"username":"Ana","followers_count":10,"verified":true}],"next_href":"https://x/next"}"#,
+        ),
+        (
+            "playlists",
+            r#"{"collection":[{"id":2,"title":"Set","track_count":3,"is_album":false}]}"#,
+        ),
+        (
+            "albums",
+            r#"{"collection":[{"id":3,"title":"LP","set_type":"album","is_album":true}]}"#,
+        ),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/search/{endpoint}")))
+            .and(query_param("q", "ana"))
+            .and(query_param("linked_partitioning", "1"))
+            .respond_with(json(body))
+            .mount(&server)
+            .await;
+    }
+    let sc = client(&server, Some(OLD_ID), None);
+
+    let users = sc.search_users("ana", 20).await.unwrap();
+    assert_eq!(users.collection[0].username, "Ana");
+    assert_eq!(users.collection[0].followers_count, Some(10));
+    assert!(users.next_href.is_some());
+    let playlists = sc.search_playlists("ana", 20).await.unwrap();
+    assert_eq!(playlists.collection[0].title, "Set");
+    let albums = sc.search_albums("ana", 20).await.unwrap();
+    assert_eq!(albums.collection[0].is_album, Some(true));
+}
+
+#[tokio::test]
+async fn fetches_a_profile_and_its_lists() {
+    let server = MockServer::start().await;
+    let routes = [
+        (
+            "users/7",
+            r#"{"id":7,"username":"Ana","track_count":4,"city":"Lisbon"}"#,
+        ),
+        (
+            "users/7/tracks",
+            r#"{"collection":[{"id":1,"title":"A"}],"next_href":null}"#,
+        ),
+        (
+            "users/7/playlists",
+            r#"{"collection":[{"id":2,"title":"P"}]}"#,
+        ),
+        (
+            "users/7/likes",
+            r#"{"collection":[{"track":{"id":3,"title":"L"}},{"playlist":{"id":4}}],"next_href":"https://x/n"}"#,
+        ),
+    ];
+    for (route, body) in routes {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/{route}")))
+            .respond_with(json(body))
+            .mount(&server)
+            .await;
+    }
+    let sc = client(&server, Some(OLD_ID), None);
+
+    let user = sc.user(7).await.unwrap();
+    assert_eq!((user.username.as_str(), user.track_count), ("Ana", Some(4)));
+    assert_eq!(user.city.as_deref(), Some("Lisbon"));
+    assert_eq!(
+        sc.user_tracks(7, 10).await.unwrap().collection[0].title,
+        "A"
+    );
+    assert_eq!(sc.user_playlists(7, 10).await.unwrap().collection[0].id, 2);
+    let likes = sc.user_likes(7, 10).await.unwrap();
+    assert_eq!(likes.collection.len(), 2);
+    assert_eq!(likes.collection[0].track.as_ref().unwrap().title, "L");
+    assert!(likes.collection[1].track.is_none());
+    assert!(likes.next_href.is_some());
+}
+
+#[tokio::test]
+async fn fetches_a_playlist_with_partial_tracks() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/playlists/5"))
+        .respond_with(json(
+            r#"{"id":5,"title":"Mix","is_album":false,"duration":9000,
+                "user":{"id":7,"username":"Ana"},
+                "tracks":[{"id":1,"title":"Full"},{"id":2,"kind":"track"}]}"#,
+        ))
+        .mount(&server)
+        .await;
+
+    let playlist = client(&server, Some(OLD_ID), None)
+        .playlist(5)
+        .await
+        .unwrap();
+    assert_eq!(playlist.title, "Mix");
+    assert_eq!(playlist.user.unwrap().username, "Ana");
+    assert_eq!(playlist.tracks.len(), 2);
+    assert!(playlist.tracks[1].title.is_empty());
+}
