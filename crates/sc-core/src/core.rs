@@ -27,6 +27,7 @@ use crate::{Command, CoreConfig, Event, artwork};
 use session::{OpenedStore, SharedStore, open_store};
 
 mod account;
+mod jam;
 mod pages;
 mod paging;
 mod playback;
@@ -43,6 +44,28 @@ type AudioLink = (
 );
 
 enum Input {
+    /// Something happened in the Jam's session.
+    Jam {
+        generation: u64,
+        event: sc_session::SessionEvent,
+    },
+    JamTimer {
+        generation: u64,
+        timer: jam::JamTimer,
+    },
+    /// A track the Jam needed (a guest's request, or the host's prepare).
+    JamTrack {
+        generation: u64,
+        then: jam::AfterFetch,
+        result: sc_api::Result<Box<Track>>,
+    },
+    /// The tracks of the host's queue a guest had not seen.
+    JamMirror {
+        generation: u64,
+        ids: Vec<u64>,
+        current: Option<u32>,
+        result: sc_api::Result<Vec<Track>>,
+    },
     Ui(Command),
     UiClosed,
     Audio(sc_audio::Event),
@@ -221,6 +244,9 @@ async fn run<A: SoundCloudApi + 'static>(
         artwork_requested: HashSet::new(),
         account: None,
         sign_in_gen: 0,
+        jam: None,
+        jam_gen: 0,
+        jam_network: config.jam_network,
     };
     if let Some(token) = config.oauth_token {
         core.sign_in(token);
@@ -302,6 +328,11 @@ struct Core<A> {
     account: Option<Account>,
     /// Bumped on every sign-in and sign-out: answers for an older one are dropped.
     sign_in_gen: u64,
+    /// The Jam this person hosts or joined (ADR 0011).
+    jam: Option<jam::Jam>,
+    /// Bumped on every Jam: answers for an older one are dropped.
+    jam_gen: u64,
+    jam_network: crate::JamNetwork,
 }
 
 impl<A: SoundCloudApi + 'static> Core<A> {
@@ -313,6 +344,19 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         match input {
             Input::Ui(command) => self.command(command),
             Input::UiClosed => {}
+            Input::Jam { generation, event } => self.jam_event(generation, event),
+            Input::JamTimer { generation, timer } => self.jam_timer(generation, timer),
+            Input::JamTrack {
+                generation,
+                then,
+                result,
+            } => self.jam_track_fetched(generation, then, result),
+            Input::JamMirror {
+                generation,
+                ids,
+                current,
+                result,
+            } => self.jam_mirror_fetched(generation, ids, current, result),
             Input::Audio(event) => self.audio_event(event),
             Input::ListDone {
                 list,
@@ -411,6 +455,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     }
 
     fn command(&mut self, command: Command) {
+        if self.jam_command(&command) {
+            return;
+        }
         match command {
             Command::Search(query) => {
                 self.query = query.trim().to_owned();
@@ -482,6 +529,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Command::SignOut => self.sign_out(),
             Command::Like { track, liked } => self.like(track, liked),
             Command::Follow { user, following } => self.follow(user, following),
+            // Taken by `jam_command` above.
+            Command::StartJam
+            | Command::JoinJam(_)
+            | Command::LeaveJam
+            | Command::SetJamGuestsControl(_)
+            | Command::RemoveFromJam(_) => {}
             Command::SetVolume(volume) => self.set_volume(volume),
         }
     }

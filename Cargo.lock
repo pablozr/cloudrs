@@ -7389,6 +7389,7 @@ dependencies = [
  "rusqlite",
  "sc-api",
  "sc-audio",
+ "sc-session",
  "serde",
  "serde_json",
  "tokio",

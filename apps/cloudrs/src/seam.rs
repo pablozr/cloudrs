@@ -129,6 +129,8 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
                 models.followed.remove(user)
             }
         }
+        // The Jam panel arrives with the Jam UI.
+        Event::Jam(_) => false,
     }
 }
 

@@ -316,7 +316,9 @@ impl Shell {
             | Event::LikedIds(_)
             | Event::FollowedIds(_)
             | Event::Liked { .. }
-            | Event::Followed { .. } => {}
+            | Event::Followed { .. }
+            // The Jam panel arrives with the Jam UI.
+            | Event::Jam(_) => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
@@ -426,6 +428,13 @@ impl Shell {
             Problem::SignInFailed => (ToastKind::Error, t::sign_in_failed()),
             Problem::SessionExpired => (ToastKind::Warning, t::session_expired()),
             Problem::SignInRequired => (ToastKind::Info, t::sign_in_required()),
+            Problem::JamUnreachable => (ToastKind::Error, t::jam_unreachable()),
+            Problem::JamBadLink => (ToastKind::Error, t::jam_bad_link()),
+            Problem::JamEnded => (ToastKind::Info, t::jam_ended()),
+            Problem::JamRemoved => (ToastKind::Info, t::jam_removed()),
+            Problem::JamFull => (ToastKind::Warning, t::jam_full()),
+            Problem::JamVersion => (ToastKind::Warning, t::jam_version()),
+            Problem::JamNotAllowed => (ToastKind::Info, t::jam_not_allowed()),
             Problem::Audio(detail) => {
                 tracing::warn!(%detail, "audio problem");
                 (ToastKind::Error, t::audio())

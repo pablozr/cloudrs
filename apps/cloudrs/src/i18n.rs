@@ -232,6 +232,13 @@ pub mod problem {
         session_expired { en: "Your SoundCloud session expired. Sign in again." }
         sign_in_required { en: "Sign in to like tracks and follow people." }
         sign_in_window { en: "The sign-in window could not open. Try signing in with a token." }
+        jam_unreachable { en: "Couldn{2019}t reach the Jam. Check your connection and the link." }
+        jam_bad_link { en: "That isn{2019}t a Jam link." }
+        jam_ended { en: "The Jam has ended." }
+        jam_removed { en: "The host removed you from the Jam." }
+        jam_full { en: "That Jam is full." }
+        jam_version { en: "The host uses another version of cloudrs. Update to join." }
+        jam_not_allowed { en: "Only the host can do that in this Jam." }
     }
 }
 

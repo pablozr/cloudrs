@@ -52,6 +52,10 @@ pub(super) fn open_store(dir: &std::path::Path) -> Option<OpenedStore> {
 impl<A: SoundCloudApi + 'static> Core<A> {
     /// The state worth keeping across a restart.
     pub(super) fn session(&self) -> Session {
+        // A Jam guest's own session, not the host's queue it mirrors.
+        if let Some(saved) = self.jam_saved_session() {
+            return saved;
+        }
         let snapshot = self.queue.snapshot();
         Session {
             tracks: snapshot

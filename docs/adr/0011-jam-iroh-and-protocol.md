@@ -107,3 +107,27 @@ host leaves.
   opens straight at the position (one trip to the CDN, not a load then a seek), stays paused
   with the ring buffer filled, and answers `State(Paused)` and a `Position` — the core's
   "ready" for `Prepare` → `Ready`.
+
+## Refinements made while building the core's Jam (`core/jam.rs`)
+
+- Contract: `Command::{StartJam, JoinJam(link), LeaveJam, SetJamGuestsControl(bool),
+  RemoveFromJam(id)}`, `Event::Jam(Option<JamState>)` (role, link, people, permission,
+  connecting) and `Problem::{JamUnreachable, JamBadLink, JamEnded, JamRemoved, JamFull,
+  JamVersion, JamNotAllowed}`. `sc_core::is_jam_link` tells the UI a pasted text is a link.
+  `CoreConfig::jam_network` is `Internet` in the app and `Local` in tests.
+- In a Jam, a stream is always *prepared* (paused at the position) instead of loaded, for the
+  host too, so everyone starts at the same named instant. Resuming and seeking on the host go
+  through the same step (pause, seek, announce a start 300 ms ahead).
+- A guest who joins mid-track is prepared two seconds ahead of the host and starts when the
+  host gets there; the same "paused seek a little ahead, then scheduled play" corrects drift
+  (more than 300 ms on two readings, at most every 10 s). The lead is one and a half times the
+  guest's last preparing time.
+- A guest's queue commands become requests (`Play` from a list is "play next", plus "next"
+  when guests control playback); shuffle, repeat and jumping in the queue stay the host's and
+  answer `JamNotAllowed`. A guest never moves on by itself at a track's end, and a track it
+  cannot play is reported to the host, which shows that person.
+- The guest's own session is kept while in a Jam (it is what gets saved) and is restored,
+  paused, when the Jam ends.
+- Verified with two cores in one process over a loopback session: start together (under
+  100 ms apart in the test), a late guest catching up, requests and permission, drift
+  correction, leaving either way, a bad link.

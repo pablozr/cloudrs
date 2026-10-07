@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub use types::{
-    Account, ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage,
-    PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary,
-    UserId, UserPage, UserSummary,
+    Account, ArtKey, JamPerson, JamRole, JamState, ListId, ListItems, PlayState, Playback,
+    PlaylistId, PlaylistPage, PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId,
+    TrackPage, TrackSummary, UserId, UserPage, UserSummary,
 };
 
 /// What the UI asks for.
@@ -94,6 +94,24 @@ pub enum Command {
         user: UserId,
         following: bool,
     },
+    /// Host a Jam (ADR 0011): [`Event::Jam`] carries the link once online.
+    /// The queue and playback become everyone's.
+    StartJam,
+    /// Join the Jam behind a `cloudrs:jam/` link (see [`is_jam_link`]). The
+    /// queue mirrors the host's; queue and playback commands become
+    /// requests to the host. The own queue comes back when the Jam ends.
+    JoinJam(String),
+    /// End the Jam (host) or leave it (guest).
+    LeaveJam,
+    /// Host: let guests play/pause, skip, seek and reorder, not only add.
+    SetJamGuestsControl(bool),
+    /// Host: remove a person (`JamPerson::id`) from the Jam.
+    RemoveFromJam(u32),
+}
+
+/// Whether the text is a Jam link, to send it as [`Command::JoinJam`].
+pub fn is_jam_link(text: &str) -> bool {
+    sc_session::is_link(text)
 }
 
 /// What the UI renders.
@@ -149,6 +167,8 @@ pub enum Event {
     Liked { track: TrackId, liked: bool },
     /// A follow changed (or a failed change was reverted).
     Followed { user: UserId, following: bool },
+    /// The Jam changed (people, link, permissions); `None` once it is over.
+    Jam(Option<JamState>),
     /// Something the person should know about (playing, pasted links, audio).
     Problem(Problem),
 }
@@ -180,7 +200,12 @@ pub struct CoreConfig {
     pub data_dir: PathBuf,
     /// The token saved in the keychain, checked with SoundCloud at start.
     pub oauth_token: Option<String>,
+    /// How Jam peers reach each other: the internet for the app, this
+    /// machine only for tests.
+    pub jam_network: JamNetwork,
 }
+
+pub use sc_session::Network as JamNetwork;
 
 /// Hides the token so it never reaches a log.
 impl std::fmt::Debug for CoreConfig {
@@ -188,6 +213,7 @@ impl std::fmt::Debug for CoreConfig {
         f.debug_struct("CoreConfig")
             .field("cache_dir", &self.cache_dir)
             .field("data_dir", &self.data_dir)
+            .field("jam_network", &self.jam_network)
             .field(
                 "oauth_token",
                 &self.oauth_token.as_ref().map(|_| "<hidden>"),

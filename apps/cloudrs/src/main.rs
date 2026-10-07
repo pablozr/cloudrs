@@ -43,6 +43,7 @@ fn main() {
                 cache_dir: app_dir(dirs::cache_dir(), "cache"),
                 data_dir: app_dir(dirs::data_dir(), "data"),
                 oauth_token,
+                jam_network: sc_core::JamNetwork::Internet,
             };
             let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
             let opened = cx.open_window(

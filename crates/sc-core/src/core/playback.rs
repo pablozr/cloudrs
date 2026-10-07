@@ -67,6 +67,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     pub(super) fn queue_changed(&mut self) {
         self.emit(Event::Queue(self.queue.snapshot()));
+        self.host_broadcast_queue();
         self.save_session();
     }
 
@@ -146,7 +147,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     /// move on unless they picked this track or a full pass already failed.
     pub(super) fn play_failed(&mut self, problem: Problem) {
         self.set_state(PlayState::Idle);
+        // A Jam guest tells the host and waits for its next track.
+        let in_jam = self.jam_play_failed(&problem);
         self.emit(Event::Problem(problem));
+        if in_jam {
+            return;
+        }
         self.failed_in_row += 1;
         if self.skip_on_failure && self.failed_in_row < self.queue.len() {
             self.skip_forward(false);
@@ -160,10 +166,21 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let Some(summary) = self.queue.current_track().cloned() else {
             return;
         };
+        self.play_summary(summary, start_at, moving_on);
+    }
+
+    /// Plays this track (the queue's current one, or a Jam guest's).
+    pub(super) fn play_summary(
+        &mut self,
+        summary: TrackSummary,
+        start_at: Option<Duration>,
+        moving_on: bool,
+    ) {
         let id = summary.id;
         self.current = Some(id);
         self.autoplay = None;
         self.play_gen += 1;
+        self.jam_track_starts(id, start_at);
         self.skip_on_failure = moving_on;
         if !moving_on {
             self.failed_in_row = 0;
@@ -239,13 +256,15 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     sc_audio::PlaybackState::Ended => PlayState::Ended,
                 };
                 self.set_state(state);
-                if state == PlayState::Ended {
+                self.jam_state_changed(state);
+                if state == PlayState::Ended && !self.jam_owns_track_end() {
                     self.skip_forward(true);
                 }
             }
             sc_audio::Event::Position(position) => {
                 self.playback.position = position;
                 self.emit(Event::Playback(self.playback));
+                self.jam_position(position);
                 if self.listened.tick(position)
                     && let Some(track) = self.queue.current_track().cloned()
                 {
@@ -297,6 +316,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             url: stream.url,
             kind,
         };
+        if self.jam_prepare(&source, start_at) {
+            return;
+        }
         let _ = self.audio.send(sc_audio::Command::Load(source));
         if let Some(at) = start_at {
             let _ = self.audio.send(sc_audio::Command::Seek(at));

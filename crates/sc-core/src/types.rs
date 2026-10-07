@@ -287,6 +287,20 @@ pub enum Problem {
     SessionExpired,
     /// Liking or following needs an account.
     SignInRequired,
+    /// The Jam could not start or its host could not be reached.
+    JamUnreachable,
+    /// The text is not a Jam link.
+    JamBadLink,
+    /// The host ended the Jam (or it was lost).
+    JamEnded,
+    /// The host removed this person from the Jam.
+    JamRemoved,
+    /// The Jam already has the most people it allows.
+    JamFull,
+    /// The host speaks another version of cloudrs.
+    JamVersion,
+    /// Only the host (or guests it allows) can do that in this Jam.
+    JamNotAllowed,
 }
 
 /// The signed-in person. `Debug` hides the token so it never reaches a log.
@@ -339,4 +353,36 @@ pub struct QueueSnapshot {
     pub current: Option<usize>,
     pub shuffle: bool,
     pub repeat: Repeat,
+}
+
+/// A Jam in progress, as the UI shows it (ADR 0011). `None` in
+/// `Event::Jam` means no Jam.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JamState {
+    pub role: JamRole,
+    /// The link to share; the host has it once online, a guest never.
+    pub link: Option<String>,
+    /// Everyone but this person (for a guest, the other guests).
+    pub people: Vec<JamPerson>,
+    /// Guests may play/pause, skip, seek and reorder, not only add.
+    pub guests_control_playback: bool,
+    /// Still going online (host) or connecting (guest).
+    pub connecting: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum JamRole {
+    Host,
+    /// `host` is the host's name, once it said hello.
+    Guest {
+        host: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JamPerson {
+    pub id: u32,
+    pub name: String,
+    /// Cannot play the current track with their account (preview, region).
+    pub cannot_play: bool,
 }
