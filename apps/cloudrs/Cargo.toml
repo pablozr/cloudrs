@@ -52,6 +52,10 @@ binaries = [{ path = "cloudrs", main = true }]
 [package.metadata.packager.nsis]
 # Per user: no administrator rights needed.
 installMode = "currentUser"
+# Brand images (assets/installer/make-images.ps1 draws them).
+sidebarImage = "../../assets/installer/sidebar.bmp"
+headerImage = "../../assets/installer/header.bmp"
+installerIcon = "../../assets/brand/app-icon.ico"
 
 [package.metadata.packager.deb]
 depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libasound2", "libxkbcommon-x11-0", "libvulkan1"]

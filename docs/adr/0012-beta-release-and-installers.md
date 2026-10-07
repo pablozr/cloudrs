@@ -33,3 +33,14 @@ from a website. PLAN M5 named `cargo-dist` or `cargo-packager` for packages.
 - One command per system (`cargo packager --release`) makes the installers locally too.
 - The Windows installer of beta 1 is about 11 MB (a 32 MB executable).
 - Unsigned installers look less trustworthy; this is accepted for a beta.
+
+## Refinements: a branded installer
+
+- The NSIS installer carries the brand: `assets/installer/sidebar.bmp` (164×314, welcome and
+  finish pages: the icon over an orange glow, the wordmark, "SoundCloud, native.") and
+  `header.bmp` (150×57, the other pages), drawn from the brand colours, the app icon and
+  Bricolage Grotesque by `assets/installer/make-images.ps1`; the installer's icon is the
+  app's.
+- `app-icon-256.png`, `app-icon-512.png` and `app-icon.ico` were cut off at the bottom
+  (transparent below about four fifths of the height). They were rendered again from
+  `app-icon.svg` with resvg 0.46 (the ICO holds PNGs at 16, 24, 32, 48, 64, 128 and 256 px).
