@@ -596,3 +596,56 @@ pub fn sidebar_collection(
                 .child(title.to_owned()),
         )
 }
+
+/// Someone's picture: their avatar, or the initial of their name on a soft
+/// accent circle while there is none.
+pub fn avatar(theme: &Theme, side: Pixels, name: &str, image: Option<Arc<Path>>) -> Div {
+    let c = theme.colors;
+    let initial: String = name
+        .chars()
+        .find(|ch| ch.is_alphanumeric())
+        .map(|ch| ch.to_uppercase().collect())
+        .unwrap_or_default();
+    let has_image = image.is_some();
+    picture(theme, side, radius::FULL, image)
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(!has_image, |pic| {
+            pic.child(
+                theme
+                    .text(div(), typography::LABEL)
+                    .text_color(c.accent)
+                    .child(initial),
+            )
+        })
+}
+
+/// Overlapping avatars, each ringed in the background colour so they read
+/// apart; the first one marked with a crown when it is the host's.
+pub fn avatar_stack(
+    theme: &Theme,
+    people: Vec<(String, Option<Arc<Path>>)>,
+    first_is_host: bool,
+) -> Div {
+    let c = theme.colors;
+    div()
+        .flex()
+        .items_center()
+        .children(people.into_iter().enumerate().map(|(ix, (name, image))| {
+            div()
+                .relative()
+                .when(ix > 0, |a| a.ml(-size::AVATAR_OVERLAP))
+                .rounded(radius::FULL)
+                .border_2()
+                .border_color(c.canvas)
+                .child(avatar(theme, size::AVATAR_S, &name, image))
+                .when(ix == 0 && first_is_host, |a| {
+                    a.child(div().absolute().top(-space::S2).left(space::S1).child(icon(
+                        Icon::Crown,
+                        size::CROWN,
+                        tokens::status::warning(),
+                    )))
+                })
+        }))
+}

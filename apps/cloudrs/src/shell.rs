@@ -893,6 +893,7 @@ impl Shell {
             .when(can_forward, |button| {
                 button.on_click(cx.listener(|this, _, _, cx| this.go_forward(cx)))
             });
+        let jam = self.jam_pill(theme, cx);
         let controls = (!cfg!(target_os = "macos")).then(|| window_controls(theme, window, cx));
         div()
             .id("titlebar")
@@ -931,6 +932,7 @@ impl Shell {
                         .child(self.search.clone()),
                 ),
             )
+            .children(jam)
             .child(div().occlude().child(theme_button))
             .children(controls)
     }

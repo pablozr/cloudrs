@@ -10,13 +10,19 @@
 
 use std::time::Duration;
 
-use sc_session::{Network, Session, SessionCommand, SessionEvent, ToGuest};
+use sc_session::{Network, Profile, Session, SessionCommand, SessionEvent, ToGuest};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let session = match args.first().map(String::as_str) {
         Some("host") => Session::host(Network::Internet),
-        Some("join") if args.len() > 1 => Session::join(&args[1], whoami()),
+        Some("join") if args.len() > 1 => Session::join(
+            &args[1],
+            Profile {
+                name: whoami(),
+                ..Profile::default()
+            },
+        ),
         _ => {
             eprintln!("usage: jam host | jam join <link>");
             std::process::exit(2);
@@ -27,7 +33,8 @@ fn main() {
         let at = started.elapsed().as_secs_f32();
         match event {
             SessionEvent::Started { link } => println!("[{at:6.1}s] share this link:\n{link}"),
-            SessionEvent::PeerJoined { peer, name } => {
+            SessionEvent::PeerJoined { peer, profile } => {
+                let name = &profile.name;
                 println!("[{at:6.1}s] {name} joined as {peer:?}");
                 session.send(SessionCommand::SendTo(
                     peer,

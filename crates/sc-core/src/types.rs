@@ -390,6 +390,11 @@ pub enum JamRole {
 pub struct JamPerson {
     pub id: u32,
     pub name: String,
+    /// Their SoundCloud account, for the avatar (`ArtKey::User`); `None`
+    /// for someone not signed in.
+    pub user: Option<UserId>,
+    /// The host of the Jam (a guest sees the host in the list too).
+    pub host: bool,
     /// Cannot play the current track with their account (preview, region).
     pub cannot_play: bool,
 }

@@ -21,7 +21,7 @@ const GOODBYE_TIMEOUT: Duration = Duration::from_secs(2);
 enum FromPeer {
     Hello {
         peer: PeerId,
-        name: String,
+        profile: crate::Profile,
         writer: mpsc::UnboundedSender<ToGuest>,
     },
     Gone {
@@ -87,13 +87,13 @@ pub async fn run(
                 Err(_) => break Ended::Left,
             },
             Some(message) = from_peers_rx.recv() => match message {
-                FromPeer::Hello { peer, name, writer } => {
+                FromPeer::Hello { peer, profile, writer } => {
                     if peers.len() >= MAX_GUESTS {
                         let _ = writer.send(ToGuest::Ended { reason: EndReason::Full });
                         continue;
                     }
                     peers.insert(peer, writer);
-                    let _ = events.send(SessionEvent::PeerJoined { peer, name });
+                    let _ = events.send(SessionEvent::PeerJoined { peer, profile });
                 }
                 FromPeer::Gone { peer } => {
                     if peers.remove(&peer).is_some() {
@@ -132,13 +132,29 @@ async fn serve(
     else {
         return;
     };
-    let name = match tokio::time::timeout(HELLO_TIMEOUT, net::read::<ToHost>(&mut recv)).await {
-        Ok(Ok(ToHost::Hello { name, .. })) => name,
+    let profile = match tokio::time::timeout(HELLO_TIMEOUT, net::read::<ToHost>(&mut recv)).await {
+        Ok(Ok(ToHost::Hello {
+            name,
+            user_id,
+            avatar_url,
+            ..
+        })) => crate::Profile {
+            name,
+            user_id,
+            avatar_url,
+        },
         _ => return,
     };
     let (writer, mut outgoing) = mpsc::unbounded_channel();
     let pong = writer.clone();
-    if host.send(FromPeer::Hello { peer, name, writer }).is_err() {
+    if host
+        .send(FromPeer::Hello {
+            peer,
+            profile,
+            writer,
+        })
+        .is_err()
+    {
         return;
     }
 

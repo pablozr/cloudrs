@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Protocol name and major version, negotiated by QUIC.
 pub const ALPN: &[u8] = b"cloudrs/jam/1";
 /// Minor version this build speaks.
-pub const PROTO_MINOR: u16 = 0;
+pub const PROTO_MINOR: u16 = 1;
 /// A larger frame closes the connection.
 pub const MAX_FRAME: usize = 64 * 1024;
 
@@ -28,6 +28,11 @@ pub enum ToHost {
         /// Shown to the others (the SoundCloud username).
         #[serde(default)]
         name: String,
+        /// Their SoundCloud account and avatar, when signed in (minor 1).
+        #[serde(default)]
+        user_id: Option<u64>,
+        #[serde(default)]
+        avatar_url: Option<String>,
     },
     /// Clock sample: the guest's time when sent, in its session clock.
     Ping {
@@ -88,6 +93,11 @@ pub enum ToGuest {
         #[serde(default)]
         proto_minor: u16,
         host: String,
+        /// The host's SoundCloud account and avatar (minor 1).
+        #[serde(default)]
+        host_user_id: Option<u64>,
+        #[serde(default)]
+        host_avatar: Option<String>,
         perms: Perms,
         you: PeerId,
     },
@@ -151,6 +161,10 @@ pub struct QueuedTrack {
 pub struct PeerInfo {
     pub id: PeerId,
     pub name: String,
+    #[serde(default)]
+    pub user_id: Option<u64>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
     /// Cannot play the current track (preview, region).
     #[serde(default)]
     pub cannot_play: Option<Unplayable>,
@@ -203,6 +217,8 @@ mod tests {
         roundtrip(ToHost::Hello {
             proto_minor: PROTO_MINOR,
             name: "Ana".into(),
+            user_id: Some(9),
+            avatar_url: None,
         });
         roundtrip(ToHost::Request(Request::Move { from: 1, to: 3 }));
         roundtrip(ToGuest::Queue {
@@ -224,7 +240,9 @@ mod tests {
             hello,
             ToHost::Hello {
                 proto_minor: 0,
-                name: String::new()
+                name: String::new(),
+                user_id: None,
+                avatar_url: None,
             }
         );
         let welcome: ToGuest = serde_json::from_str(

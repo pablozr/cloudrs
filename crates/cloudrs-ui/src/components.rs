@@ -205,6 +205,8 @@ pub enum Icon {
     Delete,
     Public,
     Private,
+    /// The host of a Jam.
+    Crown,
 }
 
 impl Icon {
@@ -247,6 +249,7 @@ impl Icon {
             Self::Delete => "icons/trash-2.svg",
             Self::Public => "icons/globe.svg",
             Self::Private => "icons/lock.svg",
+            Self::Crown => "icons/crown.svg",
         }
     }
 }

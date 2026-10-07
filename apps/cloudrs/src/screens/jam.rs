@@ -2,6 +2,7 @@
 //! listening, and end or leave it.
 
 use cloudrs_ui::Theme;
+use cloudrs_ui::browse::{avatar, avatar_stack};
 use cloudrs_ui::components::{
     ButtonKind, Icon, ToastKind, badge, button, icon, pill, row_action, tooltip,
 };
@@ -133,25 +134,59 @@ impl Shell {
         for (ix, person) in state.people.iter().enumerate() {
             let id = person.id;
             let label = t::remove_person(&person.name);
+            let picture = person
+                .user
+                .and_then(|user| self.models.art.users.get(&user).cloned());
+            let role = if person.host {
+                t::role_host()
+            } else {
+                t::role_guest()
+            };
             let row = div()
                 .flex()
                 .items_center()
                 .gap(space::S3)
-                .h(size::ROW_HEIGHT)
-                .child(icon(Icon::Account, size::ICON_M, c.text_muted))
+                .p(space::S2)
+                .rounded(radius::L)
+                .bg(c.surface)
+                .border_1()
+                .border_color(c.line)
+                .child(avatar(theme, size::AVATAR_M, &person.name, picture))
                 .child(
-                    theme
-                        .text(div(), typography::BODY)
+                    div()
                         .flex_1()
                         .min_w(px(0.0))
-                        .truncate()
-                        .text_color(c.text)
-                        .child(person.name.clone()),
+                        .flex()
+                        .flex_col()
+                        .child(
+                            theme
+                                .text(div(), typography::BODY)
+                                .flex()
+                                .items_center()
+                                .gap(space::S1)
+                                .truncate()
+                                .text_color(c.text)
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child(person.name.clone())
+                                .when(person.host, |name| {
+                                    name.child(icon(
+                                        Icon::Crown,
+                                        size::ICON_S,
+                                        tokens::status::warning(),
+                                    ))
+                                }),
+                        )
+                        .child(
+                            theme
+                                .text(div(), typography::BODY_MUTED)
+                                .text_color(c.text_muted)
+                                .child(role),
+                        ),
                 )
                 .when(person.cannot_play, |row| {
                     row.child(badge(theme, t::cannot_play(), tokens::status::warning()))
                 })
-                .when(host, |row| {
+                .when(host && !person.host, |row| {
                     row.child(
                         row_action(
                             theme,
@@ -214,4 +249,82 @@ fn muted(theme: &Theme, text: &'static str) -> Div {
         .text(div(), typography::BODY_MUTED)
         .text_color(theme.colors.text_muted)
         .child(text)
+}
+
+/// Avatars shown in the title bar pill.
+const PILL_AVATARS: usize = 4;
+
+impl Shell {
+    /// While in a Jam: a pill in the title bar with everyone's avatars (the
+    /// host first, crowned) and how many listen. A click opens the Jam.
+    pub(crate) fn jam_pill(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let state = self.models.jam.as_ref()?;
+        let c = theme.colors;
+        let me = self.models.account.as_ref().map_or_else(
+            || (t::you().to_owned(), None),
+            |me| {
+                (
+                    me.username.clone(),
+                    self.models.art.users.get(&me.id).cloned(),
+                )
+            },
+        );
+        let others = state.people.iter().map(|p| {
+            let picture = p
+                .user
+                .and_then(|user| self.models.art.users.get(&user).cloned());
+            (p.name.clone(), picture)
+        });
+        // The host leads the stack: this person when hosting, else the host.
+        let mut people: Vec<_> = match state.role {
+            JamRole::Host => std::iter::once(me).chain(others).collect(),
+            JamRole::Guest { .. } => {
+                let mut all: Vec<_> = others.collect();
+                let at = usize::from(!all.is_empty());
+                all.insert(at, me);
+                all
+            }
+        };
+        let count = people.len();
+        people.truncate(PILL_AVATARS);
+        let label = if state.connecting {
+            t::connecting().to_owned()
+        } else {
+            t::listening(count)
+        };
+        Some(
+            div()
+                .id("jam-pill")
+                .occlude()
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(space::S2)
+                .h(size::ICON_BUTTON)
+                .pl(space::S2)
+                .pr(space::S3)
+                .rounded(radius::FULL)
+                .bg(c.accent_soft)
+                .border_1()
+                .border_color(c.accent.opacity(0.35))
+                .cursor_pointer()
+                .hover(move |s| s.border_color(c.accent))
+                .tab_index(0)
+                .focus_visible(move |s| s.border_color(c.accent))
+                .aria_label(t::open_jam())
+                .tooltip(tooltip(t::open_jam()))
+                .child(icon(Icon::Jam, size::ICON_S, c.accent))
+                .child(avatar_stack(theme, people, true))
+                .child(
+                    theme
+                        .text(div(), typography::BODY_MUTED)
+                        .text_color(c.text)
+                        .child(label),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.navigate(crate::nav::Route::Jam, cx);
+                }))
+                .into_any_element(),
+        )
+    }
 }

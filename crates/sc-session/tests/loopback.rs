@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use sc_session::{
-    EndReason, Ended, Network, PeerId, Perms, QueuedTrack, Request, Session, SessionCommand,
-    SessionEvent, ToGuest, ToHost,
+    EndReason, Ended, Network, PeerId, Perms, Profile, QueuedTrack, Request, Session,
+    SessionCommand, SessionEvent, ToGuest, ToHost,
 };
 
 const WAIT: Duration = Duration::from_secs(20);
@@ -36,13 +36,25 @@ fn host() -> (Session, String) {
 
 /// Joins and waits until the host has the guest.
 fn join(host: &Session, link: &str, name: &str) -> (Session, PeerId) {
-    let guest = Session::join(link, name.into());
+    let guest = Session::join(
+        link,
+        Profile {
+            name: name.into(),
+            user_id: Some(9),
+            avatar_url: Some("https://i1.sndcdn.com/avatars-9-large.jpg".into()),
+        },
+    );
     next(&guest, |e| {
         matches!(e, SessionEvent::Connected).then_some(())
     });
     let peer = next(host, |e| match e {
-        SessionEvent::PeerJoined { peer, name: joined } => {
-            assert_eq!(joined, name);
+        SessionEvent::PeerJoined { peer, profile } => {
+            assert_eq!(
+                profile.user_id,
+                Some(9),
+                "the avatar travels with the hello"
+            );
+            assert_eq!(profile.name, name);
             Some(peer)
         }
         _ => None,
@@ -58,6 +70,8 @@ fn a_guest_joins_talks_and_is_told_when_the_host_leaves() {
     let welcome = ToGuest::Welcome {
         proto_minor: 0,
         host: "Bo".into(),
+        host_user_id: None,
+        host_avatar: None,
         perms: Perms::default(),
         you: peer,
     };
@@ -143,7 +157,7 @@ fn the_host_can_remove_a_guest() {
 
 #[test]
 fn a_link_that_is_not_a_jam_ends_at_once() {
-    let guest = Session::join("cloudrs:jam/not-a-ticket", "Ana".into());
+    let guest = Session::join("cloudrs:jam/not-a-ticket", Profile::default());
     let ended = next(&guest, |e| match e {
         SessionEvent::Ended(ended) => Some(ended),
         _ => None,

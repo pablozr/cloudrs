@@ -197,3 +197,11 @@ fn a_guest_that_drifts_seeks_back_in_step() {
     send_audio(&guest, sc_audio::Event::Position(at));
     plays(&guest);
 }
+
+#[test]
+fn a_guest_sees_the_host_first() {
+    let (_host, guest) = pair("people");
+    let state = jam(&guest, |s| !s.people.is_empty());
+    assert!(state.people[0].host, "{:?}", state.people);
+    assert_eq!(state.people[0].id, 0);
+}

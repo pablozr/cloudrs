@@ -23,7 +23,7 @@ const BYE_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub async fn run(
     link: String,
-    name: String,
+    profile: crate::Profile,
     clock: Clock,
     commands: flume::Receiver<SessionCommand>,
     events: flume::Sender<SessionEvent>,
@@ -60,7 +60,9 @@ pub async fn run(
     };
     let hello = ToHost::Hello {
         proto_minor: PROTO_MINOR,
-        name,
+        name: profile.name,
+        user_id: profile.user_id,
+        avatar_url: profile.avatar_url,
     };
     if net::write(&mut send, &hello).await.is_err() {
         return Ended::Lost;

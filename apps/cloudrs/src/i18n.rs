@@ -299,11 +299,17 @@ pub mod jam {
         leave { en: "Leave Jam" }
         guest_hint { en: "The host\u{2019}s queue plays here. Tracks you play are added to it." }
         cannot_play { en: "can\u{2019}t play this track" }
+        role_host { en: "Host" }
+        role_guest { en: "Listening along" }
+        you { en: "You" }
+        connecting { en: "Connecting\u{2026}" }
+        open_jam { en: "Open the Jam" }
         remove { en: "Remove" }
     }
     formats! {
         in_jam(host) { en: "In {host}\u{2019}s Jam" }
         remove_person(name) { en: "Remove {name} from the Jam" }
+        listening(count) { en: "{count} listening" }
     }
 }
 

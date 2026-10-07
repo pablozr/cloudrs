@@ -19,14 +19,16 @@ use std::time::{Duration, Instant};
 use sc_api::SoundCloudApi;
 use sc_api::models::Track;
 use sc_session::{
-    EndReason, Ended, PeerId, PeerInfo, Perms, QueuedTrack, Request, Session, SessionCommand,
-    SessionEvent, ToGuest, ToHost, Unplayable,
+    EndReason, Ended, PeerId, PeerInfo, Perms, Profile, QueuedTrack, Request, Session,
+    SessionCommand, SessionEvent, ToGuest, ToHost, Unplayable,
 };
 use tokio::task::JoinHandle;
 
 use super::{Core, Input};
 use crate::store::Session as SavedSession;
-use crate::types::{JamPerson, JamRole, JamState, PlayState, Problem, TrackId, TrackSummary};
+use crate::types::{
+    ArtKey, JamPerson, JamRole, JamState, PlayState, Problem, TrackId, TrackSummary, UserId,
+};
 use crate::{Command, Event};
 
 /// How far ahead the shared start instant is named.
@@ -80,6 +82,8 @@ struct Host {
 struct Person {
     id: PeerId,
     name: String,
+    user_id: Option<u64>,
+    avatar_url: Option<String>,
     cannot_play: bool,
 }
 
@@ -93,6 +97,7 @@ struct Barrier {
 
 struct Guest {
     host_name: String,
+    host_user: Option<u64>,
     connected: bool,
     perms: Perms,
     people: Vec<PeerInfo>,
@@ -152,6 +157,25 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.account
             .as_ref()
             .map_or_else(|| "cloudrs".to_owned(), |a| a.user.username.clone())
+    }
+
+    /// Who this person is to the others: name, account and avatar.
+    fn jam_profile(&self) -> Profile {
+        let user = self.account.as_ref().map(|a| a.user.id);
+        Profile {
+            name: self.jam_name(),
+            user_id: user.map(|u| u.0),
+            avatar_url: user.and_then(|u| self.other_art.get(&ArtKey::User(u)).cloned()),
+        }
+    }
+
+    /// Keeps a Jam member's avatar URL and fetches it into the artwork cache.
+    fn remember_avatar(&mut self, user: Option<u64>, url: Option<String>) {
+        if let (Some(user), Some(url)) = (user, url) {
+            let key = ArtKey::User(UserId(user));
+            self.other_art.insert(key, url);
+            self.request_artwork(key);
+        }
     }
 
     pub(super) fn is_jam_guest(&self) -> bool {
@@ -316,9 +340,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 self.emit(Event::Queue(self.queue.snapshot()));
                 self.set_state(PlayState::Idle);
                 (
-                    Session::join(&link, self.jam_name()),
+                    Session::join(&link, self.jam_profile()),
                     Role::Guest(Guest {
                         host_name: String::new(),
+                        host_user: None,
                         connected: false,
                         perms: Perms::default(),
                         people: Vec::new(),
@@ -401,41 +426,57 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let Some(jam) = &self.jam else {
             return self.emit(Event::Jam(None));
         };
-        let state = match &jam.role {
-            Role::Host(host) => JamState {
-                role: JamRole::Host,
-                link: host.link.clone(),
-                people: host
-                    .people
-                    .iter()
-                    .map(|p| JamPerson {
-                        id: p.id.0,
-                        name: p.name.clone(),
-                        cannot_play: p.cannot_play,
-                    })
-                    .collect(),
-                guests_control_playback: host.perms.guests_control_playback,
-                connecting: host.link.is_none(),
-            },
-            Role::Guest(guest) => JamState {
-                role: JamRole::Guest {
-                    host: guest.host_name.clone(),
+        let state =
+            match &jam.role {
+                Role::Host(host) => JamState {
+                    role: JamRole::Host,
+                    link: host.link.clone(),
+                    people: host
+                        .people
+                        .iter()
+                        .map(|p| JamPerson {
+                            id: p.id.0,
+                            name: p.name.clone(),
+                            user: p.user_id.map(UserId),
+                            host: false,
+                            cannot_play: p.cannot_play,
+                        })
+                        .collect(),
+                    guests_control_playback: host.perms.guests_control_playback,
+                    connecting: host.link.is_none(),
                 },
-                link: None,
-                people: guest
-                    .people
-                    .iter()
-                    .filter(|p| Some(p.id) != guest.me)
-                    .map(|p| JamPerson {
-                        id: p.id.0,
-                        name: p.name.clone(),
-                        cannot_play: p.cannot_play.is_some(),
-                    })
-                    .collect(),
-                guests_control_playback: guest.perms.guests_control_playback,
-                connecting: !guest.connected,
-            },
-        };
+                Role::Guest(guest) => {
+                    JamState {
+                        role: JamRole::Guest {
+                            host: guest.host_name.clone(),
+                        },
+                        link: None,
+                        // The host first (id 0: guests are numbered from 1), then the
+                        // other guests.
+                        people: (!guest.host_name.is_empty())
+                            .then(|| JamPerson {
+                                id: 0,
+                                name: guest.host_name.clone(),
+                                user: guest.host_user.map(UserId),
+                                host: true,
+                                cannot_play: false,
+                            })
+                            .into_iter()
+                            .chain(guest.people.iter().filter(|p| Some(p.id) != guest.me).map(
+                                |p| JamPerson {
+                                    id: p.id.0,
+                                    name: p.name.clone(),
+                                    user: p.user_id.map(UserId),
+                                    host: false,
+                                    cannot_play: p.cannot_play.is_some(),
+                                },
+                            ))
+                            .collect(),
+                        guests_control_playback: guest.perms.guests_control_playback,
+                        connecting: !guest.connected,
+                    }
+                }
+            };
         self.emit(Event::Jam(Some(state)));
     }
 
@@ -458,7 +499,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 }
                 self.emit_jam();
             }
-            SessionEvent::PeerJoined { peer, name } => self.host_peer_joined(peer, name),
+            SessionEvent::PeerJoined { peer, profile } => self.host_peer_joined(peer, profile),
             SessionEvent::PeerLeft { peer } => {
                 if let Some(Jam {
                     role: Role::Host(host),
@@ -729,8 +770,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     // Host
 
-    fn host_peer_joined(&mut self, peer: PeerId, name: String) {
-        let host_name = self.jam_name();
+    fn host_peer_joined(&mut self, peer: PeerId, profile: Profile) {
+        self.remember_avatar(profile.user_id, profile.avatar_url.clone());
+        let me = self.jam_profile();
+
         let now = self.jam_now_ns();
         let Some(Jam {
             role: Role::Host(host),
@@ -741,12 +784,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         };
         host.people.push(Person {
             id: peer,
-            name,
+            name: profile.name,
+            user_id: profile.user_id,
+            avatar_url: profile.avatar_url,
             cannot_play: false,
         });
         let welcome = ToGuest::Welcome {
             proto_minor: sc_session::protocol::PROTO_MINOR,
-            host: host_name,
+            host: me.name,
+            host_user_id: me.user_id,
+            host_avatar: me.avatar_url,
             perms: host.perms,
             you: peer,
         };
@@ -945,6 +992,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             .map(|p| PeerInfo {
                 id: p.id,
                 name: p.name.clone(),
+                user_id: p.user_id,
+                avatar_url: p.avatar_url.clone(),
                 cannot_play: p.cannot_play.then_some(Unplayable::Failed),
             })
             .collect();
@@ -1029,11 +1078,18 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         };
         match message {
             ToGuest::Welcome {
-                host, perms, you, ..
+                host,
+                host_user_id,
+                host_avatar,
+                perms,
+                you,
+                ..
             } => {
                 guest.host_name = host;
+                guest.host_user = host_user_id;
                 guest.perms = perms;
                 guest.me = Some(you);
+                self.remember_avatar(host_user_id, host_avatar);
                 self.emit_jam();
             }
             ToGuest::Queue { tracks, current } => self.guest_queue(tracks, current),
@@ -1081,7 +1137,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 self.guest_follow();
             }
             ToGuest::Peers { peers } => {
+                let avatars: Vec<_> = peers
+                    .iter()
+                    .map(|p| (p.user_id, p.avatar_url.clone()))
+                    .collect();
                 guest.people = peers;
+                for (user, url) in avatars {
+                    self.remember_avatar(user, url);
+                }
                 self.emit_jam();
             }
             ToGuest::Perms(perms) => {

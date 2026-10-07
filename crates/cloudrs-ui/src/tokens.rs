@@ -293,6 +293,13 @@ pub mod size {
     pub const MENU_ITEM_HEIGHT: Pixels = px(36.0);
     /// A dialog (name a playlist, confirm a delete).
     pub const DIALOG_WIDTH: Pixels = px(420.0);
+    /// Avatars of the people in a Jam: in the title bar pill, and on its screen.
+    pub const AVATAR_S: Pixels = px(24.0);
+    pub const AVATAR_M: Pixels = px(40.0);
+    /// How much stacked avatars overlap.
+    pub const AVATAR_OVERLAP: Pixels = px(8.0);
+    /// The crown over the host's avatar.
+    pub const CROWN: Pixels = px(12.0);
     /// Artwork or avatar of a page header.
     pub const HEADER_ART: Pixels = px(160.0);
     /// The waveform of a track page.

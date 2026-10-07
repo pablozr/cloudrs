@@ -69,6 +69,15 @@ impl Clock {
     }
 }
 
+/// Who someone is in a Jam: what the others see.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Profile {
+    pub name: String,
+    /// Their SoundCloud account and avatar, when signed in.
+    pub user_id: Option<u64>,
+    pub avatar_url: Option<String>,
+}
+
 /// What `sc-core` asks of the session.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SessionCommand {
@@ -92,7 +101,7 @@ pub enum SessionEvent {
     /// Host: a guest said hello. Answer with `Welcome` and the state.
     PeerJoined {
         peer: PeerId,
-        name: String,
+        profile: Profile,
     },
     PeerLeft {
         peer: PeerId,
@@ -152,18 +161,18 @@ impl Session {
         }
     }
 
-    /// Joins the Jam behind `link`, introducing this person as `name`.
-    pub fn join(link: &str, name: String) -> Self {
+    /// Joins the Jam behind `link`, introducing this person with `profile`.
+    pub fn join(link: &str, profile: Profile) -> Self {
         #[cfg(feature = "jam")]
         {
             let link = link.trim().to_owned();
             Self::spawn(move |clock, commands, events, stop| {
-                guest::run(link, name, clock, commands, events, stop)
+                guest::run(link, profile, clock, commands, events, stop)
             })
         }
         #[cfg(not(feature = "jam"))]
         {
-            let _ = (link, name);
+            let _ = (link, profile);
             Self::unavailable()
         }
     }
