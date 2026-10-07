@@ -14,6 +14,8 @@ struct FakeApi {
     calls: Arc<Mutex<Vec<String>>>,
     /// Makes the next `next_page` call fail.
     fail_next_page: Arc<AtomicBool>,
+    /// Makes every stream URL lookup fail.
+    fail_streams: Arc<AtomicBool>,
 }
 
 fn track(id: u64, title: &str, policy: &str) -> Track {
@@ -96,6 +98,9 @@ impl SoundCloudApi for FakeApi {
 
     async fn stream_url(&self, track: &Track) -> sc_api::Result<StreamSource> {
         self.log(format!("stream {}", track.id));
+        if self.fail_streams.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::NoPlayableStream("no supported format"));
+        }
         if track.is_preview_only() {
             return Err(sc_api::Error::NoPlayableStream(
                 "only a preview is available",
@@ -619,4 +624,97 @@ fn records_a_track_in_the_history_after_thirty_seconds() {
         std::thread::sleep(Duration::from_millis(100));
     }
     assert_eq!(titles, ["One"]);
+}
+
+#[test]
+fn next_on_the_last_track_plays_the_related_tracks() {
+    let h = Harness::new("next-at-end");
+    h.search();
+    h.core.send(Command::Play(TrackId(2)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.core.send(Command::Next);
+    let now = h.wait(|e| match e {
+        Event::NowPlaying(track) if track.id == TrackId(90) => Some(track),
+        _ => None,
+    });
+    assert_eq!(now.title, "Related A");
+}
+
+#[test]
+fn a_track_that_cannot_play_is_skipped_when_moving_on() {
+    let h = Harness::new("skip-failed");
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    // Track 2 is preview-only, so its stream fails.
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Ended))
+        .unwrap();
+    let problem = h.wait(|e| match e {
+        Event::Problem(p) => Some(p),
+        _ => None,
+    });
+    assert_eq!(problem, Problem::PreviewOnly);
+    let now = h.wait(|e| match e {
+        Event::NowPlaying(track) if track.id == TrackId(90) => Some(track),
+        _ => None,
+    });
+    assert_eq!(now.title, "Related A");
+}
+
+#[test]
+fn skipping_stops_after_a_full_pass_of_failures() {
+    let h = Harness::new("skip-loop");
+    h.api.fail_streams.store(true, Ordering::SeqCst);
+    h.search();
+    // Without the guard, repeat all would skip around the queue forever.
+    h.core.send(Command::SetRepeat(sc_core::Repeat::All));
+    h.core.send(Command::Play(TrackId(1)));
+    h.wait(|e| matches!(e, Event::Problem(_)).then_some(()));
+    h.core.send(Command::Next);
+    h.wait(|e| matches!(e, Event::Problem(_)).then_some(()));
+    std::thread::sleep(Duration::from_millis(300));
+    let streams = h
+        .api
+        .calls()
+        .into_iter()
+        .filter(|c| c.starts_with("stream"))
+        .count();
+    assert_eq!(streams, 2);
+}
+
+#[test]
+fn a_double_click_loads_the_track_once() {
+    let h = Harness::new("double-click");
+    h.search();
+    h.core.send(Command::Play(TrackId(1)));
+    h.core.send(Command::Play(TrackId(1)));
+    std::thread::sleep(Duration::from_millis(500));
+    let loads = h
+        .audio_commands
+        .try_iter()
+        .filter(|c| matches!(c, sc_audio::Command::Load(_)))
+        .count();
+    assert_eq!(loads, 1);
+}
+
+#[test]
+fn the_volume_is_saved_once_the_slider_rests() {
+    let h = Harness::new("volume");
+    wait_for_store(&h);
+    h.core.send(Command::SetVolume(0.9));
+    h.core.send(Command::SetVolume(0.3));
+    let db = h.cache.join("data/cloudrs.db");
+    let mut saved = None;
+    for _ in 0..60 {
+        if let Ok(conn) = rusqlite::Connection::open(&db)
+            && let Ok(volume) =
+                conn.query_row("SELECT volume FROM session", [], |row| row.get::<_, f64>(0))
+        {
+            saved = Some(volume);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!((saved.expect("the session was saved") - 0.3).abs() < 1e-6);
 }

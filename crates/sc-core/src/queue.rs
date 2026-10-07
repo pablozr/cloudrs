@@ -85,6 +85,10 @@ impl Queue {
         self.entries.last().map(|e| &e.track)
     }
 
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
     pub fn contains(&self, id: TrackId) -> bool {
         self.entries.iter().any(|e| e.track.id == id)
     }
