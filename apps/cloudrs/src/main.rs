@@ -9,6 +9,7 @@ mod screens;
 mod seam;
 mod shell;
 mod state;
+mod tint;
 
 use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 use gpui_platform::application;
@@ -22,43 +23,45 @@ fn main() {
         )
         .init();
 
-    application().run(|cx: &mut App| {
-        cloudrs_ui::fonts::register(cx);
-        cx.set_global(cloudrs_ui::ThemeMode::default());
-        cloudrs_ui::search_field::bind_keys(cx);
-        shell::bind_keys(cx);
+    application()
+        .with_assets(cloudrs_ui::assets::Assets)
+        .run(|cx: &mut App| {
+            cloudrs_ui::fonts::register(cx);
+            cx.set_global(cloudrs_ui::ThemeMode::default());
+            cloudrs_ui::search_field::bind_keys(cx);
+            shell::bind_keys(cx);
 
-        let config = CoreConfig {
-            cache_dir: app_dir(dirs::cache_dir(), "cache"),
-            data_dir: app_dir(dirs::data_dir(), "data"),
-        };
-        let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
-        let opened = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some(i18n::app::window_title().into()),
+            let config = CoreConfig {
+                cache_dir: app_dir(dirs::cache_dir(), "cache"),
+                data_dir: app_dir(dirs::data_dir(), "data"),
+            };
+            let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
+            let opened = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some(i18n::app::window_title().into()),
+                        ..Default::default()
+                    }),
+                    app_id: Some("dev.cloudrs.cloudrs".into()),
+                    window_min_size: Some(size(px(860.0), px(560.0))),
                     ..Default::default()
-                }),
-                app_id: Some("dev.cloudrs.cloudrs".into()),
-                window_min_size: Some(size(px(860.0), px(560.0))),
-                ..Default::default()
-            },
-            |window, cx| cx.new(|cx| shell::Shell::new(config, window, cx)),
-        );
-        if let Err(error) = opened {
-            tracing::error!(%error, "failed to open the main window");
-            cx.quit();
-            return;
-        }
-        cx.on_window_closed(|cx, _| {
-            if cx.windows().is_empty() {
+                },
+                |window, cx| cx.new(|cx| shell::Shell::new(config, window, cx)),
+            );
+            if let Err(error) = opened {
+                tracing::error!(%error, "failed to open the main window");
                 cx.quit();
+                return;
             }
-        })
-        .detach();
-        cx.activate(true);
-    });
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+            cx.activate(true);
+        });
 }
 
 /// `<OS dir>/cloudrs`, or the temp dir when the OS has none.

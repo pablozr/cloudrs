@@ -12,7 +12,7 @@ use gpui::{
     SharedString, Stateful, Window, div, img, px,
 };
 
-use crate::components::{badge, shimmer_opacity};
+use crate::components::{Icon, badge, icon, shimmer_opacity};
 use crate::tokens::{self, radius, size, space, typography};
 use crate::{Theme, motion};
 
@@ -21,16 +21,19 @@ use crate::{Theme, motion};
 pub fn sidebar_item(
     theme: &Theme,
     id: impl Into<ElementId>,
+    glyph: Icon,
     label: impl Into<SharedString>,
     active: bool,
 ) -> Stateful<Div> {
     let c = theme.colors;
+    let tint = if active { c.accent } else { c.text_muted };
     theme
         .text(div(), typography::BODY)
         .id(id)
         .relative()
         .flex()
         .items_center()
+        .gap(space::S3)
         .h(size::SIDEBAR_ITEM_HEIGHT)
         .px(space::S4)
         .rounded(radius::M)
@@ -54,6 +57,7 @@ pub fn sidebar_item(
                 .rounded(radius::FULL)
                 .when(active, |rail| rail.bg(c.accent)),
         )
+        .child(icon(glyph, size::ICON_M, tint))
         .child(label.into())
 }
 

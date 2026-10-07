@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use cloudrs_ui::Theme;
-use cloudrs_ui::components::{Icon, icon_button, play_button, slider, tooltip, waveform};
+use cloudrs_ui::components::{Icon, icon, icon_button, play_button, slider, tooltip, waveform};
 use cloudrs_ui::tokens::{self, radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{Context, EventEmitter, ObjectFit, Window, div, img, px};
@@ -224,16 +224,31 @@ impl Render for PlayerBar {
             )
             .child(time(format_time(state.playback.duration)));
 
-        let volume = div().flex_none().w(size::VOLUME_WIDTH).child(
-            slider(
-                &theme,
-                "volume",
-                state.playback.volume,
-                cx.processor(|_, volume: f32, _, cx| cx.emit(PlayerAction::SetVolume(volume))),
-            )
-            .aria_label(t::volume())
-            .tooltip(tooltip(t::volume())),
-        );
+        let volume_icon = if state.playback.volume <= 0.0 {
+            Icon::VolumeMuted
+        } else {
+            Icon::Volume
+        };
+        let volume = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(space::S2)
+            .child(icon(volume_icon, size::ICON_M, c.text_muted))
+            .child(
+                div().w(size::VOLUME_WIDTH).child(
+                    slider(
+                        &theme,
+                        "volume",
+                        state.playback.volume,
+                        cx.processor(|_, volume: f32, _, cx| {
+                            cx.emit(PlayerAction::SetVolume(volume))
+                        }),
+                    )
+                    .aria_label(t::volume())
+                    .tooltip(tooltip(t::volume())),
+                ),
+            );
         // Transport on top, the waveform with both times underneath.
         let centre = div()
             .flex()

@@ -2,7 +2,7 @@
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{PageHeaderData, page_header, skeleton_header};
-use cloudrs_ui::components::{ButtonKind, button};
+use cloudrs_ui::components::{ButtonKind, Icon, button};
 use cloudrs_ui::tokens::{self, space};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, div, px};
@@ -50,6 +50,7 @@ impl Shell {
                 }));
                 return status_view(
                     theme,
+                    Icon::Alert,
                     "playlist-failed",
                     i18n::page::error_title(),
                     i18n::page::error_hint(),

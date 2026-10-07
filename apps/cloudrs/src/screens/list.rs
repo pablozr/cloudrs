@@ -7,7 +7,7 @@ use std::ops::Range;
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{CollectionRowData, UserRowData, collection_row, user_row};
 use cloudrs_ui::components::{
-    ButtonKind, RowLink, TrackRowData, button, row_action, skeleton_row, track_row,
+    ButtonKind, Icon, RowLink, TrackRowData, button, row_action, skeleton_row, track_row,
 };
 use cloudrs_ui::tokens::space;
 use gpui::prelude::*;
@@ -26,6 +26,15 @@ const FIRST_PAGE_SKELETONS: usize = 10;
 const NEXT_PAGE_SKELETONS: usize = 3;
 
 /// The title and hint of an empty list.
+/// The muted icon above an empty list.
+fn empty_icon(key: ListId) -> Icon {
+    match key {
+        ListId::History => Icon::History,
+        ListId::Search { .. } => Icon::Search,
+        _ => Icon::Queue,
+    }
+}
+
 fn empty_text(key: ListId, query: &str) -> (String, &'static str) {
     use i18n::list as t;
     let hint = t::empty_hint();
@@ -65,6 +74,7 @@ impl Shell {
         if matches!(key, ListId::Search { .. }) && query.is_empty() {
             return status_view(
                 theme,
+                Icon::Search,
                 "search-prompt",
                 i18n::search::empty_title(),
                 i18n::search::empty_hint(),
@@ -94,11 +104,11 @@ impl Shell {
                 ButtonKind::Primary,
             )
             .on_click(cx.listener(move |this, _, _, cx| this.dispatch(intent.clone(), cx)));
-            return status_view(theme, "list-failed", title, hint, Some(retry));
+            return status_view(theme, Icon::Alert, "list-failed", title, hint, Some(retry));
         }
         if len == 0 {
             let (title, hint) = empty_text(key, query);
-            return status_view(theme, "list-empty", &title, hint, None);
+            return status_view(theme, empty_icon(key), "list-empty", &title, hint, None);
         }
 
         let more = if loading_more { NEXT_PAGE_SKELETONS } else { 0 };
@@ -182,6 +192,7 @@ impl Shell {
                 row_action(
                     theme,
                     ("play-next", ix),
+                    Icon::PlayNext,
                     i18n::queue::play_next(),
                     cx.listener(move |this, _, _, cx| this.dispatch(UiIntent::PlayNext(id), cx)),
                 )
@@ -189,6 +200,7 @@ impl Shell {
                 row_action(
                     theme,
                     ("add-to-queue", ix),
+                    Icon::AddToQueue,
                     i18n::queue::add_to_queue(),
                     cx.listener(move |this, _, _, cx| this.dispatch(UiIntent::AddToQueue(id), cx)),
                 )
