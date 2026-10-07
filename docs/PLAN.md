@@ -70,6 +70,7 @@ cloudrs/
 ├── crates/
 │   ├── sc-api/             # api-v2 HTTP client: models, client_id, auth, pagination
 │   ├── sc-audio/           # audio engine: HLS/progressive → decode → output
+│   ├── sc-session/         # Jam: peer-to-peer listening sessions over iroh (ADR 0011)
 │   ├── sc-core/            # app state, queue, commands/events, persistence, cache (M1)
 │   ├── sc-platform/        # OS integration: keychain and sign-in window (M3); media keys, MPRIS, notifications (M4)
 │   └── cloudrs-ui/         # design system: tokens, theme, motion, primitives (GPUI only here and in the app)
@@ -86,12 +87,13 @@ cloudrs/
 apps/cloudrs ──► cloudrs-ui
      │
      └──► sc-core ──► sc-api
-     │       └──────► sc-audio
+     │       ├──────► sc-audio
+     │       └──────► sc-session   (Jam, feature `jam`, ADR 0011)
      └──► sc-platform
 ```
 
-`sc-api` and `sc-audio` do not know each other: `sc-core` resolves the stream URL and hands it
-to the player. Only `apps/cloudrs` and `cloudrs-ui` may depend on GPUI, and a test in
+`sc-api`, `sc-audio` and `sc-session` do not know each other: `sc-core` resolves the stream URL
+and hands it to the player, and turns session messages into its own commands. Only `apps/cloudrs` and `cloudrs-ui` may depend on GPUI, and a test in
 `tests/architecture` will enforce it (as in xemnas).
 
 ---
@@ -367,13 +369,16 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 - [ ] Website/README with GIFs and a download page.
 
 ### Later — Listen together (after M2)
-Design: [ADR 0006](./adr/0006-listen-together-p2p.md). Peer-to-peer, no cloudrs server; state is
-synced, audio never leaves SoundCloud.
-- [ ] Spike: P2P library (candidate `iroh`): NAT traversal between two home networks, binary
-      size, idle cost. Approval before it becomes a dependency.
-- [ ] `sc-session`: host creates an invite link, guests join by pasting it, host-owned queue.
-- [ ] Sync: clock offset, start when all are buffered, drift correction by seek.
-- [ ] Guests who cannot play a track (GO+ preview, region) are shown, not dropped.
+Design: [ADR 0006](./adr/0006-listen-together-p2p.md) (direction),
+[ADR 0011](./adr/0011-jam-iroh-and-protocol.md) (iroh, `sc-session`, protocol v1).
+Peer-to-peer, no cloudrs server; state is synced, audio never leaves SoundCloud.
+- [x] Spike: iroh 1.3 on one machine (connect, size, idle cost), recorded in ADR 0011.
+- [ ] Traversal test between two home networks and an hour-long relay-only session.
+- [ ] `sc-session`: host creates an invite link, guests join by pasting it (loopback test).
+- [ ] `sc-audio`: load paused.
+- [ ] `sc-core`: host mode (broadcast, requests, start barrier) and guest mode (mirror,
+      clock offset, drift correction, pre-Jam queue restored).
+- [ ] UI: Jam panel, copy link, people, cannot-play badges, Ctrl K.
 
 ---
 
