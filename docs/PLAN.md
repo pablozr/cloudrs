@@ -374,7 +374,8 @@ Design: [ADR 0006](./adr/0006-listen-together-p2p.md) (direction),
 Peer-to-peer, no cloudrs server; state is synced, audio never leaves SoundCloud.
 - [x] Spike: iroh 1.3 on one machine (connect, size, idle cost), recorded in ADR 0011.
 - [ ] Traversal test between two home networks and an hour-long relay-only session.
-- [ ] `sc-session`: host creates an invite link, guests join by pasting it (loopback test).
+- [x] `sc-session`: host creates an invite link, guests join with it (loopback tests; the
+      example `jam` tries two machines).
 - [ ] `sc-audio`: load paused.
 - [ ] `sc-core`: host mode (broadcast, requests, start barrier) and guest mode (mirror,
       clock offset, drift correction, pre-Jam queue restored).

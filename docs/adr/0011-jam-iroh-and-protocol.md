@@ -86,3 +86,20 @@ host leaves.
 - No cloudrs server and no cost; a Jam exists only while the host's app is open.
 - Output latency (Bluetooth) is invisible to peers; a manual offset can come later.
 - Progressive MP3 sources seek slowly; sync treats them as "may lag".
+
+## Refinements made while building `sc-session`
+
+- The endpoint uses iroh's `Minimal` preset with `RelayMode::Default`: n0's relays, no address
+  lookup, nothing published. A guest dials with the address the link carries.
+- `Network::Internet` (relays, a relay-only link) is what the app uses; `Network::Local` (no
+  relays, the link carries this machine's addresses) exists for the loopback tests, which run
+  in CI without internet. A test through the real relays is `#[ignore]` and run by hand
+  (`cargo test -p sc-session -- --ignored`); on 2026-10-07 it connected in under 2 s.
+- The session answers clock pings itself and reports `ClockOffset` (host clock = guest clock +
+  offset), so sync never waits on the core. Each side has a `Clock` (nanoseconds since its
+  session started); anchors are in the host's.
+- Ids: the host numbers guests 1, 2, 3... (`PeerId`). `MAX_GUESTS` is 15, so 16 people with
+  the host. A guest beyond that is told `Ended { Full }` and never reported to the core.
+- `PlayNext` counts as adding, like `AddToQueue`: both are always allowed.
+- `examples/jam.rs` tries a connection between two machines without the app:
+  `cargo run -p sc-session --example jam -- host`, then `-- join "<link>"` elsewhere.

@@ -2,7 +2,8 @@
 //! - only the app and the UI kit may depend on GPUI;
 //! - `sc-api` and `sc-audio` never depend on each other;
 //! - library crates never depend on the app;
-//! - `sc-platform` stands alone and only the app uses it.
+//! - `sc-platform` stands alone and only the app uses it;
+//! - `sc-session` knows no other layer and only `sc-core` uses it.
 
 use std::path::{Path, PathBuf};
 
@@ -117,6 +118,34 @@ fn the_platform_layer_stands_alone() {
             assert!(
                 !deps.contains(&"sc-platform".to_owned()),
                 "only the app may use sc-platform, not {name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_session_layer_knows_no_other_layer() {
+    for (name, deps) in members() {
+        if name == "sc-session" {
+            for other in [
+                "sc-api",
+                "sc-audio",
+                "sc-core",
+                "sc-platform",
+                "cloudrs-ui",
+                "cloudrs",
+            ] {
+                assert!(
+                    !deps.contains(&other.to_owned()),
+                    "sc-session depends on {other}"
+                );
+            }
+            assert!(!depends_on(&deps, "gpui"));
+        }
+        if !matches!(name.as_str(), "sc-core" | "sc-session") {
+            assert!(
+                !deps.contains(&"sc-session".to_owned()),
+                "only sc-core may use sc-session, not {name}"
             );
         }
     }

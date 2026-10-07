@@ -7,6 +7,7 @@ members = [
     "crates/sc-audio",
     "crates/sc-core",
     "crates/sc-platform",
+    "crates/sc-session",
     "tests/architecture",
 ]
 
@@ -15,7 +16,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/pablozr/cloudrs"
-rust-version = "1.90"
+rust-version = "1.91"
 
 [workspace.dependencies]
 # Pinned to the Zed monorepo revision accepted in ADR 0001 (same as xemnas).
