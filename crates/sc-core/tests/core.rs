@@ -1081,3 +1081,94 @@ fn trending_keeps_soundcloud_ranking() {
         )
     );
 }
+
+fn saved(h: &Harness) -> (sc_core::PlaylistSummary, sc_core::PlaylistChange) {
+    h.wait(|e| match e {
+        Event::PlaylistSaved { playlist, change } => Some((playlist, change)),
+        _ => None,
+    })
+}
+
+#[test]
+fn adding_to_a_playlist_sends_the_whole_list() {
+    let h = Harness::signed_in("playlist-add");
+    h.core.send(Command::AddToPlaylist {
+        playlist: PlaylistId(5),
+        track: TrackId(7),
+    });
+    let (playlist, change) = saved(&h);
+    assert_eq!(playlist.id, PlaylistId(5));
+    assert_eq!(change, sc_core::PlaylistChange::Added(TrackId(7)));
+    let calls = h.api.calls();
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains("edit_playlist 5") && c.contains("[100, 101, 102, 7]")),
+        "{calls:?}"
+    );
+    // The page follows with the new list.
+    h.wait(|e| matches!(e, Event::PlaylistPage(_)).then_some(()));
+
+    // A track already there changes nothing.
+    h.core.send(Command::AddToPlaylist {
+        playlist: PlaylistId(5),
+        track: TrackId(100),
+    });
+    assert_eq!(
+        saved(&h).1,
+        sc_core::PlaylistChange::AlreadyThere(TrackId(100))
+    );
+}
+
+#[test]
+fn a_new_playlist_is_private_and_reloads_the_library() {
+    let h = Harness::signed_in("playlist-create");
+    h.core.send(Command::CreatePlaylist {
+        title: "  Night  ".into(),
+        track: Some(TrackId(7)),
+    });
+    let (playlist, change) = saved(&h);
+    assert_eq!(change, sc_core::PlaylistChange::Created);
+    assert_eq!(playlist.title, "Night");
+    h.page(ListId::Library, |items| match items {
+        ListItems::Playlists(rows) => Some(rows),
+        _ => None,
+    });
+    assert!(
+        h.api
+            .calls()
+            .contains(&"create_playlist Night false [7]".to_owned())
+    );
+}
+
+#[test]
+fn renaming_privacy_and_deleting() {
+    let h = Harness::signed_in("playlist-edit");
+    h.core.send(Command::RenamePlaylist {
+        playlist: PlaylistId(5),
+        title: "Late".into(),
+    });
+    let (playlist, change) = saved(&h);
+    assert_eq!(
+        (playlist.title.as_str(), change),
+        ("Late", sc_core::PlaylistChange::Renamed)
+    );
+    h.core.send(Command::SetPlaylistPublic {
+        playlist: PlaylistId(5),
+        public: true,
+    });
+    assert_eq!(
+        saved(&h).1,
+        sc_core::PlaylistChange::Privacy { public: true }
+    );
+    h.core.send(Command::DeletePlaylist(PlaylistId(5)));
+    assert_eq!(saved(&h).1, sc_core::PlaylistChange::Deleted);
+    assert!(h.api.calls().contains(&"delete_playlist 5".to_owned()));
+}
+
+#[test]
+fn playlists_need_an_account() {
+    let h = Harness::new("playlist-signed-out");
+    h.core.send(Command::DeletePlaylist(PlaylistId(5)));
+    h.wait(|e| matches!(e, Event::Problem(Problem::SignInRequired)).then_some(()));
+}

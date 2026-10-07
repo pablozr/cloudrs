@@ -229,6 +229,8 @@ pub struct PlaylistPage {
     pub track_count: u64,
     pub duration: Duration,
     pub is_album: bool,
+    /// Public or private (only its owner sees a private one).
+    pub public: bool,
 }
 
 impl PlaylistPage {
@@ -241,6 +243,7 @@ impl PlaylistPage {
             track_count: playlist.track_count.unwrap_or(playlist.tracks.len() as u64),
             duration: Duration::from_millis(playlist.duration),
             is_album: is_album(playlist),
+            public: playlist.sharing.as_deref() != Some("private"),
         }
     }
 }
@@ -289,6 +292,8 @@ pub enum Problem {
     SessionExpired,
     /// Liking or following needs an account.
     SignInRequired,
+    /// A change to one of the person's playlists could not be saved.
+    PlaylistNotSaved,
     /// The Jam could not start or its host could not be reached.
     JamUnreachable,
     /// The text is not a Jam link.
@@ -450,4 +455,20 @@ impl Genre {
 pub struct HomeShelf {
     pub title: String,
     pub playlists: Vec<PlaylistSummary>,
+}
+
+/// What changed on a playlist of the signed-in person (`Event::PlaylistSaved`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaylistChange {
+    Created,
+    Added(TrackId),
+    /// The track was already there: nothing changed.
+    AlreadyThere(TrackId),
+    Removed,
+    Moved,
+    Renamed,
+    Privacy {
+        public: bool,
+    },
+    Deleted,
 }

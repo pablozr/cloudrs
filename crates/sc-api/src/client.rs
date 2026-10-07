@@ -13,8 +13,8 @@ use crate::SoundCloudApi;
 use crate::client_id::{find_client_id, script_urls};
 use crate::error::{Error, Result};
 use crate::models::{
-    LibraryItem, Like, Page, Playlist, Resource, Selection, StreamItem, SystemPlaylist, Track,
-    User, Waveform,
+    LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, StreamItem,
+    SystemPlaylist, Track, User, Waveform,
 };
 use crate::stream::{StreamSource, pick_transcoding, protocol};
 
@@ -136,8 +136,27 @@ impl ScClient {
 
     /// GET `url` (relative to the API base, or absolute) and decode the JSON.
     async fn get_json<T: DeserializeOwned>(&self, url: &str, query: &[(&str, &str)]) -> Result<T> {
-        let body = self.send(Method::GET, url, query).await?.bytes().await?;
+        let body = self
+            .send(Method::GET, url, query, None)
+            .await?
+            .bytes()
+            .await?;
         serde_json::from_slice(&body).map_err(Error::Decode)
+    }
+
+    /// Sends `body` as JSON and decodes the JSON answer.
+    async fn send_json<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        url: &str,
+        body: &serde_json::Value,
+    ) -> Result<T> {
+        let answer = self
+            .send(method, url, &[], Some(body))
+            .await?
+            .bytes()
+            .await?;
+        serde_json::from_slice(&answer).map_err(Error::Decode)
     }
 
     /// Sends a request to the API and returns the successful response.
@@ -147,6 +166,7 @@ impl ScClient {
         method: Method,
         url: &str,
         query: &[(&str, &str)],
+        body: Option<&serde_json::Value>,
     ) -> Result<reqwest::Response> {
         let url = self
             .config
@@ -163,6 +183,9 @@ impl ScClient {
                     .request(method.clone(), url.clone())
                     .query(query)
                     .query(&[("client_id", client_id.as_str())]);
+                if let Some(body) = body {
+                    request = request.json(body);
+                }
                 if let Some(token) = self.token() {
                     request =
                         request.header(reqwest::header::AUTHORIZATION, format!("OAuth {token}"));
@@ -377,8 +400,13 @@ impl SoundCloudApi for ScClient {
 
     async fn set_track_like(&self, me: u64, track: u64, liked: bool) -> Result<()> {
         let method = if liked { Method::PUT } else { Method::DELETE };
-        self.send(method, &format!("users/{me}/track_likes/{track}"), &[])
-            .await?;
+        self.send(
+            method,
+            &format!("users/{me}/track_likes/{track}"),
+            &[],
+            None,
+        )
+        .await?;
         Ok(())
     }
 
@@ -394,13 +422,34 @@ impl SoundCloudApi for ScClient {
         self.get_json(&format!("system-playlists/{urn}"), &[]).await
     }
 
+    async fn create_playlist(&self, title: &str, public: bool, tracks: &[u64]) -> Result<Playlist> {
+        let body = serde_json::json!({ "playlist": {
+            "title": title,
+            "sharing": crate::models::sharing(public),
+            "tracks": tracks,
+        }});
+        self.send_json(Method::POST, "playlists", &body).await
+    }
+
+    async fn edit_playlist(&self, id: u64, edit: &PlaylistEdit) -> Result<Playlist> {
+        let body = serde_json::json!({ "playlist": edit });
+        self.send_json(Method::PUT, &format!("playlists/{id}"), &body)
+            .await
+    }
+
+    async fn delete_playlist(&self, id: u64) -> Result<()> {
+        self.send(Method::DELETE, &format!("playlists/{id}"), &[], None)
+            .await?;
+        Ok(())
+    }
+
     async fn set_following(&self, user: u64, following: bool) -> Result<()> {
         let method = if following {
             Method::POST
         } else {
             Method::DELETE
         };
-        self.send(method, &format!("me/followings/{user}"), &[])
+        self.send(method, &format!("me/followings/{user}"), &[], None)
             .await?;
         Ok(())
     }

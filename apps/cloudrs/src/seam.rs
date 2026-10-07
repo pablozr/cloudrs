@@ -129,6 +129,8 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
                 models.followed.remove(user)
             }
         }
+        // The toast comes from the shell; the page and list follow as events.
+        Event::PlaylistSaved { .. } => false,
         Event::HomeShelves(shelves) => {
             models.home_shelves.clone_from(shelves);
             true
@@ -441,6 +443,7 @@ mod tests {
             track_count: 3,
             duration: Duration::from_secs(600),
             is_album: false,
+            public: true,
         };
         models.expect_track(TrackId(5));
         assert!(apply(&mut models, &Event::TrackPage(track_page.clone())));

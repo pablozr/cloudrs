@@ -19,8 +19,8 @@ use std::time::Duration;
 
 pub use types::{
     Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems, PlayState,
-    Playback, PlaylistId, PlaylistPage, PlaylistSummary, Problem, QueueSnapshot, Repeat,
-    SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage, UserSummary,
+    Playback, PlaylistChange, PlaylistId, PlaylistPage, PlaylistSummary, Problem, QueueSnapshot,
+    Repeat, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage, UserSummary,
 };
 
 /// What the UI asks for.
@@ -97,6 +97,36 @@ pub enum Command {
         user: UserId,
         following: bool,
     },
+    /// Create a playlist of the signed-in person, private, with this track in
+    /// it if given. Answers with [`Event::PlaylistSaved`].
+    CreatePlaylist {
+        title: String,
+        track: Option<TrackId>,
+    },
+    /// Add a track at the end of one of the person's playlists.
+    AddToPlaylist {
+        playlist: PlaylistId,
+        track: TrackId,
+    },
+    /// Remove the track at this place of one of the person's playlists.
+    RemoveFromPlaylist {
+        playlist: PlaylistId,
+        index: usize,
+    },
+    MoveInPlaylist {
+        playlist: PlaylistId,
+        from: usize,
+        to: usize,
+    },
+    RenamePlaylist {
+        playlist: PlaylistId,
+        title: String,
+    },
+    SetPlaylistPublic {
+        playlist: PlaylistId,
+        public: bool,
+    },
+    DeletePlaylist(PlaylistId),
     /// Host a Jam (ADR 0011): [`Event::Jam`] carries the link once online.
     /// The queue and playback become everyone's.
     StartJam,
@@ -173,6 +203,13 @@ pub enum Event {
     /// SoundCloud's own home rows, after [`Command::OpenHome`]: curated and
     /// chart playlists. Covers arrive as `Artwork`.
     HomeShelves(Vec<HomeShelf>),
+    /// A playlist of the person changed on SoundCloud. Its page and list
+    /// follow when it still exists; a created or deleted one also reloads the
+    /// library.
+    PlaylistSaved {
+        playlist: PlaylistSummary,
+        change: PlaylistChange,
+    },
     /// The Jam changed (people, link, permissions); `None` once it is over.
     Jam(Option<JamState>),
     /// Something the person should know about (playing, pasted links, audio).

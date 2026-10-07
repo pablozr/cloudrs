@@ -1,9 +1,9 @@
 //! `ScClient` against a local mock of soundcloud.com and api-v2.
 
-use sc_api::models::{Resource, SelectionItem};
+use sc_api::models::{PlaylistEdit, Resource, SelectionItem};
 use sc_api::{ClientConfig, Error, ScClient, SoundCloudApi, StreamProtocol};
 use url::Url;
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const OLD_ID: &str = "0ldC1ient1dXXXXXXXXXXXXXXXXXXXXX";
@@ -537,4 +537,49 @@ async fn reads_soundcloud_home_rows() {
     assert_eq!(trap.short_title.as_deref(), Some("Trap"));
     assert!(trap.tracks.iter().all(|t| t.id != 0 && t.title.is_empty()));
     assert!(trap.calculated_artwork_url.is_some());
+}
+
+#[tokio::test]
+async fn creates_edits_and_deletes_playlists() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/playlists"))
+        .and(header("authorization", "OAuth t"))
+        .and(body_json(serde_json::json!({
+            "playlist": { "title": "Night", "sharing": "private", "tracks": [5, 6] }
+        })))
+        .respond_with(json(r#"{"id":40,"title":"Night","sharing":"private"}"#))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/api/playlists/40"))
+        .and(body_json(serde_json::json!({
+            "playlist": { "title": "Late night", "tracks": [6, 5, 7] }
+        })))
+        .respond_with(json(r#"{"id":40,"title":"Late night"}"#))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/playlists/40"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let sc = client(&server, Some(OLD_ID), Some("t"));
+
+    let created = sc.create_playlist("Night", false, &[5, 6]).await.unwrap();
+    assert_eq!(created.id, 40);
+    assert_eq!(created.sharing.as_deref(), Some("private"));
+    let edit = PlaylistEdit {
+        title: Some("Late night".into()),
+        tracks: Some(vec![6, 5, 7]),
+        ..PlaylistEdit::default()
+    };
+    assert_eq!(
+        sc.edit_playlist(40, &edit).await.unwrap().title,
+        "Late night"
+    );
+    sc.delete_playlist(40).await.unwrap();
 }

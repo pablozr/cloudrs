@@ -239,6 +239,7 @@ pub mod problem {
         session_expired { en: "Your SoundCloud session expired. Sign in again." }
         sign_in_required { en: "Sign in to like tracks and follow people." }
         sign_in_window { en: "The sign-in window could not open. Try signing in with a token." }
+        playlist_not_saved { en: "That playlist change couldn{2019}t be saved. Try again." }
         jam_unreachable { en: "Couldn{2019}t reach the Jam. Check your connection and the link." }
         jam_bad_link { en: "That isn{2019}t a Jam link." }
         jam_ended { en: "The Jam has ended." }

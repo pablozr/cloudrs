@@ -31,6 +31,7 @@ mod jam;
 mod pages;
 mod paging;
 mod playback;
+mod playlists;
 mod session;
 
 /// How long the search waits for more typing.
@@ -44,6 +45,10 @@ type AudioLink = (
 );
 
 enum Input {
+    /// SoundCloud's answer to a change of one of the person's playlists.
+    PlaylistEdited {
+        result: sc_api::Result<Box<(Playlist, crate::types::PlaylistChange)>>,
+    },
     /// SoundCloud's home rows and charts, in that order.
     HomeFetched {
         selections: sc_api::Result<sc_api::models::Page<sc_api::models::Selection>>,
@@ -349,6 +354,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         match input {
             Input::Ui(command) => self.command(command),
             Input::UiClosed => {}
+            Input::PlaylistEdited { result } => self.playlist_edited(result),
             Input::HomeFetched { selections, charts } => self.home_fetched(selections, charts),
             Input::Jam { generation, event } => self.jam_event(generation, event),
             Input::JamTimer { generation, timer } => self.jam_timer(generation, timer),
@@ -536,6 +542,32 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Command::SignOut => self.sign_out(),
             Command::Like { track, liked } => self.like(track, liked),
             Command::Follow { user, following } => self.follow(user, following),
+            Command::CreatePlaylist { title, track } => self.edit_playlist(
+                None,
+                playlists::Edit::Create {
+                    title: title.trim().to_owned(),
+                    track,
+                },
+            ),
+            Command::AddToPlaylist { playlist, track } => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Add(track));
+            }
+            Command::RemoveFromPlaylist { playlist, index } => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Remove(index));
+            }
+            Command::MoveInPlaylist { playlist, from, to } => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Move { from, to });
+            }
+            Command::RenamePlaylist { playlist, title } => {
+                let title = title.trim().to_owned();
+                self.edit_playlist(Some(playlist), playlists::Edit::Rename(title));
+            }
+            Command::SetPlaylistPublic { playlist, public } => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Privacy(public));
+            }
+            Command::DeletePlaylist(playlist) => {
+                self.edit_playlist(Some(playlist), playlists::Edit::Delete);
+            }
             // Taken by `jam_command` above.
             Command::StartJam
             | Command::JoinJam(_)

@@ -3,7 +3,7 @@
 //! SoundCloud changes these shapes without notice, so every field is optional
 //! or defaulted: a missing field must never make a whole page fail to decode.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// One page of a paginated collection (`linked_partitioning=1`).
 #[derive(Debug, Clone, Deserialize)]
@@ -150,6 +150,8 @@ pub struct Playlist {
     pub track_count: Option<u64>,
     pub is_album: Option<bool>,
     pub set_type: Option<String>,
+    /// `public` or `private`.
+    pub sharing: Option<String>,
     pub user: Option<UserSummary>,
     /// The first tracks come complete; the rest only carry an `id`.
     pub tracks: Vec<Track>,
@@ -243,6 +245,24 @@ pub enum SelectionItem {
     Other,
 }
 
+/// What to change on a playlist (`PUT /playlists/{id}`). Fields left `None`
+/// are not sent, so they stay as they are.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct PlaylistEdit {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// `public` or `private`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharing: Option<String>,
+    /// The whole track list, in order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracks: Option<Vec<u64>>,
+}
+
+/// SoundCloud's word for a playlist's privacy.
+pub fn sharing(public: bool) -> &'static str {
+    if public { "public" } else { "private" }
+}
 /// The waveform drawn in the player: one value per column, from 0 to `height`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]

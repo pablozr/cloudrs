@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sc_api::models::{
-    LibraryItem, Like, Page, Playlist, Resource, Selection, SelectionItem, SelectionItems,
-    StreamItem, SystemPlaylist, Track, User, UserSummary, Waveform,
+    LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, SelectionItem,
+    SelectionItems, StreamItem, SystemPlaylist, Track, User, UserSummary, Waveform,
 };
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
 use sc_core::{Command, CoreConfig, CoreHandle, Event, ListId, ListItems, SearchKind};
@@ -424,6 +424,35 @@ impl SoundCloudApi for FakeApi {
             tracks: [30, 10, 20].into_iter().map(partial).collect(),
             ..SystemPlaylist::default()
         })
+    }
+
+    async fn create_playlist(
+        &self,
+        title: &str,
+        public: bool,
+        tracks: &[u64],
+    ) -> sc_api::Result<Playlist> {
+        self.log(format!("create_playlist {title} {public} {tracks:?}"));
+        Ok(Playlist {
+            id: 40,
+            title: title.into(),
+            sharing: Some(sc_api::models::sharing(public).into()),
+            ..Playlist::default()
+        })
+    }
+
+    async fn edit_playlist(&self, id: u64, edit: &PlaylistEdit) -> sc_api::Result<Playlist> {
+        self.log(format!("edit_playlist {id} {edit:?}"));
+        let mut playlist = self.playlist(id).await?;
+        if let Some(title) = &edit.title {
+            playlist.title.clone_from(title);
+        }
+        Ok(playlist)
+    }
+
+    async fn delete_playlist(&self, id: u64) -> sc_api::Result<()> {
+        self.log(format!("delete_playlist {id}"));
+        Ok(())
     }
     async fn set_following(&self, user: u64, following: bool) -> sc_api::Result<()> {
         self.log(format!("follow {user} {following}"));
