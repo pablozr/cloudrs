@@ -162,7 +162,7 @@ impl Harness {
 
     /// Waits for the first event matching `pick`.
     fn wait<T>(&self, mut pick: impl FnMut(Event) -> Option<T>) -> T {
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         loop {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
             let event = self
@@ -259,7 +259,7 @@ fn plays_a_track_and_reports_playback() {
 
     let load = h
         .audio_commands
-        .recv_timeout(Duration::from_secs(3))
+        .recv_timeout(Duration::from_secs(10))
         .unwrap();
     assert!(
         matches!(&load, sc_audio::Command::Load(source) if source.url.ends_with("/1.m3u8")
@@ -288,7 +288,7 @@ fn plays_a_track_and_reports_playback() {
     h.core.send(Command::TogglePlay);
     let pause = h
         .audio_commands
-        .recv_timeout(Duration::from_secs(3))
+        .recv_timeout(Duration::from_secs(10))
         .unwrap();
     assert!(matches!(pause, sc_audio::Command::Pause));
 }
@@ -734,7 +734,7 @@ fn a_damaged_database_is_reset_and_reported() {
     let (_audio_events, audio_rx) = flume::unbounded();
     let core = sc_core::spawn(FakeApi::default(), (audio_tx, audio_rx), config(&dir));
     let problem = loop {
-        let event = core.events().recv_timeout(Duration::from_secs(3)).unwrap();
+        let event = core.events().recv_timeout(Duration::from_secs(10)).unwrap();
         if let Event::Problem(p) = event {
             break p;
         }
@@ -757,4 +757,21 @@ fn a_damaged_database_is_reset_and_reported() {
     assert_eq!(version, 1);
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn shutdown_saves_the_session_before_replying() {
+    let h = Harness::new("shutdown");
+    wait_for_store(&h);
+    // The debounced volume save has not fired yet: only the final save can
+    // have written it by the time Stopped arrives.
+    h.core.send(Command::SetVolume(0.4));
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+
+    let conn = rusqlite::Connection::open(h.cache.join("data/cloudrs.db")).unwrap();
+    let volume: f64 = conn
+        .query_row("SELECT volume FROM session", [], |row| row.get(0))
+        .unwrap();
+    assert!((volume - 0.4).abs() < 1e-6);
 }

@@ -3,6 +3,7 @@
 //! player bar, which stays a separate entity.
 
 use std::ops::Range;
+use std::time::Duration;
 
 use cloudrs_ui::components::{
     ButtonKind, ToastKind, TrackRowData, button, row_action, skeleton_row, toast, track_row,
@@ -27,6 +28,10 @@ actions!(shell, [FocusSearch]);
 
 /// Key context of the root, so `/` can be limited to when no field is focused.
 const CONTEXT: &str = "Shell";
+
+/// How long closing the window waits for the core to save its state.
+const SHUTDOWN_WAIT: Duration = Duration::from_millis(500);
+const SHUTDOWN_POLL: Duration = Duration::from_millis(20);
 
 /// Skeleton rows while a search runs, and at the end while the next page loads.
 const SEARCH_SKELETONS: usize = 10;
@@ -69,6 +74,10 @@ pub struct Shell {
     toast: Option<ToastState>,
     toast_timer: Option<Task<()>>,
     toasts_shown: usize,
+    /// The window asked to close and the core was told to shut down.
+    stopping: bool,
+    /// The core answered `Stopped`.
+    stopped: bool,
 }
 
 fn start_core(config: &CoreConfig) -> Result<CoreHandle, StartError> {
@@ -115,6 +124,12 @@ impl Shell {
 
         window.focus(&search.focus_handle(cx), cx);
 
+        let this = cx.weak_entity();
+        window.on_window_should_close(cx, move |_, cx| {
+            this.update(cx, |shell, cx| shell.request_shutdown(cx))
+                .unwrap_or(true)
+        });
+
         let mut shell = Self {
             core: start_core(&config),
             config,
@@ -130,9 +145,38 @@ impl Shell {
             toast: None,
             toast_timer: None,
             toasts_shown: 0,
+            stopping: false,
+            stopped: false,
         };
         shell.start_pump(cx);
         shell
+    }
+
+    /// Closing the window: the core saves the session first. Returns whether
+    /// the window may close now; otherwise the app quits once the core replies
+    /// (or after a short wait, so a stuck core never keeps the window open).
+    fn request_shutdown(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.stopping {
+            return false;
+        }
+        let Ok(core) = &self.core else {
+            return true;
+        };
+        if !core.send(Command::Shutdown) {
+            return true;
+        }
+        self.stopping = true;
+        cx.spawn(async move |this, cx| {
+            for _ in 0..(SHUTDOWN_WAIT.as_millis() / SHUTDOWN_POLL.as_millis()) {
+                cx.background_executor().timer(SHUTDOWN_POLL).await;
+                if this.update(cx, |shell, _| shell.stopped).unwrap_or(true) {
+                    break;
+                }
+            }
+            cx.update(|cx| cx.quit());
+        })
+        .detach();
+        false
     }
 
     fn send(&self, command: Command) {
@@ -178,6 +222,7 @@ impl Shell {
                     .update(cx, |bar, cx| bar.apply(&event, artwork, cx));
             }
             Event::Problem(problem) => self.show_problem(problem, cx),
+            Event::Stopped => self.stopped = true,
             // A failed first page has its own error state; a failed next page
             // leaves the list in place, so it gets a toast.
             Event::SearchFailed {

@@ -179,6 +179,8 @@ async fn run<A: SoundCloudApi + 'static>(
         next_page: None,
         results: Vec::new(),
         queue: Queue::new(shuffle_seed()),
+        stopped: false,
+        dirty: false,
         autoplay: None,
         autoplay_gen: 0,
         play_gen: 0,
@@ -200,9 +202,13 @@ async fn run<A: SoundCloudApi + 'static>(
     };
     while let Ok(input) = input_rx.recv_async().await {
         if matches!(input, Input::UiClosed) {
+            core.shutdown();
             break;
         }
         core.handle(input);
+        if core.stopped {
+            break;
+        }
     }
 }
 
@@ -232,6 +238,11 @@ struct Core<A> {
     /// The tracks of the current search, in order: the context of `Play`.
     results: Vec<TrackSummary>,
     queue: Queue,
+    /// `Shutdown` was handled: the loop ends.
+    stopped: bool,
+    /// Something worth saving happened. A core that only started and closed
+    /// (a second instance, say) must not overwrite the saved session.
+    dirty: bool,
     /// Generation of the related-tracks request in flight, if any. A newer
     /// play cancels it, so a stale answer is ignored.
     autoplay: Option<u64>,
@@ -423,10 +434,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 PlayState::Loading => {}
             },
             Command::Seek(at) => self.seek(at),
+            Command::Shutdown => self.shutdown(),
             Command::SetVolume(volume) => {
                 let volume = volume.clamp(0.0, 1.0);
                 self.to_audio(sc_audio::Command::SetVolume(volume));
                 self.playback.volume = volume;
+                self.dirty = true;
                 self.emit(Event::Playback(self.playback));
                 // Saved once the slider rests, not on every move.
                 if let Some(timer) = self.volume_save.take() {
@@ -600,14 +613,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.save_session();
     }
 
-    /// Writes the session off the actor loop. Newer writes win.
-    fn save_session(&mut self) {
-        let Some(store) = self.store.clone() else {
-            return;
-        };
-        self.last_save = Instant::now();
+    /// The state worth keeping across a restart.
+    fn session(&self) -> Session {
         let snapshot = self.queue.snapshot();
-        let session = Session {
+        Session {
             tracks: snapshot
                 .tracks
                 .into_iter()
@@ -621,7 +630,34 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             volume: self.playback.volume,
             shuffle: snapshot.shuffle,
             repeat: snapshot.repeat,
+        }
+    }
+
+    /// Saves for the last time, on the actor thread, and says so. Taking the
+    /// store lock waits for a write in progress, and the sequence number makes
+    /// any write still queued skip itself.
+    fn shutdown(&mut self) {
+        if let Some(store) = self.store.clone().filter(|_| self.dirty) {
+            let session = self.session();
+            self.save_seq += 1;
+            let mut store = store.lock().unwrap_or_else(PoisonError::into_inner);
+            store.last_seq = self.save_seq;
+            if let Err(error) = store::save_session(&mut store.conn, &session) {
+                tracing::warn!(%error, "could not save the session on exit");
+            }
+        }
+        self.emit(Event::Stopped);
+        self.stopped = true;
+    }
+
+    /// Writes the session off the actor loop. Newer writes win.
+    fn save_session(&mut self) {
+        let Some(store) = self.store.clone() else {
+            return;
         };
+        self.last_save = Instant::now();
+        self.dirty = true;
+        let session = self.session();
         self.save_seq += 1;
         let seq = self.save_seq;
         tokio::task::spawn_blocking(move || {
@@ -690,7 +726,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.playback.duration = current.duration;
         let id = current.id;
         self.emit(Event::NowPlaying(current));
-        self.set_state(PlayState::Paused);
+        // Not `set_state`: restoring is not a change worth saving, and writing
+        // here could overwrite a newer session another instance just saved.
+        self.playback.state = PlayState::Paused;
+        self.emit(Event::Playback(self.playback));
         self.request_artwork(id);
     }
 

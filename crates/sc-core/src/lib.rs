@@ -48,6 +48,9 @@ pub enum Command {
     PlayQueueIndex(usize),
     SetShuffle(bool),
     SetRepeat(Repeat),
+    /// The window is closing: save the session now, answer with
+    /// [`Event::Stopped`] and stop. Later commands are ignored.
+    Shutdown,
     /// Pause if playing, otherwise play (restarting a finished track).
     TogglePlay,
     Seek(Duration),
@@ -85,6 +88,8 @@ pub enum Event {
         append: bool,
         problem: Problem,
     },
+    /// The core saved its state and stopped, after [`Command::Shutdown`].
+    Stopped,
     /// Something the person should know about (playing, pasted links, audio).
     Problem(Problem),
 }
