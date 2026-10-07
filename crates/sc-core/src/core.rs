@@ -64,7 +64,7 @@ enum Input {
     /// The debounced session save after a volume change.
     SaveDue,
     /// The database opened (or not) off the actor loop, with the saved session.
-    StoreReady(Option<(SharedStore, Option<Session>)>),
+    StoreReady(Option<OpenedStore>),
     WaveformReady {
         track: TrackId,
         generation: u64,
@@ -85,13 +85,17 @@ struct Store {
 
 type SharedStore = Arc<Mutex<Store>>;
 
+/// An open store, the session it held, and whether a damaged file was reset.
+type OpenedStore = (SharedStore, Option<Session>, bool);
+
 /// Opens the database and loads the saved session. Runs on a blocking thread.
-fn open_store(dir: &std::path::Path) -> Option<(SharedStore, Option<Session>)> {
-    let opened = std::fs::create_dir_all(dir)
-        .map_err(|error| error.to_string())
-        .and_then(|()| store::open(&dir.join("cloudrs.db")).map_err(|error| error.to_string()));
-    let conn = match opened {
-        Ok(conn) => conn,
+fn open_store(dir: &std::path::Path) -> Option<OpenedStore> {
+    if let Err(error) = std::fs::create_dir_all(dir) {
+        tracing::warn!(%error, "no session database; continuing without saving");
+        return None;
+    }
+    let (conn, reset) = match store::open_or_reset(&dir.join(store::FILE_NAME)) {
+        Ok(opened) => opened,
         Err(error) => {
             tracing::warn!(%error, "no session database; continuing without saving");
             return None;
@@ -101,7 +105,11 @@ fn open_store(dir: &std::path::Path) -> Option<(SharedStore, Option<Session>)> {
         .inspect_err(|error| tracing::warn!(%error, "could not read the saved session"))
         .ok()
         .flatten();
-    Some((Arc::new(Mutex::new(Store { conn, last_seq: 0 })), session))
+    Some((
+        Arc::new(Mutex::new(Store { conn, last_seq: 0 })),
+        session,
+        reset,
+    ))
 }
 
 pub(crate) fn run_on_thread<A: SoundCloudApi + 'static>(
@@ -303,10 +311,13 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Input::RelatedDone { generation, result } => self.related_done(generation, result),
             Input::SaveDue => self.save_session(),
             Input::StoreReady(opened) => {
-                let Some((store, session)) = opened else {
+                let Some((store, session, reset)) = opened else {
                     return;
                 };
                 self.store = Some(store);
+                if reset {
+                    self.emit(Event::Problem(Problem::StorageReset));
+                }
                 if let Some(session) = session {
                     self.restore(session);
                 }

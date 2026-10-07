@@ -203,6 +203,7 @@ impl Shell {
             Problem::NotATrack => (ToastKind::Error, t::not_a_track()),
             Problem::PreviewOnly => (ToastKind::Info, t::preview_only()),
             Problem::CannotPlay => (ToastKind::Error, t::cannot_play()),
+            Problem::StorageReset => (ToastKind::Warning, t::storage_reset()),
             Problem::Audio(detail) => {
                 tracing::warn!(%detail, "audio problem");
                 (ToastKind::Error, t::audio())

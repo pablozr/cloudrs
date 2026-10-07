@@ -121,5 +121,6 @@ pub mod problem {
         preview_only { en: "Only a 30-second preview is available for this track." }
         cannot_play { en: "This track can\u{2019}t be played here." }
         audio { en: "Something went wrong with the audio. Try again." }
+        storage_reset { en: "Your history and saved session were damaged and have been reset." }
     }
 }

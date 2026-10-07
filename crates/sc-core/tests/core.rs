@@ -718,3 +718,43 @@ fn the_volume_is_saved_once_the_slider_rests() {
     }
     assert!((saved.expect("the session was saved") - 0.3).abs() < 1e-6);
 }
+
+#[test]
+fn a_damaged_database_is_reset_and_reported() {
+    let dir = std::env::temp_dir().join(format!("cloudrs-core-corrupt-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("data")).unwrap();
+    std::fs::write(
+        dir.join("data/cloudrs.db"),
+        b"not a database at all, only text".repeat(50),
+    )
+    .unwrap();
+
+    let (audio_tx, _audio_commands) = flume::unbounded();
+    let (_audio_events, audio_rx) = flume::unbounded();
+    let core = sc_core::spawn(FakeApi::default(), (audio_tx, audio_rx), config(&dir));
+    let problem = loop {
+        let event = core.events().recv_timeout(Duration::from_secs(3)).unwrap();
+        if let Event::Problem(p) = event {
+            break p;
+        }
+    };
+    assert_eq!(problem, Problem::StorageReset);
+
+    let aside = std::fs::read_dir(dir.join("data"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("cloudrs.db.corrupt-")
+        });
+    assert!(aside, "the damaged file was kept");
+    let conn = rusqlite::Connection::open(dir.join("data/cloudrs.db")).unwrap();
+    let version: i32 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 1);
+    drop(conn);
+    let _ = std::fs::remove_dir_all(&dir);
+}
