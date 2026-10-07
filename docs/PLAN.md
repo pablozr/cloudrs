@@ -71,7 +71,7 @@ cloudrs/
 │   ├── sc-api/             # api-v2 HTTP client: models, client_id, auth, pagination
 │   ├── sc-audio/           # audio engine: HLS/progressive → decode → output
 │   ├── sc-core/            # app state, queue, commands/events, persistence, cache (M1)
-│   ├── sc-platform/        # OS integration: media keys, MPRIS, keychain, notifications (M4)
+│   ├── sc-platform/        # OS integration: keychain and sign-in window (M3); media keys, MPRIS, notifications (M4)
 │   └── cloudrs-ui/         # design system: tokens, theme, motion, primitives (GPUI only here and in the app)
 ├── apps/
 │   └── cloudrs/            # GPUI binary: screens, i18n, composition root
@@ -107,10 +107,10 @@ to the player. Only `apps/cloudrs` and `cloudrs-ui` may depend on GPUI, and a te
 5. Allow overriding it from the config, for debugging.
 
 ### 4.2 User authentication
-- api-v2 offers no OAuth flow for third-party apps. The first version asks the user to paste
-  their `oauth_token`, with a step-by-step guide to find the `oauth_token` cookie in the browser.
-- Possible later: a small sign-in window (`wry`) that reads the cookie after login. Nice to
-  have only, because it brings a webview back.
+- api-v2 offers no OAuth flow for third-party apps; the app needs the `oauth_token` cookie of
+  soundcloud.com. M3 signs in through a small window (`wry`, in a child process) that reads the
+  cookie after login, with pasting the token as the fallback
+  ([ADR 0010](./adr/0010-m3-sign-in-and-account.md)).
 - Header: `Authorization: OAuth <token>`.
 - Validate with `GET /me` and store the token in the keychain.
 
@@ -342,7 +342,10 @@ Design: [ADR 0007](./adr/0007-m2-queue-and-persistence.md),
       session restore (queue, position and volume, paused at start).
 
 ### M3 — User account
-- [ ] Sign in with a token + keychain.
+Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
+
+- [ ] Sign in through a SoundCloud web sign-in window (`cloudrs --sign-in`, `wry`), with a pasted
+      token as the fallback; token in the keychain (`sc-platform`).
 - [ ] Likes, Library, Feed, Following.
 - [ ] Like/unlike, follow/unfollow.
 
