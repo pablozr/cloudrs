@@ -22,7 +22,18 @@ The first public build.
   - Share a link, and everyone hears the same moment.
   - Guests add tracks, and with the host's permission they also control playback.
   - Their own queue comes back when the Jam ends.
-- **Look:** dark and light themes; pages take on the color of their artwork.
+- **Home:**
+  - a greeting by the time of day and a highlight of what plays;
+  - quick tiles, trending tracks by genre, SoundCloud's curated rows and charts;
+  - signed in: your playlists, feed, likes and artists.
+- **Playlists of your own:**
+  - create, add from any track, reorder by dragging;
+  - remove with Undo, rename, public or private, delete;
+  - in the sidebar and as a grid in the Library.
+- **Look:**
+  - dark and light themes; pages take on the color of their artwork;
+  - a title bar of cloudrs's own with the logo;
+  - a branded Windows installer.
 - **Install:**
   - Windows: a per-user installer. Linux: `.deb` and `.AppImage`. macOS: `.dmg`.
   - Linux and macOS are not tried yet.

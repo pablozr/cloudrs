@@ -48,6 +48,12 @@ The beta is **not code-signed** yet, so your system will warn you the first time
 
 ## What it does
 
+**Home**
+- Opens on a Home that greets you by the time of day, with a highlight of what you are
+  playing, quick tiles, your playlists, trending tracks by genre, SoundCloud's own curated rows
+  and charts, and, signed in, new tracks from people you follow, your likes and the artists
+  you follow.
+
 **Listen**
 - Search tracks, people, playlists and albums, with infinite scroll.
 - Paste any `soundcloud.com` link in the search field to play a track or open a profile or
@@ -67,11 +73,14 @@ The beta is **not code-signed** yet, so your system will warn you the first time
   You can also paste a token if a provider refuses the window.
 - Feed, Likes, Library and Following.
 - Like tracks and follow people.
+- Make your own playlists: add any track from its row or page, reorder them by dragging,
+  remove a track (with Undo), rename them, make them public or private, delete them. They
+  are one click away in the sidebar, and the Library shows them as a grid of covers.
 - Your session is kept in your system's keychain (Credential Manager, Keychain or Secret
   Service). It is never written anywhere else.
 
 **Look and feel**
-- Dark and light themes.
+- Dark and light themes, and a title bar of its own with the cloudrs logo.
 - Each page takes on the color of its artwork.
 - Keyboard: `Ctrl K` (or `/`) jumps to search, and every control has visible focus and a label
   for screen readers.
