@@ -41,3 +41,24 @@ next" and "add to queue", and listening together (ADR 0006) is built on the host
 
 - `sc-core` gains its first disk state and a C build dependency (SQLite, bundled).
 - The UI keeps one source of truth for what plays next: the `QueueSnapshot`.
+
+## Screenshots
+
+The queue panel, taken in the Linux container (`Xvfb`, lavapipe, ALSA `null` device) against the
+live SoundCloud. Audio was not heard.
+
+| Dark | Light | Dragging a row |
+|---|---|---|
+| ![](../assets/readme/m2-queue-dark.png) | ![](../assets/readme/m2-queue-light.png) | ![](../assets/readme/m2-queue-drag.png) |
+
+## Known limits
+
+- While dragging, the neighbors do not spring aside (motion catalog 7): the dragged row is
+  lifted with a shadow and an accent outline, and the drop target is highlighted.
+- Row actions ("Play next", "Add to queue", "Remove") appear on hover only, so a keyboard user
+  cannot reach them yet. The panel rows, the player bar buttons and the queue button are focusable.
+- The current track cannot be removed from the queue.
+- The session is saved on queue changes, on pause and every 5 s while playing; closing the
+  window between saves loses at most that interval.
+- Turning shuffle off after a restart keeps the restored order, since the pre-shuffle order is
+  not saved.

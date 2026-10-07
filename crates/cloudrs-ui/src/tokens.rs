@@ -216,6 +216,12 @@ pub mod size {
     pub const PLAYER_INFO_WIDTH: Pixels = px(260.0);
     pub const PLAY_BUTTON: Pixels = px(44.0);
     pub const WAVEFORM_HEIGHT: Pixels = px(32.0);
+    /// Round icon buttons (previous, next, shuffle, repeat, queue).
+    pub const ICON_BUTTON: Pixels = px(34.0);
+    /// The queue side panel.
+    pub const QUEUE_PANEL_WIDTH: Pixels = px(360.0);
+    /// The row that follows the pointer while it is dragged.
+    pub const DRAG_PREVIEW_WIDTH: Pixels = px(320.0);
     pub const VOLUME_WIDTH: Pixels = px(96.0);
     /// Height of the slider's hit area; the visible track is thinner.
     pub const SLIDER_HEIGHT: Pixels = px(20.0);

@@ -79,8 +79,27 @@ pub mod player {
         nothing_playing_hint { en: "Pick a track from the results." }
         play { en: "Play" }
         pause { en: "Pause" }
+        previous { en: "Previous" }
+        next { en: "Next" }
+        shuffle_off { en: "Shuffle: off" }
+        shuffle_on { en: "Shuffle: on" }
+        repeat_off { en: "Repeat: off" }
+        repeat_all { en: "Repeat: all" }
+        repeat_one { en: "Repeat: one track" }
+        queue { en: "Queue" }
         seek { en: "Seek" }
         volume { en: "Volume" }
+    }
+}
+
+pub mod queue {
+    strings! {
+        title { en: "Queue" }
+        empty_title { en: "The queue is empty" }
+        empty_hint { en: "Play a track, or add one from the results." }
+        play_next { en: "Play next" }
+        add_to_queue { en: "Add to queue" }
+        remove { en: "Remove" }
     }
 }
 

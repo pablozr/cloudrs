@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sc_core::{Event, PlayState, Playback, TrackId, TrackSummary};
+use sc_core::{Event, PlayState, Playback, QueueSnapshot, Repeat, TrackId, TrackSummary};
 
 /// Artwork files by track, as the core reports them.
 pub type ArtworkMap = HashMap<TrackId, Arc<Path>>;
@@ -131,6 +131,40 @@ impl ResultsState {
     }
 }
 
+/// The queue as the core last reported it: the one source of truth.
+#[derive(Debug, Default)]
+pub struct QueueState {
+    pub snapshot: QueueSnapshot,
+}
+
+impl QueueState {
+    /// Returns whether the queue changed, so only real changes re-render.
+    pub fn apply(&mut self, event: &Event) -> bool {
+        let Event::Queue(next) = event else {
+            return false;
+        };
+        if self.snapshot == *next {
+            return false;
+        }
+        self.snapshot.clone_from(next);
+        true
+    }
+
+    /// The current track cannot be removed (the core refuses it too).
+    pub fn can_remove(&self, index: usize) -> bool {
+        self.snapshot.current != Some(index)
+    }
+}
+
+/// Off, then all, then one: the order of the repeat button.
+pub fn next_repeat(repeat: Repeat) -> Repeat {
+    match repeat {
+        Repeat::Off => Repeat::All,
+        Repeat::All => Repeat::One,
+        Repeat::One => Repeat::Off,
+    }
+}
+
 /// What the player bar shows.
 #[derive(Debug)]
 pub struct PlayerState {
@@ -139,6 +173,8 @@ pub struct PlayerState {
     /// Converted once per track, shared with the painted waveform.
     pub waveform: Option<Arc<[f32]>>,
     pub playback: Playback,
+    pub shuffle: bool,
+    pub repeat: Repeat,
 }
 
 impl PlayerState {
@@ -147,6 +183,8 @@ impl PlayerState {
             track: None,
             artwork: None,
             waveform: None,
+            shuffle: false,
+            repeat: Repeat::Off,
             // The core starts at full volume and only reports it on change.
             playback: Playback {
                 volume: 1.0,
@@ -170,6 +208,10 @@ impl PlayerState {
                 self.artwork = artwork.get(track).cloned();
             }
             Event::Playback(playback) => self.playback = *playback,
+            Event::Queue(queue) => {
+                self.shuffle = queue.shuffle;
+                self.repeat = queue.repeat;
+            }
             _ => {}
         }
     }
@@ -460,6 +502,58 @@ mod tests {
         assert!(player.playing());
         assert_eq!(player.progress(), 0.25);
         assert_eq!(player.playback.volume, 0.5);
+    }
+
+    fn snapshot(ids: &[u64], current: Option<usize>) -> Event {
+        Event::Queue(QueueSnapshot {
+            tracks: ids.iter().map(|id| track(*id)).collect(),
+            current,
+            shuffle: false,
+            repeat: Repeat::Off,
+        })
+    }
+
+    #[test]
+    fn the_queue_follows_the_core_and_only_reports_real_changes() {
+        let mut queue = QueueState::default();
+        assert!(!queue.apply(&Event::Problem(Problem::Offline)));
+        assert!(queue.apply(&snapshot(&[1, 2, 3], Some(0))));
+        assert!(
+            !queue.apply(&snapshot(&[1, 2, 3], Some(0))),
+            "same snapshot"
+        );
+        assert!(queue.apply(&snapshot(&[1, 2, 3], Some(1))));
+        assert_eq!(queue.snapshot.current, Some(1));
+        assert_eq!(queue.snapshot.tracks.len(), 3);
+    }
+
+    #[test]
+    fn the_current_track_cannot_be_removed_from_the_queue() {
+        let mut queue = QueueState::default();
+        queue.apply(&snapshot(&[1, 2, 3], Some(1)));
+        assert!(!queue.can_remove(1));
+        assert!(queue.can_remove(0));
+        assert!(queue.can_remove(2));
+    }
+
+    #[test]
+    fn repeat_cycles_off_all_one() {
+        assert_eq!(next_repeat(Repeat::Off), Repeat::All);
+        assert_eq!(next_repeat(Repeat::All), Repeat::One);
+        assert_eq!(next_repeat(Repeat::One), Repeat::Off);
+    }
+
+    #[test]
+    fn the_player_keeps_the_shuffle_and_repeat_flags() {
+        let mut player = PlayerState::new();
+        let event = Event::Queue(QueueSnapshot {
+            shuffle: true,
+            repeat: Repeat::One,
+            ..QueueSnapshot::default()
+        });
+        player.apply(&event, &ArtworkMap::new());
+        assert!(player.shuffle);
+        assert_eq!(player.repeat, Repeat::One);
     }
 
     #[test]
