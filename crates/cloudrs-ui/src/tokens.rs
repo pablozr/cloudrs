@@ -214,7 +214,7 @@ pub mod size {
     pub const ROW_INDEX: Pixels = px(28.0);
     /// Cover in the player bar.
     pub const PLAYER_COVER: Pixels = px(52.0);
-    pub const PLAYER_HEIGHT: Pixels = px(84.0);
+    pub const PLAYER_HEIGHT: Pixels = px(100.0);
     /// Width of the player bar's now-playing block.
     pub const PLAYER_INFO_WIDTH: Pixels = px(260.0);
     pub const PLAY_BUTTON: Pixels = px(44.0);
