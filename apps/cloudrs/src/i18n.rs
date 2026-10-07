@@ -117,7 +117,7 @@ pub mod problem {
         offline { en: "Can\u{2019}t reach SoundCloud. Check your connection." }
         rate_limited { en: "SoundCloud asked us to slow down. Try again in a moment." }
         not_found { en: "That track or link doesn\u{2019}t exist or is private." }
-        not_a_track { en: "That link isn\u{2019}t a track." }
+        unsupported_link { en: "That link can\u{2019}t be opened." }
         preview_only { en: "Only a 30-second preview is available for this track." }
         cannot_play { en: "This track can\u{2019}t be played here." }
         audio { en: "Something went wrong with the audio. Try again." }

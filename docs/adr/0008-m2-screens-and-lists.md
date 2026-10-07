@@ -47,3 +47,25 @@ one shape in the core contract instead of one event per screen.
 
 - One list component in the UI renders, pages and plays every list.
 - The contract change touches the app's existing search and play paths.
+
+## Refinements made while implementing the core
+
+- `TrackSummary` gains `artist_id: Option<UserId>` and `PlaylistSummary`/`PlaylistPage` carry
+  `owner_id`, so the UI can open a profile from a row (decision 10). Tracks restored from a
+  saved queue or the history have `artist_id: None`.
+- `Problem::NotATrack` is now `Problem::UnsupportedLink` (a link that is not a track, profile
+  or playlist).
+- Paging state lives per `ListId`. A new search, a tab change or re-opening a screen replaces
+  that list's state with a new generation, so late pages are dropped. `LoadMore` on a list the
+  core never served loads its first page. A failed first page can be retried with `LoadMore`;
+  a failed next page ends the list. Opening a profile resets its playlists and likes lists.
+- `SetSearchKind` re-runs the query for the new kind without the debounce; typing keeps the
+  300 ms debounce.
+- A playlist's list is sent once, with every track, after the partial ones were filled with
+  `/tracks?ids=` in batches of 50. Tracks SoundCloud no longer returns are dropped.
+- The history table (schema version 2) now stores duration, preview flag and cover URL, so
+  `OpenHistory` lists each track once, newest first, up to 200. Rows written before version 2
+  have a zero duration and no cover. If the database is not open yet the list is empty.
+- `Event::Waveform` is also sent for the track whose page opens, not only the playing one.
+- `/users/{id}/likes` is decoded as `Like { track }`; the core keeps the tracks and skips the
+  rest.

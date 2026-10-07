@@ -328,6 +328,7 @@ mod tests {
             id: TrackId(id),
             title: format!("T{id}"),
             artist: "A".into(),
+            artist_id: None,
             duration: Duration::from_secs(200),
             preview_only: false,
         }

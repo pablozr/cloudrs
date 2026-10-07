@@ -20,7 +20,7 @@ use sc_core::{Command, CoreConfig, CoreHandle, Event, Problem, StartError};
 
 use crate::i18n;
 use crate::player_bar::{PlayerAction, PlayerBar};
-use crate::state::{Phase, QueueState, ResultsState, format_time, is_soundcloud_url};
+use crate::state::{Phase, QueueState, ResultsState, TRACK_SEARCH, format_time, is_soundcloud_url};
 
 mod queue_panel;
 
@@ -225,12 +225,13 @@ impl Shell {
             Event::Stopped => self.stopped = true,
             // A failed first page has its own error state; a failed next page
             // leaves the list in place, so it gets a toast.
-            Event::SearchFailed {
+            Event::ListFailed {
+                list: TRACK_SEARCH,
                 append: true,
                 problem,
-                ..
             } => self.show_problem(problem, cx),
-            Event::SearchFailed { .. } | Event::Searching { .. } | Event::Results { .. } => {}
+            // The other screens' events are not drawn yet.
+            _ => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
@@ -246,7 +247,7 @@ impl Shell {
             Problem::Offline => (ToastKind::Warning, t::offline()),
             Problem::RateLimited => (ToastKind::Warning, t::rate_limited()),
             Problem::NotFound => (ToastKind::Error, t::not_found()),
-            Problem::NotATrack => (ToastKind::Error, t::not_a_track()),
+            Problem::UnsupportedLink => (ToastKind::Error, t::unsupported_link()),
             Problem::PreviewOnly => (ToastKind::Info, t::preview_only()),
             Problem::CannotPlay => (ToastKind::Error, t::cannot_play()),
             Problem::StorageReset => (ToastKind::Warning, t::storage_reset()),
@@ -277,7 +278,7 @@ impl Shell {
     fn on_search(&self, text: &str) {
         let text = text.trim();
         if is_soundcloud_url(text) {
-            self.send(Command::PlayUrl(text.to_owned()));
+            self.send(Command::OpenUrl(text.to_owned()));
         } else {
             self.send(Command::Search(text.to_owned()));
         }
@@ -300,7 +301,7 @@ impl Shell {
     /// The visible rows of the results list (and skeletons for the next page).
     fn rows(&mut self, range: Range<usize>, cx: &mut Context<Self>) -> Vec<AnyElement> {
         if self.results.take_load_more(range.end) {
-            self.send(Command::LoadMore);
+            self.send(Command::LoadMore(TRACK_SEARCH));
             cx.notify();
         }
         let theme = Theme::of(cx);
@@ -340,7 +341,12 @@ impl Shell {
                 };
                 track_row(&theme, ("track", ix), row)
                     .aria_label(i18n::search::play_track(&track.title, &track.artist))
-                    .on_click(cx.listener(move |this, _, _, _| this.send(Command::Play(id))))
+                    .on_click(cx.listener(move |this, _, _, _| {
+                        this.send(Command::Play {
+                            list: TRACK_SEARCH,
+                            track: id,
+                        })
+                    }))
                     .into_any_element()
             })
             .collect()

@@ -8,6 +8,7 @@
 mod artwork;
 mod core;
 mod listen;
+mod lists;
 mod queue;
 mod store;
 mod types;
@@ -16,21 +17,42 @@ mod waveform;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use types::{PlayState, Playback, Problem, QueueSnapshot, Repeat, TrackId, TrackSummary};
+pub use types::{
+    ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage, PlaylistSummary,
+    Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage,
+    UserSummary,
+};
 
 /// What the UI asks for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// The search text changed. The core waits 300 ms for more typing; an
-    /// empty query clears the results.
+    /// empty query clears the results. Searches the current [`SearchKind`].
     Search(String),
-    /// Fetch the next page of the current results.
-    LoadMore,
-    /// Play a track from the latest results. The queue becomes those results,
-    /// starting at this track.
-    Play(TrackId),
-    /// Play whatever a pasted soundcloud.com track URL points to.
-    PlayUrl(String),
+    /// Switch the search tab. A non-empty query runs again for the new kind.
+    SetSearchKind(SearchKind),
+    /// Fetch the next page of a list. For a list the core has not served yet
+    /// (a profile's playlists or likes) this loads the first page.
+    LoadMore(ListId),
+    /// Play a track from a list. The queue becomes the items of that list
+    /// loaded so far, starting at this track.
+    Play {
+        list: ListId,
+        track: TrackId,
+    },
+    /// Open the track screen: answers with [`Event::TrackPage`], the
+    /// [`Event::Waveform`] and a [`Event::List`] for `ListId::Related`.
+    OpenTrack(TrackId),
+    /// Open a profile: [`Event::UserPage`], then `ListId::UserTracks`.
+    OpenUser(UserId),
+    /// Open a playlist or album: [`Event::PlaylistPage`], then all its tracks
+    /// as `ListId::Playlist`.
+    OpenPlaylist(PlaylistId),
+    /// The played tracks, newest first, as a single `ListId::History` page.
+    OpenHistory,
+    /// Open whatever a pasted soundcloud.com URL points to: a track plays, a
+    /// profile or playlist opens its screen.
+    OpenUrl(String),
     /// The next track (the queue may fetch more when it ends).
     Next,
     /// Restarts the track when it is past 3 s, otherwise the previous track.
@@ -61,30 +83,37 @@ pub enum Command {
 /// What the UI renders.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
-    /// A search for this query started.
-    Searching { query: String },
-    /// Results for `query`. `append` adds a page to the previous results.
-    Results {
-        query: String,
-        tracks: Vec<TrackSummary>,
+    /// A search for this query and kind started (after the debounce).
+    Searching { query: String, kind: SearchKind },
+    /// A page of a list. `append: false` replaces the list, `true` adds to it.
+    List {
+        list: ListId,
+        items: ListItems,
         append: bool,
         has_more: bool,
     },
+    /// The header of the track screen.
+    TrackPage(TrackPage),
+    /// The header of the profile screen.
+    UserPage(UserPage),
+    /// The header of the playlist or album screen.
+    PlaylistPage(PlaylistPage),
     /// This track is now the current one (it may still be loading).
     NowPlaying(TrackSummary),
     /// The queue changed. Sent on every change.
     Queue(QueueSnapshot),
     /// Bars of the current track's waveform, 0.0 to 1.0.
     Waveform { track: TrackId, bars: Vec<f32> },
-    /// The artwork of a track is available at `path`.
-    Artwork { track: TrackId, path: PathBuf },
+    /// An image (cover, avatar) is available at `path`.
+    Artwork { key: ArtKey, path: PathBuf },
     /// Player state, sent on every change and about ten times per second while playing.
     Playback(Playback),
-    /// A search page (`append: false` is the first page, `true` a "load more")
+    /// A list page (`append: false` is the first page, `true` a "load more")
     /// could not be fetched. A failed `append` page is dropped: the core will
-    /// not offer it again, so the UI should stop asking for more.
-    SearchFailed {
-        query: String,
+    /// not offer it again, so the UI should stop asking for more. A failed
+    /// first page can be retried with `LoadMore`.
+    ListFailed {
+        list: ListId,
         append: bool,
         problem: Problem,
     },
