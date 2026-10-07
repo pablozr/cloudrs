@@ -6,13 +6,13 @@ use std::time::Duration;
 
 use sc_api::SoundCloudApi;
 use sc_api::models::Resource;
-use sc_api::models::{Playlist, Track, User};
+use sc_api::models::{Page, Playlist, Selection, SelectionItem, Track, User};
 
 use super::{Core, Input};
 use crate::store::{self, SessionTrack};
 use crate::types::{
-    ArtKey, ListId, ListItems, PlaylistId, PlaylistPage, Problem, TrackId, TrackPage, TrackSummary,
-    UserId, UserPage,
+    ArtKey, HomeShelf, ListId, ListItems, PlaylistId, PlaylistPage, Problem, TrackId, TrackPage,
+    TrackSummary, UserId, UserPage,
 };
 use crate::{Event, artwork, waveform};
 
@@ -20,6 +20,8 @@ use crate::{Event, artwork, waveform};
 const HISTORY_LIMIT: u32 = 200;
 /// Ids per `/tracks?ids=` call when filling a playlist.
 const FILL_BATCH: usize = 50;
+/// A home row with fewer playlists than this is left out.
+const MIN_SHELF: usize = 3;
 
 /// Completes the tracks of a playlist that only carry an id, fetching them
 /// `FILL_BATCH` at a time. Tracks SoundCloud no longer returns are dropped.
@@ -272,5 +274,61 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             let result = api.resolve(url.trim()).await;
             let _ = inputs.send(Input::Resolved { nav, result });
         });
+    }
+
+    /// SoundCloud's own home rows and the charts, fetched together.
+    pub(super) fn open_home(&mut self) {
+        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+        tokio::spawn(async move {
+            let selections = api.mixed_selections().await;
+            let charts = api.chart_selections().await;
+            let _ = inputs.send(Input::HomeFetched { selections, charts });
+        });
+    }
+
+    /// Keeps the rows of playlists (system playlists open differently and
+    /// are left out); the charts come last, one row per region.
+    pub(super) fn home_fetched(
+        &mut self,
+        selections: sc_api::Result<Page<Selection>>,
+        charts: sc_api::Result<Page<Selection>>,
+    ) {
+        let mut shelves = Vec::new();
+        let mut art = Vec::new();
+        for result in [selections, charts] {
+            let page = match result {
+                Ok(page) => page,
+                Err(error) => {
+                    tracing::warn!(%error, "a home row could not be fetched");
+                    continue;
+                }
+            };
+            for selection in page.collection {
+                let playlists: Vec<Playlist> = selection
+                    .items
+                    .collection
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        SelectionItem::Playlist(playlist) => Some(*playlist),
+                        _ => None,
+                    })
+                    .collect();
+                if playlists.len() < MIN_SHELF {
+                    continue;
+                }
+                let (rows, keys) = self.absorb_playlists(&playlists);
+                if let ListItems::Playlists(playlists) = rows {
+                    shelves.push(HomeShelf {
+                        title: selection.title,
+                        playlists,
+                    });
+                }
+                art.extend(keys);
+            }
+        }
+        self.emit(Event::HomeShelves(shelves));
+        for key in art {
+            self.request_artwork(key);
+        }
     }
 }

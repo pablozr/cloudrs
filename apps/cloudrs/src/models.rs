@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub use sc_core::{ArtKey, ListId, ListItems, PlaylistId, SearchKind, TrackId, UserId};
-use sc_core::{JamState, PlaylistPage, TrackPage, UserPage, UserSummary};
+use sc_core::{Genre, HomeShelf, JamState, PlaylistPage, TrackPage, UserPage, UserSummary};
 
 use crate::state::ArtworkMap;
 use crate::tint::Rgb;
@@ -213,6 +213,9 @@ pub struct Models {
     pub followed: HashSet<UserId>,
     /// The Jam this person hosts or joined.
     pub jam: Option<JamState>,
+    /// SoundCloud's own home rows, and the genre picked for Trending.
+    pub home_shelves: Vec<HomeShelf>,
+    pub home_genre: Genre,
 }
 
 impl Models {
@@ -232,6 +235,8 @@ impl Models {
             liked: HashSet::new(),
             followed: HashSet::new(),
             jam: None,
+            home_shelves: Vec::new(),
+            home_genre: Genre::All,
         }
     }
 

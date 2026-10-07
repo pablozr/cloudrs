@@ -1051,3 +1051,33 @@ fn an_expired_token_signs_out() {
     h.wait(|e| matches!(e, Event::Problem(Problem::SessionExpired)).then_some(()));
     assert_eq!(h.api.calls().last().unwrap(), "token -");
 }
+
+#[test]
+fn home_keeps_soundcloud_rows_of_playlists() {
+    let h = Harness::new("home-rows");
+    h.core.send(Command::OpenHome);
+    let shelves = h.wait(|e| match e {
+        Event::HomeShelves(shelves) => Some(shelves),
+        _ => None,
+    });
+    // The short row, the system playlists and the failed charts are left out.
+    assert_eq!(shelves.len(), 1);
+    assert_eq!(shelves[0].title, "Artists to watch out for");
+    assert_eq!(shelves[0].playlists.len(), 3);
+}
+
+#[test]
+fn trending_keeps_soundcloud_ranking() {
+    let h = Harness::new("trending");
+    let list = ListId::Trending(sc_core::Genre::House);
+    h.core.send(Command::LoadMore(list));
+    let (tracks, _, has_more) = h.list(list);
+    let ids: Vec<u64> = tracks.iter().map(|t| t.id.0).collect();
+    assert_eq!(ids, [30, 10, 20]);
+    assert!(!has_more);
+    assert!(
+        h.api.calls().contains(
+            &"system_playlist soundcloud:system-playlists:trending-by-genre:house".into()
+        )
+    );
+}

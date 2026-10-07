@@ -323,7 +323,8 @@ impl Shell {
             | Event::Liked { .. }
             | Event::Followed { .. }
             // The Jam panel arrives with the Jam UI.
-            | Event::Jam(_) => {}
+            | Event::Jam(_)
+            | Event::HomeShelves(_) => {}
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
@@ -596,10 +597,6 @@ impl Shell {
         self.core = start_core(&self.config);
         self.start_pump(cx);
         cx.notify();
-    }
-
-    pub(crate) fn focus_search_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.search.focus_handle(cx), cx);
     }
 
     fn focus_search(&mut self, _: &FocusSearch, window: &mut Window, cx: &mut Context<Self>) {

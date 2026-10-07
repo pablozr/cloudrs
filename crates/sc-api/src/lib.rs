@@ -18,7 +18,10 @@ pub use stream::{StreamProtocol, StreamSource, pick_transcoding};
 
 use std::future::Future;
 
-use models::{LibraryItem, Like, Page, Playlist, Resource, StreamItem, Track, User, Waveform};
+use models::{
+    LibraryItem, Like, Page, Playlist, Resource, Selection, StreamItem, SystemPlaylist, Track,
+    User, Waveform,
+};
 
 /// What the rest of cloudrs may ask of SoundCloud.
 pub trait SoundCloudApi: Send + Sync {
@@ -124,6 +127,16 @@ pub trait SoundCloudApi: Send + Sync {
         track: u64,
         liked: bool,
     ) -> impl Future<Output = Result<()>> + Send;
+
+    /// SoundCloud's own home rows (`/mixed-selections`): curated playlists,
+    /// personal ones when signed in.
+    fn mixed_selections(&self) -> impl Future<Output = Result<Page<Selection>>> + Send;
+
+    /// The genre charts (`/charts/selections`), as playlists.
+    fn chart_selections(&self) -> impl Future<Output = Result<Page<Selection>>> + Send;
+
+    /// A playlist SoundCloud makes, by urn. Its tracks only carry an id.
+    fn system_playlist(&self, urn: &str) -> impl Future<Output = Result<SystemPlaylist>> + Send;
 
     /// Follows or unfollows a user as the signed-in user.
     fn set_following(&self, user: u64, following: bool) -> impl Future<Output = Result<()>> + Send;

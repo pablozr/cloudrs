@@ -286,10 +286,16 @@ pub mod size {
     pub const WAVEFORM_LARGE_HEIGHT: Pixels = px(96.0);
     /// Longest the text of a track description grows on a page.
     pub const DESCRIPTION_MAX_WIDTH: Pixels = px(720.0);
-    /// A card on the Home shelves: its width is the side of its cover.
-    pub const CARD_WIDTH: Pixels = px(168.0);
+    /// A card on the Home shelves, and its cover (the card's padding on each side).
+    pub const CARD_WIDTH: Pixels = px(184.0);
+    pub const CARD_COVER: Pixels = px(168.0);
     /// The play button that rises over a card's cover on hover.
     pub const CARD_PLAY: Pixels = px(40.0);
+    /// The cover of the Home highlight.
+    pub const HERO_ART: Pixels = px(176.0);
+    /// A quick tile on Home: its height is the side of its cover.
+    pub const QUICK_TILE: Pixels = px(56.0);
+    pub const QUICK_PLAY: Pixels = px(32.0);
     /// Widest the Home content grows.
     pub const HOME_MAX_WIDTH: Pixels = px(1200.0);
 }

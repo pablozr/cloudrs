@@ -18,9 +18,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub use types::{
-    Account, ArtKey, JamPerson, JamRole, JamState, ListId, ListItems, PlayState, Playback,
-    PlaylistId, PlaylistPage, PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId,
-    TrackPage, TrackSummary, UserId, UserPage, UserSummary,
+    Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems, PlayState,
+    Playback, PlaylistId, PlaylistPage, PlaylistSummary, Problem, QueueSnapshot, Repeat,
+    SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage, UserSummary,
 };
 
 /// What the UI asks for.
@@ -50,6 +50,9 @@ pub enum Command {
     OpenPlaylist(PlaylistId),
     /// The played tracks, newest first, as a single `ListId::History` page.
     OpenHistory,
+    /// SoundCloud's own home rows: answers with [`Event::HomeShelves`].
+    /// Trending tracks are `ListId::Trending(genre)`, asked with `LoadMore`.
+    OpenHome,
     /// Open whatever a pasted soundcloud.com URL points to: a track plays, a
     /// profile or playlist opens its screen.
     OpenUrl(String),
@@ -167,6 +170,9 @@ pub enum Event {
     Liked { track: TrackId, liked: bool },
     /// A follow changed (or a failed change was reverted).
     Followed { user: UserId, following: bool },
+    /// SoundCloud's own home rows, after [`Command::OpenHome`]: curated and
+    /// chart playlists. Covers arrive as `Artwork`.
+    HomeShelves(Vec<HomeShelf>),
     /// The Jam changed (people, link, permissions); `None` once it is over.
     Jam(Option<JamState>),
     /// Something the person should know about (playing, pasted links, audio).

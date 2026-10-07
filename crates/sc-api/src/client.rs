@@ -13,7 +13,8 @@ use crate::SoundCloudApi;
 use crate::client_id::{find_client_id, script_urls};
 use crate::error::{Error, Result};
 use crate::models::{
-    LibraryItem, Like, Page, Playlist, Resource, StreamItem, Track, User, Waveform,
+    LibraryItem, Like, Page, Playlist, Resource, Selection, StreamItem, SystemPlaylist, Track,
+    User, Waveform,
 };
 use crate::stream::{StreamSource, pick_transcoding, protocol};
 
@@ -379,6 +380,18 @@ impl SoundCloudApi for ScClient {
         self.send(method, &format!("users/{me}/track_likes/{track}"), &[])
             .await?;
         Ok(())
+    }
+
+    async fn mixed_selections(&self) -> Result<Page<Selection>> {
+        self.paged("mixed-selections", &[], 10).await
+    }
+
+    async fn chart_selections(&self) -> Result<Page<Selection>> {
+        self.get_json("charts/selections", &[]).await
+    }
+
+    async fn system_playlist(&self, urn: &str) -> Result<SystemPlaylist> {
+        self.get_json(&format!("system-playlists/{urn}"), &[]).await
     }
 
     async fn set_following(&self, user: u64, following: bool) -> Result<()> {

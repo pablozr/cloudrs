@@ -36,6 +36,8 @@ pub enum ListId {
     Feed,
     /// The signed-in user's playlists and albums, made or liked.
     Library,
+    /// What trends on SoundCloud in a genre (Home).
+    Trending(Genre),
     Playlist(PlaylistId),
     Related(TrackId),
     History,
@@ -385,4 +387,67 @@ pub struct JamPerson {
     pub name: String,
     /// Cannot play the current track with their account (preview, region).
     pub cannot_play: bool,
+}
+
+/// A genre of SoundCloud's trending playlists (Home's filter pills). The UI
+/// names them; the core knows their system-playlist slug.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Genre {
+    #[default]
+    All,
+    Electronic,
+    House,
+    HipHop,
+    Dubstep,
+    Ambient,
+    Pop,
+    Rock,
+    Indie,
+    Latin,
+    RnB,
+    Trap,
+}
+
+impl Genre {
+    /// Every genre, in the order of the pills.
+    pub const ALL: [Genre; 12] = [
+        Genre::All,
+        Genre::Electronic,
+        Genre::House,
+        Genre::HipHop,
+        Genre::Dubstep,
+        Genre::Ambient,
+        Genre::Pop,
+        Genre::Rock,
+        Genre::Indie,
+        Genre::Latin,
+        Genre::RnB,
+        Genre::Trap,
+    ];
+
+    /// `soundcloud:system-playlists:trending-by-genre:<slug>`.
+    pub(crate) fn slug(self) -> &'static str {
+        match self {
+            Genre::All => "all-genres",
+            Genre::Electronic => "electronic",
+            Genre::House => "house",
+            Genre::HipHop => "hip-hop",
+            Genre::Dubstep => "dubstep",
+            Genre::Ambient => "ambient",
+            Genre::Pop => "pop",
+            Genre::Rock => "rock",
+            Genre::Indie => "indie",
+            Genre::Latin => "latin",
+            Genre::RnB => "r-n-b",
+            Genre::Trap => "trap",
+        }
+    }
+}
+
+/// A row of SoundCloud's own home ("Artists to watch out for", the charts):
+/// its title as SoundCloud sends it, over playlists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HomeShelf {
+    pub title: String,
+    pub playlists: Vec<PlaylistSummary>,
 }

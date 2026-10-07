@@ -129,6 +129,10 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
                 models.followed.remove(user)
             }
         }
+        Event::HomeShelves(shelves) => {
+            models.home_shelves.clone_from(shelves);
+            true
+        }
         Event::Jam(state) => {
             models.jam.clone_from(state);
             true

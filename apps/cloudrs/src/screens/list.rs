@@ -53,6 +53,7 @@ fn empty_text(key: ListId, query: &str) -> (String, &'static str) {
         ListId::Followings(_) => (t::followings_empty().to_owned(), hint),
         ListId::Feed => (t::feed_empty().to_owned(), t::feed_empty_hint()),
         ListId::Library => (t::library_empty().to_owned(), hint),
+        ListId::Trending(_) => (t::trending_empty().to_owned(), hint),
     }
 }
 

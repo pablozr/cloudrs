@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sc_api::models::{
-    LibraryItem, Like, Page, Playlist, Resource, StreamItem, Track, User, UserSummary, Waveform,
+    LibraryItem, Like, Page, Playlist, Resource, Selection, SelectionItem, SelectionItems,
+    StreamItem, SystemPlaylist, Track, User, UserSummary, Waveform,
 };
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
 use sc_core::{Command, CoreConfig, CoreHandle, Event, ListId, ListItems, SearchKind};
@@ -370,6 +371,60 @@ impl SoundCloudApi for FakeApi {
         Ok(())
     }
 
+    async fn mixed_selections(&self) -> sc_api::Result<Page<Selection>> {
+        self.log("mixed_selections".into());
+        let playlists = |ids: &[u64]| SelectionItems {
+            collection: ids
+                .iter()
+                .map(|id| {
+                    SelectionItem::Playlist(Box::new(Playlist {
+                        id: *id,
+                        title: format!("Curated {id}"),
+                        ..Playlist::default()
+                    }))
+                })
+                .collect(),
+        };
+        Ok(Page {
+            collection: vec![
+                Selection {
+                    title: "Artists to watch out for".into(),
+                    items: playlists(&[11, 12, 13]),
+                    ..Selection::default()
+                },
+                // Too short a row: left out.
+                Selection {
+                    title: "Tiny".into(),
+                    items: playlists(&[14]),
+                    ..Selection::default()
+                },
+                // System playlists only: left out.
+                Selection {
+                    title: "Trending by genre".into(),
+                    items: SelectionItems {
+                        collection: vec![SelectionItem::SystemPlaylist(Box::default())],
+                    },
+                    ..Selection::default()
+                },
+            ],
+            next_href: None,
+            total_results: None,
+        })
+    }
+
+    async fn chart_selections(&self) -> sc_api::Result<Page<Selection>> {
+        self.log("chart_selections".into());
+        Err(sc_api::Error::NotFound)
+    }
+
+    async fn system_playlist(&self, urn: &str) -> sc_api::Result<SystemPlaylist> {
+        self.log(format!("system_playlist {urn}"));
+        Ok(SystemPlaylist {
+            urn: urn.into(),
+            tracks: [30, 10, 20].into_iter().map(partial).collect(),
+            ..SystemPlaylist::default()
+        })
+    }
     async fn set_following(&self, user: u64, following: bool) -> sc_api::Result<()> {
         self.log(format!("follow {user} {following}"));
         if self.expired.load(Ordering::SeqCst) {

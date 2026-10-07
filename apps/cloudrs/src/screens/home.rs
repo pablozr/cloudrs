@@ -1,15 +1,16 @@
-//! Home, where cloudrs opens (design preview): a greeting, then shelves of
-//! what to play next. Recently played comes from the history, your
-//! playlists from the library and the newest posts from the feed once signed
-//! in. A shelf without anything to show is left out.
+//! Home, where cloudrs opens (design preview, ADR 0013): a greeting, a
+//! highlight, quick tiles, trending tracks by genre, and shelves of cards —
+//! recently played, SoundCloud's own rows and, once signed in, the feed,
+//! likes, playlists and the people followed. A shelf with nothing to show is
+//! left out; one on its way shows skeleton cards.
 
 use cloudrs_ui::Theme;
-use cloudrs_ui::browse::{CardData, card, skeleton_card};
-use cloudrs_ui::components::{ButtonKind, Icon, button, icon};
-use cloudrs_ui::tokens::{size, space, typography};
+use cloudrs_ui::browse::{CardData, HeroData, card, hero, quick_tile, skeleton_card};
+use cloudrs_ui::components::{ButtonKind, Icon, button, icon, pill};
+use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Div, SharedString, div};
-use sc_core::{ListItems, PlaylistSummary, TrackSummary};
+use gpui::{AnyElement, ClickEvent, Context, Div, SharedString, Window, div};
+use sc_core::{ArtKey, Genre, ListItems, PlaylistSummary, TrackId, TrackSummary, UserSummary};
 
 use crate::i18n::{self, home as t};
 use crate::intent::UiIntent;
@@ -19,21 +20,39 @@ use crate::shell::Shell;
 
 /// Cards on a shelf; the rest is one "See all" away.
 const SHELF_CARDS: usize = 12;
-/// Feed rows on Home.
-const FEED_ROWS: usize = 5;
+/// Quick tiles: two rows of three.
+const TILES: usize = 6;
+const TILES_PER_ROW: usize = 3;
 /// Skeleton cards while a shelf loads.
 const SKELETON_CARDS: usize = 6;
 
+/// What a shelf holds.
+enum Shelf {
+    Tracks(ListId, Vec<TrackSummary>),
+    Playlists(Vec<PlaylistSummary>),
+    People(Vec<UserSummary>),
+}
+
 impl Shell {
     /// Asks for what Home shows: the history every time (it changes as you
-    /// listen), the account's lists the first time.
+    /// listen), the rest the first time.
     pub(crate) fn refresh_home(&mut self, cx: &mut Context<Self>) {
         self.send(sc_core::Command::OpenHistory);
-        if self.models.account.is_some() {
-            for list in [ListId::Library, ListId::Feed] {
-                if !self.models.lists.contains_key(&list) {
-                    self.dispatch(UiIntent::OpenList(list), cx);
-                }
+        if self.models.home_shelves.is_empty() {
+            self.send(sc_core::Command::OpenHome);
+        }
+        let mut lists = vec![ListId::Trending(self.models.home_genre)];
+        if let Some(me) = &self.models.account {
+            lists.extend([
+                ListId::Library,
+                ListId::Feed,
+                ListId::UserLikes(me.id),
+                ListId::Followings(me.id),
+            ]);
+        }
+        for list in lists {
+            if !self.models.lists.contains_key(&list) {
+                self.dispatch(UiIntent::OpenList(list), cx);
             }
         }
     }
@@ -49,18 +68,18 @@ impl Shell {
             .max_w(size::HOME_MAX_WIDTH)
             .flex()
             .flex_col()
-            .gap(space::S6)
+            .gap(space::S8)
             .px(space::S5)
+            .pt(space::S2)
             .pb(space::S8)
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .gap(space::S2)
-                    .pt(space::S2)
                     .child(
                         theme
-                            .text(div(), typography::DISPLAY_L)
+                            .text(div(), typography::DISPLAY_XL)
                             .text_color(c.text)
                             .child(greeting),
                     )
@@ -71,80 +90,87 @@ impl Shell {
                             .child(t::subtitle()),
                     ),
             );
-
-        let recent = self.recent_tracks();
-        let history_loading = self
-            .models
-            .lists
-            .get(&ListId::History)
-            .is_some_and(|list| list.loading);
-        if history_loading && recent.is_empty() {
-            page = page.child(shelf_skeleton(
-                theme,
-                t::recently_played(),
-                "recent-skeleton",
-            ));
-        } else if !recent.is_empty() {
-            let cards = recent
-                .iter()
-                .enumerate()
-                .map(|(ix, track)| self.track_card(ix, track, theme, cx))
-                .collect();
-            page = page.child(self.shelf(
-                theme,
-                t::recently_played(),
-                Some(UiIntent::OpenHistory),
-                cards,
-                cx,
-            ));
+        if let Some(highlight) = self.home_hero(theme, cx) {
+            page = page.child(highlight);
         }
+        if let Some(tiles) = self.home_tiles(theme, cx) {
+            page = page.child(tiles);
+        }
+        page = page.child(self.home_trending(theme, cx));
 
-        if self.models.account.is_some() {
-            let playlists = self.playlists(ListId::Library);
-            if playlists.is_empty() && self.list_loading(ListId::Library) {
-                page = page.child(shelf_skeleton(
+        let recent = self.tracks(ListId::History);
+        let nothing_played = recent.is_empty();
+        if !nothing_played {
+            let header =
+                self.shelf_header(theme, t::recently_played().into(), Some(Route::History), cx);
+            page = page.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(space::S2)
+                    .child(header)
+                    .child(self.cards(theme, "recent", Shelf::Tracks(ListId::History, recent), cx)),
+            );
+        }
+        let me = self.models.account.as_ref().map(|me| me.id);
+        if let Some(me) = me {
+            page = page
+                .child(self.list_shelf(
                     theme,
+                    "feed",
+                    t::from_people_you_follow(),
+                    ListId::Feed,
+                    Route::Feed,
+                    cx,
+                ))
+                .child(self.list_shelf(
+                    theme,
+                    "likes",
+                    t::liked_tracks(),
+                    ListId::UserLikes(me),
+                    Route::Likes(me),
+                    cx,
+                ))
+                .child(self.list_shelf(
+                    theme,
+                    "library",
                     t::your_playlists(),
-                    "library-skeleton",
+                    ListId::Library,
+                    Route::Library,
+                    cx,
                 ));
-            } else if !playlists.is_empty() {
-                let cards = playlists
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, playlist)| self.playlist_card(ix, playlist, theme, cx))
-                    .collect();
-                page = page.child(self.shelf(
+        }
+        let soundcloud: Vec<(String, Vec<PlaylistSummary>)> = self
+            .models
+            .home_shelves
+            .iter()
+            .map(|s| (s.title.clone(), s.playlists.clone()))
+            .collect();
+        for (ix, (title, playlists)) in soundcloud.into_iter().enumerate() {
+            let header = self.shelf_header(theme, title.into(), None, cx);
+            let key = SharedString::from(format!("soundcloud-{ix}"));
+            page = page.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(space::S2)
+                    .child(header)
+                    .child(self.cards(theme, key, Shelf::Playlists(playlists), cx)),
+            );
+        }
+        match me {
+            Some(me) => {
+                page = page.child(self.list_shelf(
                     theme,
-                    t::your_playlists(),
-                    Some(UiIntent::OpenList(ListId::Library)),
-                    cards,
+                    "following",
+                    t::artists_you_follow(),
+                    ListId::Followings(me),
+                    Route::Following(me),
                     cx,
                 ));
             }
-            let feed = self.tracks(ListId::Feed);
-            if !feed.is_empty() {
-                let rows: Vec<AnyElement> = feed
-                    .iter()
-                    .take(FEED_ROWS)
-                    .enumerate()
-                    .map(|(ix, track)| self.track_item(ListId::Feed, ix, track, theme, cx))
-                    .collect();
-                page = page.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(space::S2)
-                        .child(self.shelf_header(
-                            theme,
-                            t::from_your_feed(),
-                            Some(UiIntent::OpenList(ListId::Feed)),
-                            cx,
-                        ))
-                        .children(rows),
-                );
-            }
-        } else if recent.is_empty() && !history_loading {
-            page = page.child(self.home_welcome(theme, cx));
+            None if nothing_played => page = page.child(self.home_welcome(theme, cx)),
+            None => {}
         }
 
         div()
@@ -155,66 +181,262 @@ impl Shell {
             .into_any_element()
     }
 
-    /// The tracks played, newest first, each once.
-    fn recent_tracks(&self) -> Vec<TrackSummary> {
-        let mut tracks = self.tracks(ListId::History);
-        tracks.truncate(SHELF_CARDS);
-        tracks
+    /// What plays now, else the last played, else the top trending track.
+    fn home_hero(&mut self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let genre = self.models.home_genre;
+        let playing_now = self.models.current.and_then(|id| self.find_track(id));
+        let (eyebrow, track, list) = if let Some(track) = playing_now {
+            (t::now_playing(), track, None)
+        } else if let Some(track) = self.tracks(ListId::History).into_iter().next() {
+            (t::jump_back_in(), track, Some(ListId::History))
+        } else {
+            let track = self.tracks(ListId::Trending(genre)).into_iter().next()?;
+            (t::trending_now(), track, Some(ListId::Trending(genre)))
+        };
+        let id = track.id;
+        let playing = list.is_none() && self.models.playing;
+        let play_label = if playing { t::pause() } else { t::play() };
+        let play = button(theme, "hero-play", play_label, ButtonKind::Primary)
+            .aria_label(play_label)
+            .on_click(cx.listener(move |this, _, _, cx| match list {
+                None => this.send(sc_core::Command::TogglePlay),
+                Some(list) => this.dispatch(UiIntent::Play { list, track: id }, cx),
+            }))
+            .into_any_element();
+        let open = button(theme, "hero-open", t::open_track(), ButtonKind::Secondary)
+            .aria_label(t::open_track())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(UiIntent::OpenTrack(id), cx);
+            }))
+            .into_any_element();
+        let meta = i18n::dot_join(&[
+            track.artist.clone(),
+            crate::state::format_time(track.duration),
+        ]);
+        Some(
+            hero(
+                theme,
+                "hero",
+                HeroData {
+                    eyebrow,
+                    title: &track.title,
+                    meta: &meta,
+                    cover: self.models.art.tracks.get(&id).cloned(),
+                    tint: self.models.art.tint(ArtKey::Track(id)).map(Into::into),
+                    actions: vec![play, open],
+                },
+            )
+            .aria_label(i18n::search::play_track(&track.title, &track.artist))
+            .into_any_element(),
+        )
     }
 
-    fn tracks(&self, list: ListId) -> Vec<TrackSummary> {
-        match self.models.lists.get(&list).map(|l| &l.items) {
-            Some(ListItems::Tracks(tracks)) => tracks.clone(),
-            _ => Vec::new(),
+    /// Shortcuts: your playlists first, then what you played last.
+    fn home_tiles(&mut self, theme: &Theme, cx: &mut Context<Self>) -> Option<Div> {
+        enum Tile {
+            Playlist(PlaylistSummary),
+            Track(TrackSummary),
         }
-    }
-
-    fn playlists(&self, list: ListId) -> Vec<PlaylistSummary> {
-        match self.models.lists.get(&list).map(|l| &l.items) {
-            Some(ListItems::Playlists(playlists)) => {
-                playlists.iter().take(SHELF_CARDS).cloned().collect()
-            }
-            _ => Vec::new(),
+        let mut tiles: Vec<Tile> = self
+            .playlists(ListId::Library)
+            .into_iter()
+            .map(Tile::Playlist)
+            .collect();
+        tiles.extend(self.tracks(ListId::History).into_iter().map(Tile::Track));
+        // Whole rows only: a lone tile stretched across a row looks broken.
+        let whole = tiles.len().min(TILES) / TILES_PER_ROW * TILES_PER_ROW;
+        tiles.truncate(whole);
+        if tiles.is_empty() {
+            return None;
         }
+        let tiles: Vec<AnyElement> = tiles
+            .into_iter()
+            .enumerate()
+            .map(|(ix, tile)| match tile {
+                Tile::Playlist(playlist) => {
+                    let id = playlist.id;
+                    quick_tile(
+                        theme,
+                        ("tile", ix),
+                        &playlist.title,
+                        self.models.art.playlists.get(&id).cloned(),
+                        false,
+                        open_playlist(id, cx),
+                    )
+                    .aria_label(i18n::playlist::open_playlist(&playlist.title))
+                    .on_click(open_playlist(id, cx))
+                    .into_any_element()
+                }
+                Tile::Track(track) => {
+                    let id = track.id;
+                    quick_tile(
+                        theme,
+                        ("tile", ix),
+                        &track.title,
+                        self.models.art.tracks.get(&id).cloned(),
+                        false,
+                        cx.listener(move |this, _, _, cx| {
+                            let list = ListId::History;
+                            this.dispatch(UiIntent::Play { list, track: id }, cx);
+                        }),
+                    )
+                    .aria_label(i18n::search::play_track(&track.title, &track.artist))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.dispatch(UiIntent::OpenTrack(id), cx);
+                    }))
+                    .into_any_element()
+                }
+            })
+            .collect();
+        let mut grid = div().flex().flex_col().gap(space::S2);
+        let mut tiles = tiles.into_iter().peekable();
+        while tiles.peek().is_some() {
+            let row: Vec<AnyElement> = tiles.by_ref().take(TILES_PER_ROW).collect();
+            grid = grid.child(div().flex().gap(space::S2).children(row));
+        }
+        Some(grid)
     }
 
-    fn list_loading(&self, list: ListId) -> bool {
-        self.models.lists.get(&list).is_some_and(|l| l.loading)
+    /// The genre pills over the trending tracks of the picked genre.
+    fn home_trending(&mut self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let picked = self.models.home_genre;
+        let pills: Vec<AnyElement> = Genre::ALL
+            .into_iter()
+            .enumerate()
+            .map(|(ix, genre)| {
+                let label = genre_label(genre);
+                pill(theme, ("genre", ix), label, genre == picked)
+                    .tab_index(0)
+                    .aria_label(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.models.home_genre = genre;
+                        let list = ListId::Trending(genre);
+                        if this.models.lists.contains_key(&list) {
+                            cx.notify();
+                        } else {
+                            this.dispatch(UiIntent::OpenList(list), cx);
+                        }
+                    }))
+                    .into_any_element()
+            })
+            .collect();
+        let list = ListId::Trending(picked);
+        div()
+            .flex()
+            .flex_col()
+            .gap(space::S3)
+            .child(
+                theme
+                    .text(div(), typography::TITLE)
+                    .text_color(theme.colors.text)
+                    .child(t::trending()),
+            )
+            .child(
+                div()
+                    .id("genres")
+                    .flex()
+                    .gap(space::S2)
+                    .overflow_x_scroll()
+                    .children(pills),
+            )
+            .child(self.shelf_body(theme, "trending", list, cx))
     }
 
-    /// A shelf: a title (with "See all" when there is more) over a row of
-    /// cards that scrolls sideways.
-    fn shelf(
-        &self,
+    /// A shelf fed by a core list, with its loading state and "See all".
+    fn list_shelf(
+        &mut self,
         theme: &Theme,
+        key: &'static str,
         title: &'static str,
-        see_all: Option<UiIntent>,
-        cards: Vec<AnyElement>,
+        list: ListId,
+        see_all: Route,
         cx: &mut Context<Self>,
     ) -> Div {
+        let view = self.models.lists.get(&list);
+        let loading = view.is_some_and(|l| l.loading);
+        let empty = view.is_none_or(|l| l.len() == 0);
+        if empty && !loading {
+            return div();
+        }
+        let header = self.shelf_header(theme, title.into(), Some(see_all), cx);
         div()
             .flex()
             .flex_col()
             .gap(space::S2)
-            .child(self.shelf_header(theme, title, see_all, cx))
-            .child(
-                div()
-                    .id(title)
-                    .flex()
-                    .gap(space::S2)
-                    .overflow_x_scroll()
-                    .children(cards),
-            )
+            .child(header)
+            .child(self.shelf_body(theme, key, list, cx))
+    }
+
+    /// The cards of a core list (skeletons while its first page loads).
+    fn shelf_body(
+        &mut self,
+        theme: &Theme,
+        key: &'static str,
+        list: ListId,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let view = self.models.lists.get(&list);
+        if view.is_none_or(|l| l.loading) {
+            return skeleton_row(theme, key).into_any_element();
+        }
+        let shelf = match view.map(|l| &l.items) {
+            Some(ListItems::Tracks(tracks)) => {
+                Shelf::Tracks(list, tracks.iter().take(SHELF_CARDS).cloned().collect())
+            }
+            Some(ListItems::Playlists(playlists)) => {
+                Shelf::Playlists(playlists.iter().take(SHELF_CARDS).cloned().collect())
+            }
+            Some(ListItems::Users(users)) => {
+                Shelf::People(users.iter().take(SHELF_CARDS).cloned().collect())
+            }
+            None => return div().into_any_element(),
+        };
+        self.cards(theme, key, shelf, cx).into_any_element()
+    }
+
+    /// A row of cards that scrolls sideways.
+    fn cards(
+        &mut self,
+        theme: &Theme,
+        key: impl Into<SharedString>,
+        shelf: Shelf,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<Div> {
+        let key: SharedString = key.into();
+        let cards: Vec<AnyElement> = match shelf {
+            Shelf::Tracks(list, tracks) => tracks
+                .iter()
+                .enumerate()
+                .map(|(ix, track)| self.track_card(&key, ix, list, track, theme, cx))
+                .collect(),
+            Shelf::Playlists(playlists) => playlists
+                .iter()
+                .enumerate()
+                .map(|(ix, playlist)| self.playlist_card(&key, ix, playlist, theme, cx))
+                .collect(),
+            Shelf::People(people) => people
+                .iter()
+                .enumerate()
+                .map(|(ix, user)| self.person_card(&key, ix, user, theme, cx))
+                .collect(),
+        };
+        div()
+            .id(SharedString::from(format!("{key}-cards")))
+            .flex()
+            .gap(space::S1)
+            .overflow_x_scroll()
+            .children(cards)
     }
 
     fn shelf_header(
         &self,
         theme: &Theme,
-        title: &'static str,
-        see_all: Option<UiIntent>,
+        title: SharedString,
+        see_all: Option<Route>,
         cx: &mut Context<Self>,
     ) -> Div {
         let c = theme.colors;
+        let label = t::see_all_of(&title);
         div()
             .flex()
             .items_center()
@@ -223,9 +445,9 @@ impl Shell {
                 theme
                     .text(div(), typography::TITLE)
                     .text_color(c.text)
-                    .child(title),
+                    .child(title.clone()),
             )
-            .when_some(see_all, |header, intent| {
+            .when_some(see_all, |header, route| {
                 header.child(
                     button(
                         theme,
@@ -233,47 +455,44 @@ impl Shell {
                         t::see_all(),
                         ButtonKind::Ghost,
                     )
-                    .aria_label(t::see_all_of(title))
+                    .aria_label(label)
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.open_from_home(intent.clone(), cx);
+                        this.open_see_all(route.clone(), cx);
                     })),
                 )
             })
     }
 
-    /// "See all": the History screen, or an account list's screen.
-    fn open_from_home(&mut self, intent: UiIntent, cx: &mut Context<Self>) {
-        let route = match &intent {
-            UiIntent::OpenList(ListId::Library) => Some(Route::Library),
-            UiIntent::OpenList(ListId::Feed) => Some(Route::Feed),
-            _ => None,
-        };
-        match route {
-            Some(route) => self.navigate(route, cx),
-            None => self.dispatch(intent, cx),
+    /// "See all" opens the screen of that list (and loads it the first time).
+    fn open_see_all(&mut self, route: Route, cx: &mut Context<Self>) {
+        if route == Route::History {
+            return self.dispatch(UiIntent::OpenHistory, cx);
+        }
+        let list = route.account_list();
+        self.navigate(route, cx);
+        if let Some(list) = list
+            && !self.models.lists.contains_key(&list)
+        {
+            self.dispatch(UiIntent::OpenList(list), cx);
         }
     }
 
     fn track_card(
         &self,
+        key: &SharedString,
         ix: usize,
+        list: ListId,
         track: &TrackSummary,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let id = track.id;
-        let play = cx.listener(move |this, _, _, cx| {
-            this.dispatch(
-                UiIntent::Play {
-                    list: ListId::History,
-                    track: id,
-                },
-                cx,
-            );
+        let play = cx.listener(move |this, _: &ClickEvent, _: &mut Window, cx| {
+            this.dispatch(UiIntent::Play { list, track: id }, cx);
         });
         card(
             theme,
-            ("recent", ix),
+            (key.clone(), ix),
             CardData {
                 title: &track.title,
                 meta: &track.artist,
@@ -291,29 +510,91 @@ impl Shell {
 
     fn playlist_card(
         &self,
+        key: &SharedString,
         ix: usize,
         playlist: &PlaylistSummary,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let id = playlist.id;
-        let meta = i18n::count::tracks(playlist.track_count);
+        let count = i18n::count::tracks(playlist.track_count);
+        let meta = if playlist.owner.is_empty() {
+            count
+        } else {
+            i18n::dot_join(&[playlist.owner.clone(), count])
+        };
         card(
             theme,
-            ("playlist-card", ix),
+            (key.clone(), ix),
             CardData {
                 title: &playlist.title,
                 meta: &meta,
                 cover: self.models.art.playlists.get(&id).cloned(),
                 round: false,
             },
-            None::<fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App)>,
+            Some(open_playlist(id, cx)),
         )
         .aria_label(i18n::playlist::open_playlist(&playlist.title))
+        .on_click(open_playlist(id, cx))
+        .into_any_element()
+    }
+
+    fn person_card(
+        &self,
+        key: &SharedString,
+        ix: usize,
+        user: &UserSummary,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let id = user.id;
+        let meta = user
+            .followers
+            .map(|n| i18n::user::followers(crate::state::compact_count(n)))
+            .unwrap_or_default();
+        card(
+            theme,
+            (key.clone(), ix),
+            CardData {
+                title: &user.username,
+                meta: &meta,
+                cover: self.models.art.users.get(&id).cloned(),
+                round: true,
+            },
+            None::<fn(&ClickEvent, &mut Window, &mut gpui::App)>,
+        )
+        .aria_label(i18n::user::open_profile(&user.username))
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.dispatch(UiIntent::OpenPlaylist(id), cx);
+            this.dispatch(UiIntent::OpenUser(id), cx);
         }))
         .into_any_element()
+    }
+
+    fn tracks(&self, list: ListId) -> Vec<TrackSummary> {
+        match self.models.lists.get(&list).map(|l| &l.items) {
+            Some(ListItems::Tracks(tracks)) => tracks.iter().take(SHELF_CARDS).cloned().collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn playlists(&self, list: ListId) -> Vec<PlaylistSummary> {
+        match self.models.lists.get(&list).map(|l| &l.items) {
+            Some(ListItems::Playlists(playlists)) => {
+                playlists.iter().take(SHELF_CARDS).cloned().collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// A track the screens have seen, by id.
+    fn find_track(&self, id: TrackId) -> Option<TrackSummary> {
+        self.models
+            .lists
+            .values()
+            .find_map(|list| match &list.items {
+                ListItems::Tracks(tracks) => tracks.iter().find(|t| t.id == id).cloned(),
+                _ => None,
+            })
     }
 
     /// Nothing played and not signed in: where to start.
@@ -324,11 +605,11 @@ impl Shell {
             .flex_col()
             .gap(space::S3)
             .p(space::S6)
-            .rounded(cloudrs_ui::tokens::radius::XL)
+            .rounded(radius::XL)
             .bg(c.surface)
             .border_1()
             .border_color(c.line)
-            .child(icon(Icon::Search, size::ICON_STATUS, c.accent))
+            .child(icon(Icon::Account, size::ICON_STATUS, c.accent))
             .child(
                 theme
                     .text(div(), typography::TITLE)
@@ -342,49 +623,53 @@ impl Shell {
                     .child(t::start_hint()),
             )
             .child(
-                div()
-                    .flex()
-                    .gap(space::S2)
-                    .pt(space::S2)
-                    .child(
-                        button(theme, "home-search", t::start_search(), ButtonKind::Primary)
-                            .aria_label(t::start_search())
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.focus_search_field(window, cx);
-                            })),
+                div().flex().gap(space::S2).pt(space::S2).child(
+                    button(
+                        theme,
+                        "home-sign-in",
+                        i18n::nav::sign_in(),
+                        ButtonKind::Primary,
                     )
-                    .child(
-                        button(
-                            theme,
-                            "home-sign-in",
-                            i18n::nav::sign_in(),
-                            ButtonKind::Secondary,
-                        )
-                        .aria_label(i18n::nav::sign_in())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.navigate(Route::Account, cx);
-                        })),
-                    ),
+                    .aria_label(i18n::nav::sign_in())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.navigate(Route::Account, cx);
+                    })),
+                ),
             )
     }
 }
 
-fn shelf_skeleton(theme: &Theme, title: &'static str, id: &'static str) -> Div {
+fn open_playlist(
+    id: sc_core::PlaylistId,
+    cx: &mut Context<Shell>,
+) -> impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static {
+    cx.listener(move |this, _, _, cx| {
+        this.dispatch(UiIntent::OpenPlaylist(id), cx);
+    })
+}
+
+fn skeleton_row(theme: &Theme, key: &'static str) -> Div {
     div()
         .flex()
-        .flex_col()
-        .gap(space::S2)
-        .child(
-            theme
-                .text(div(), typography::TITLE)
-                .text_color(theme.colors.text)
-                .child(title),
-        )
-        .child(
-            div()
-                .flex()
-                .gap(space::S2)
-                .overflow_hidden()
-                .children((0..SKELETON_CARDS).map(|i| skeleton_card(theme, (id, i)))),
-        )
+        .gap(space::S1)
+        .overflow_hidden()
+        .children((0..SKELETON_CARDS).map(|i| skeleton_card(theme, (key, i))))
+}
+
+fn genre_label(genre: Genre) -> &'static str {
+    use crate::i18n::genre as g;
+    match genre {
+        Genre::All => g::all(),
+        Genre::Electronic => g::electronic(),
+        Genre::House => g::house(),
+        Genre::HipHop => g::hip_hop(),
+        Genre::Dubstep => g::dubstep(),
+        Genre::Ambient => g::ambient(),
+        Genre::Pop => g::pop(),
+        Genre::Rock => g::rock(),
+        Genre::Indie => g::indie(),
+        Genre::Latin => g::latin(),
+        Genre::RnB => g::r_n_b(),
+        Genre::Trap => g::trap(),
+    }
 }

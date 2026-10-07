@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Div, ElementId, Hsla, ObjectFit, Pixels, Role,
-    SharedString, Stateful, Window, div, img, px,
+    Animation, AnimationExt, AnyElement, App, ClickEvent, Div, ElementId, Hsla, ObjectFit, Pixels,
+    Role, SharedString, Stateful, Window, div, img, linear_color_stop, linear_gradient, px,
 };
 
 use crate::components::{Icon, badge, icon, play_button, shimmer_opacity};
@@ -102,16 +102,22 @@ pub struct PageHeaderData<'a> {
 }
 
 /// A picture that is the artwork when there is one and a soft accent square
-/// (or circle) otherwise.
-fn picture(theme: &Theme, side: Pixels, round: bool, artwork: Option<Arc<Path>>) -> Div {
+/// (or circle, with `radius::FULL`) otherwise.
+fn picture(theme: &Theme, side: Pixels, corner: Pixels, artwork: Option<Arc<Path>>) -> Div {
     div()
         .flex_none()
         .size(side)
         .overflow_hidden()
         .bg(theme.colors.accent_soft)
-        .rounded(if round { radius::FULL } else { radius::L })
+        .rounded(corner)
         .when_some(artwork, |pic, path| {
-            pic.child(img(path).size_full().object_fit(ObjectFit::Cover))
+            // The image is not clipped by its parent's corners: it rounds its own.
+            pic.child(
+                img(path)
+                    .size_full()
+                    .rounded(corner)
+                    .object_fit(ObjectFit::Cover),
+            )
         })
 }
 
@@ -125,7 +131,12 @@ pub fn page_header(theme: &Theme, data: PageHeaderData) -> Div {
         .gap(space::S6)
         .px(space::S5)
         .pb(space::S5)
-        .child(picture(theme, size::HEADER_ART, data.round, data.artwork))
+        .child(picture(
+            theme,
+            size::HEADER_ART,
+            corner(data.round),
+            data.artwork,
+        ))
         .child(
             div()
                 .flex_1()
@@ -260,7 +271,7 @@ pub struct UserRowData<'a> {
 
 /// A person in a list: round avatar, name, meta line.
 pub fn user_row(theme: &Theme, id: impl Into<ElementId>, row: UserRowData) -> Stateful<Div> {
-    let avatar = picture(theme, size::ROW_COVER, true, row.avatar);
+    let avatar = picture(theme, size::ROW_COVER, radius::FULL, row.avatar);
     browse_row(theme, id, avatar, row.name, row.meta, None)
 }
 
@@ -281,7 +292,7 @@ pub fn collection_row(
     id: impl Into<ElementId>,
     row: CollectionRowData,
 ) -> Stateful<Div> {
-    let cover = picture(theme, size::ROW_COVER, false, row.cover).rounded(radius::M);
+    let cover = picture(theme, size::ROW_COVER, radius::M, row.cover);
     let badge_label = row.album_badge.map(|label| (label, theme.colors.accent));
     browse_row(theme, id, cover, row.title, row.meta, badge_label)
 }
@@ -306,11 +317,11 @@ pub fn card(
     theme: &Theme,
     id: impl Into<ElementId> + Clone,
     data: CardData,
-    on_play: Option<impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>,
+    on_play: Option<impl Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
 ) -> Stateful<Div> {
     let c = theme.colors;
     let id: ElementId = id.into();
-    let cover = picture(theme, size::CARD_WIDTH, data.round, data.cover)
+    let cover = picture(theme, size::CARD_COVER, corner(data.round), data.cover)
         .relative()
         .when_some(on_play, |cover, on_play| {
             cover.child(
@@ -381,7 +392,7 @@ pub fn skeleton_card(theme: &Theme, id: impl Into<ElementId>) -> impl IntoElemen
         .p(space::S2)
         .child(
             div()
-                .size(size::CARD_WIDTH)
+                .size(size::CARD_COVER)
                 .rounded(radius::L)
                 .bg(c.surface_hover),
         )
@@ -396,5 +407,155 @@ pub fn skeleton_card(theme: &Theme, id: impl Into<ElementId>) -> impl IntoElemen
             id,
             Animation::new(motion::SHIMMER).repeat_synced(),
             |card, t| card.opacity(shimmer_opacity(t)),
+        )
+}
+
+/// The corner of a picture: round for people, `l` for covers.
+fn corner(round: bool) -> Pixels {
+    if round { radius::FULL } else { radius::L }
+}
+
+/// Data of a [`hero`], the highlight on top of Home.
+pub struct HeroData<'a> {
+    /// A short label above the title (`NOW PLAYING`, `TRENDING #1`).
+    pub eyebrow: &'a str,
+    pub title: &'a str,
+    pub meta: &'a str,
+    pub cover: Option<Arc<Path>>,
+    /// The cover's dominant colour, washed across the card.
+    pub tint: Option<Hsla>,
+    /// Buttons under the meta line.
+    pub actions: Vec<AnyElement>,
+}
+
+/// A large card: big cover, label, display title, meta and actions, over a
+/// wash of the cover's colour. Callers add the `aria_label`.
+pub fn hero(theme: &Theme, id: impl Into<ElementId>, data: HeroData) -> Stateful<Div> {
+    let c = theme.colors;
+    let wash = data.tint.map(|color| {
+        let color = theme.tint(color);
+        div()
+            .absolute()
+            .top(px(0.0))
+            .left(px(0.0))
+            .size_full()
+            .bg(linear_gradient(
+                90.0,
+                linear_color_stop(color, 0.0),
+                linear_color_stop(color.opacity(0.0), 1.0),
+            ))
+    });
+    div()
+        .id(id)
+        .relative()
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .gap(space::S6)
+        .p(space::S6)
+        .rounded(radius::XL)
+        .bg(c.surface)
+        .border_1()
+        .border_color(c.line)
+        .children(wash)
+        .child(picture(theme, size::HERO_ART, radius::L, data.cover).relative())
+        .child(
+            div()
+                .relative()
+                .flex_1()
+                .min_w(px(0.0))
+                .flex()
+                .flex_col()
+                .gap(space::S2)
+                .child(
+                    theme
+                        .text(div(), typography::LABEL)
+                        .text_color(c.accent)
+                        .child(data.eyebrow.to_owned()),
+                )
+                .child(
+                    theme
+                        .text(div(), typography::DISPLAY_XL)
+                        .text_color(c.text)
+                        .line_clamp(2)
+                        .child(data.title.to_owned()),
+                )
+                .child(
+                    theme
+                        .text(div(), typography::BODY_MUTED)
+                        .truncate()
+                        .text_color(c.text_muted)
+                        .child(data.meta.to_owned()),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(space::S2)
+                        .pt(space::S3)
+                        .children(data.actions),
+                ),
+        )
+}
+
+/// Group name quick tiles share, so the play button reacts to its own tile.
+const TILE_GROUP: &str = "quick-tile";
+
+/// A compact shortcut on Home: cover on the left, title, and a play button
+/// that shows on hover. Laid out to fill its share of a row. Callers add
+/// `on_click` and the `aria_label`.
+pub fn quick_tile(
+    theme: &Theme,
+    id: impl Into<ElementId> + Clone,
+    title: &str,
+    cover: Option<Arc<Path>>,
+    round: bool,
+    on_play: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let c = theme.colors;
+    let id: ElementId = id.into();
+    let corner = if round { radius::FULL } else { radius::M };
+    theme
+        .text(div(), typography::BODY)
+        .id(id.clone())
+        .group(TILE_GROUP)
+        .flex_1()
+        .min_w(px(0.0))
+        .h(size::QUICK_TILE)
+        .flex()
+        .items_center()
+        .gap(space::S3)
+        .pr(space::S3)
+        .rounded(radius::M)
+        .overflow_hidden()
+        .bg(c.surface_raised)
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .tab_index(0)
+        .focus_visible(move |s| s.border_color(c.accent))
+        .cursor_pointer()
+        .hover(move |s| s.bg(c.surface_hover))
+        .child(picture(theme, size::QUICK_TILE, corner, cover))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .truncate()
+                .text_color(c.text)
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .child(title.to_owned()),
+        )
+        .child(
+            div()
+                .invisible()
+                .group_hover(TILE_GROUP, |s| s.visible())
+                .child(
+                    play_button(theme, (id, "play"), false, size::QUICK_PLAY).on_click(
+                        move |event, window, cx| {
+                            cx.stop_propagation();
+                            on_play(event, window, cx);
+                        },
+                    ),
+                ),
         )
 }

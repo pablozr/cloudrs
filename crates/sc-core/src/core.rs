@@ -44,6 +44,11 @@ type AudioLink = (
 );
 
 enum Input {
+    /// SoundCloud's home rows and charts, in that order.
+    HomeFetched {
+        selections: sc_api::Result<sc_api::models::Page<sc_api::models::Selection>>,
+        charts: sc_api::Result<sc_api::models::Page<sc_api::models::Selection>>,
+    },
     /// Something happened in the Jam's session.
     Jam {
         generation: u64,
@@ -344,6 +349,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         match input {
             Input::Ui(command) => self.command(command),
             Input::UiClosed => {}
+            Input::HomeFetched { selections, charts } => self.home_fetched(selections, charts),
             Input::Jam { generation, event } => self.jam_event(generation, event),
             Input::JamTimer { generation, timer } => self.jam_timer(generation, timer),
             Input::JamTrack {
@@ -475,6 +481,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Command::OpenUser(id) => self.open_user(id),
             Command::OpenPlaylist(id) => self.open_playlist(id),
             Command::OpenHistory => self.open_history(),
+            Command::OpenHome => self.open_home(),
             Command::OpenUrl(url) => self.open_url(url),
             Command::Next => self.skip_forward(false),
             Command::Previous => {

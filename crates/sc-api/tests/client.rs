@@ -1,6 +1,6 @@
 //! `ScClient` against a local mock of soundcloud.com and api-v2.
 
-use sc_api::models::Resource;
+use sc_api::models::{Resource, SelectionItem};
 use sc_api::{ClientConfig, Error, ScClient, SoundCloudApi, StreamProtocol};
 use url::Url;
 use wiremock::matchers::{header, method, path, query_param};
@@ -487,4 +487,54 @@ async fn likes_and_follows() {
     sc.set_track_like(9, 5, false).await.unwrap();
     sc.set_following(4, true).await.unwrap();
     sc.set_following(4, false).await.unwrap();
+}
+
+#[tokio::test]
+async fn reads_soundcloud_home_rows() {
+    let server = MockServer::start().await;
+    for (route, body) in [
+        (
+            "mixed-selections",
+            include_str!("fixtures/mixed_selections.json"),
+        ),
+        (
+            "charts/selections",
+            include_str!("fixtures/chart_selections.json"),
+        ),
+        (
+            "system-playlists/soundcloud:system-playlists:trending-by-genre:trap",
+            include_str!("fixtures/system_playlist.json"),
+        ),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(format!("/api/{route}")))
+            .respond_with(json(body))
+            .mount(&server)
+            .await;
+    }
+    let sc = client(&server, Some(OLD_ID), None);
+
+    let home = sc.mixed_selections().await.unwrap();
+    assert_eq!(home.collection[0].title, "Artists to watch out for");
+    let first = &home.collection[0].items.collection[0];
+    assert!(matches!(first, SelectionItem::Playlist(p) if p.title == "Buzzing Mexico"));
+
+    let genre: SelectionItem = serde_json::from_str(
+        r#"{"kind":"system-playlist","urn":"soundcloud:system-playlists:trending-by-genre:house","title":"House"}"#,
+    )
+    .unwrap();
+    assert!(matches!(genre, SelectionItem::SystemPlaylist(p) if p.title == "House"));
+    let other: SelectionItem = serde_json::from_str(r#"{"kind":"user","id":1}"#).unwrap();
+    assert!(matches!(other, SelectionItem::Other));
+
+    let charts = sc.chart_selections().await.unwrap();
+    assert_eq!(charts.collection[0].title, "Music Charts US");
+
+    let trap = sc
+        .system_playlist("soundcloud:system-playlists:trending-by-genre:trap")
+        .await
+        .unwrap();
+    assert_eq!(trap.short_title.as_deref(), Some("Trap"));
+    assert!(trap.tracks.iter().all(|t| t.id != 0 && t.title.is_empty()));
+    assert!(trap.calculated_artwork_url.is_some());
 }

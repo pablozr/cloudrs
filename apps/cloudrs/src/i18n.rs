@@ -116,6 +116,7 @@ pub mod list {
         feed_empty { en: "Your feed is empty" }
         feed_empty_hint { en: "Follow people to see what they post and repost." }
         library_empty { en: "No playlists or albums yet" }
+        trending_empty { en: "Nothing trending here right now" }
     }
 }
 
@@ -307,14 +308,40 @@ pub mod home {
         subtitle { en: "Pick up where you left off, or find something new." }
         recently_played { en: "Recently played" }
         your_playlists { en: "Your playlists" }
-        from_your_feed { en: "From your feed" }
+        from_people_you_follow { en: "New from people you follow" }
+        liked_tracks { en: "Liked tracks" }
+        artists_you_follow { en: "Artists you follow" }
+        trending { en: "Trending on SoundCloud" }
+        now_playing { en: "NOW PLAYING" }
+        jump_back_in { en: "JUMP BACK IN" }
+        trending_now { en: "TRENDING NOW" }
+        play { en: "Play" }
+        pause { en: "Pause" }
+        open_track { en: "Open track" }
         see_all { en: "See all" }
         start_title { en: "Start listening" }
         start_hint { en: "Search for a track or an artist, or paste a SoundCloud link. Sign in to bring your likes, playlists and feed." }
-        start_search { en: "Search SoundCloud" }
     }
     formats! {
         welcome_back(name) { en: "Welcome back, {name}" }
         see_all_of(shelf) { en: "See all: {shelf}" }
+    }
+}
+
+/// The genre pills of Home's trending row.
+pub mod genre {
+    strings! {
+        all { en: "All" }
+        electronic { en: "Electronic" }
+        house { en: "House" }
+        hip_hop { en: "Hip Hop" }
+        dubstep { en: "Dubstep" }
+        ambient { en: "Ambient" }
+        pop { en: "Pop" }
+        rock { en: "Rock" }
+        indie { en: "Indie" }
+        latin { en: "Latin" }
+        r_n_b { en: "R&B" }
+        trap { en: "Trap" }
     }
 }

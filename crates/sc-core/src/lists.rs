@@ -5,7 +5,7 @@ use sc_api::SoundCloudApi;
 use sc_api::models::{LibraryItem, Like, Page, Playlist, StreamItem, Track, User};
 use tokio::task::JoinHandle;
 
-use crate::types::{ListId, ListItems, SearchKind, TrackSummary};
+use crate::types::{Genre, ListId, ListItems, SearchKind, TrackSummary};
 
 /// Rows per page.
 pub const PAGE_SIZE: u32 = 30;
@@ -133,7 +133,8 @@ pub async fn fetch<A: SoundCloudApi>(
             | ListId::UserTracks(_)
             | ListId::Related(_)
             | ListId::Playlist(_)
-            | ListId::History => more!(api, href).map(Fetched::Tracks),
+            | ListId::History
+            | ListId::Trending(_) => more!(api, href).map(Fetched::Tracks),
         };
     }
     match list {
@@ -162,6 +163,30 @@ pub async fn fetch<A: SoundCloudApi>(
         ListId::Followings(id) => api.followings(id.0, PAGE_SIZE).await.map(Fetched::Users),
         ListId::Feed => api.feed(PAGE_SIZE).await.map(Fetched::Feed),
         ListId::Library => api.library(PAGE_SIZE).await.map(Fetched::Library),
+        ListId::Trending(genre) => trending(api, genre).await.map(Fetched::Tracks),
         ListId::Playlist(_) | ListId::History => Err(sc_api::Error::NotFound),
     }
+}
+
+/// Tracks trending in a genre: SoundCloud's system playlist, whose tracks
+/// carry only an id, filled in one `/tracks?ids=` call. One page.
+async fn trending<A: SoundCloudApi>(api: &A, genre: Genre) -> sc_api::Result<Page<Track>> {
+    let urn = format!(
+        "soundcloud:system-playlists:trending-by-genre:{}",
+        genre.slug()
+    );
+    let playlist = api.system_playlist(&urn).await?;
+    let ids: Vec<u64> = playlist
+        .tracks
+        .iter()
+        .take(PAGE_SIZE as usize)
+        .map(|t| t.id)
+        .collect();
+    let mut filled = api.tracks(&ids).await?;
+    // `/tracks?ids=` does not keep the order; the playlist's is the ranking.
+    filled.sort_by_key(|t| ids.iter().position(|id| *id == t.id));
+    Ok(Page {
+        collection: filled,
+        ..empty_page()
+    })
 }

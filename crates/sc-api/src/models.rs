@@ -201,6 +201,48 @@ pub struct LibraryItem {
     pub playlist: Option<Playlist>,
 }
 
+/// A playlist SoundCloud makes (trending by genre, stations). Its tracks
+/// carry only an `id`: fill them with `tracks(ids)`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SystemPlaylist {
+    /// `soundcloud:system-playlists:trending-by-genre:house`...
+    pub urn: String,
+    pub title: String,
+    pub short_title: Option<String>,
+    pub artwork_url: Option<String>,
+    pub calculated_artwork_url: Option<String>,
+    pub tracks: Vec<Track>,
+}
+
+/// A row of SoundCloud's own home page ("Artists to watch out for",
+/// "Curated by SoundCloud", the charts): a title over playlists.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Selection {
+    pub urn: String,
+    pub title: String,
+    pub items: SelectionItems,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct SelectionItems {
+    pub collection: Vec<SelectionItem>,
+}
+
+/// What a selection holds. Kinds cloudrs does not show are `Other`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind")]
+pub enum SelectionItem {
+    #[serde(rename = "playlist")]
+    Playlist(Box<Playlist>),
+    #[serde(rename = "system-playlist")]
+    SystemPlaylist(Box<SystemPlaylist>),
+    #[serde(other)]
+    Other,
+}
+
 /// The waveform drawn in the player: one value per column, from 0 to `height`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
