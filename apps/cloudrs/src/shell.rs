@@ -6,18 +6,21 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use cloudrs_ui::assets;
 use cloudrs_ui::browse::sidebar_item;
-use cloudrs_ui::components::{ButtonKind, Icon, ToastKind, button, icon_button, toast, tooltip};
+use cloudrs_ui::components::{
+    ButtonKind, Icon, ToastKind, artwork_tint, button, icon, icon_button, toast, tooltip,
+};
 use cloudrs_ui::search_field::{SearchChanged, SearchField};
 use cloudrs_ui::tokens::{self, size, space, typography};
 use cloudrs_ui::{Theme, ThemeMode, motion};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding, MouseButton,
-    NavigationDirection, Role, ScrollStrategy, Stateful, Task, UniformListScrollHandle, Window,
-    actions, div, px,
+    AnimationExt, AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding,
+    MouseButton, NavigationDirection, Role, ScrollStrategy, Stateful, Task,
+    UniformListScrollHandle, Window, actions, div, img, px,
 };
-use sc_core::{Command, CoreConfig, CoreHandle, Event, Problem, StartError};
+use sc_core::{ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, StartError};
 
 use crate::i18n;
 use crate::intent::UiIntent;
@@ -27,6 +30,7 @@ use crate::player_bar::{PlayerAction, PlayerBar};
 use crate::screens::{TrackWave, WaveAction};
 use crate::seam;
 use crate::state::{QueueState, is_soundcloud_url};
+use crate::tint::{self, Rgb};
 
 mod queue_panel;
 
@@ -59,6 +63,15 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
+/// The page tint and the one it is fading from. `seq` changes with every
+/// switch, so the cross-fade plays again.
+#[derive(Default)]
+struct TintFade {
+    from: Option<Rgb>,
+    to: Option<Rgb>,
+    seq: usize,
+}
+
 struct ToastState {
     /// Changes with every toast, so its entrance animation plays again.
     id: usize,
@@ -86,6 +99,7 @@ pub struct Shell {
     queue: QueueState,
     queue_open: bool,
     queue_scroll: UniformListScrollHandle,
+    tint: TintFade,
     toast: Option<ToastState>,
     toast_timer: Option<Task<()>>,
     toasts_shown: usize,
@@ -176,6 +190,7 @@ impl Shell {
             queue: QueueState::default(),
             queue_open: false,
             queue_scroll: UniformListScrollHandle::new(),
+            tint: TintFade::default(),
             toast: None,
             toast_timer: None,
             toasts_shown: 0,
@@ -247,6 +262,11 @@ impl Shell {
         {
             scroll.scroll_to_item(0, ScrollStrategy::Top);
         }
+        if let Event::Artwork { key, path } = &event
+            && self.models.art.begin_tint(*key)
+        {
+            self.compute_tint(*key, path.clone(), cx);
+        }
         self.resolve_link(&event, cx);
         self.wave.update(cx, |wave, cx| wave.apply(&event, cx));
         match &event {
@@ -281,6 +301,67 @@ impl Shell {
         if changed || artwork_in_queue || (queue_changed && self.queue_open) {
             cx.notify();
         }
+    }
+
+    /// Finds the artwork's colour off the UI thread, then shows it.
+    fn compute_tint(&self, key: ArtKey, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let color = cx
+                .background_executor()
+                .spawn(async move { tint::dominant_color(&path) })
+                .await;
+            this.update(cx, |this, cx| {
+                this.models.art.set_tint(key, color);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The colour the page behind the content takes: its own artwork on a
+    /// page, the playing track's on search and history, none otherwise.
+    fn tint_target(&self) -> Option<Rgb> {
+        let key = match self.router.current() {
+            Route::Track(id) => ArtKey::Track(*id),
+            Route::User(id) => ArtKey::User(*id),
+            Route::Playlist(id) => ArtKey::Playlist(*id),
+            Route::Search | Route::History => ArtKey::Track(self.models.current?),
+            Route::Resolving(_) => return None,
+        };
+        self.models.art.tint(key)
+    }
+
+    /// Starts a cross-fade when the target colour changed.
+    fn sync_tint(&mut self) {
+        let target = self.tint_target();
+        if target != self.tint.to {
+            self.tint.from = self.tint.to;
+            self.tint.to = target;
+            self.tint.seq += 1;
+        }
+    }
+
+    /// The tint layers, behind the header and the screen: the old colour
+    /// fading out and the new one fading in.
+    fn tint_layers(&self, theme: &Theme) -> Vec<AnyElement> {
+        let seq = self.tint.seq;
+        let layer = |color: Option<Rgb>, name: &'static str, fade_in: bool| {
+            color.map(|color| {
+                artwork_tint(theme, color.into())
+                    .with_animation((name, seq), motion::PAGE.animation(), move |layer, t| {
+                        layer.opacity(if fade_in { t } else { 1.0 - t })
+                    })
+                    .into_any_element()
+            })
+        };
+        [
+            layer(self.tint.from, "tint-out", false),
+            layer(self.tint.to, "tint-in", true),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 
     /// A pasted link is answered by the page it leads to, by the track
@@ -436,16 +517,26 @@ impl Shell {
                 theme
                     .text(div(), typography::DISPLAY_L)
                     .flex()
+                    .items_center()
+                    .gap(size::LOGO_CLEAR_SPACE)
                     .px(space::S4)
                     .pb(space::S6)
                     .text_color(c.text)
-                    .child(i18n::app::brand_cloud())
-                    .child(div().text_color(c.accent).child(i18n::app::brand_rs())),
+                    // Full colour: the symbol keeps its own gradient, so it is an
+                    // image, not a tinted icon.
+                    .child(img(assets::LOGO).size(size::LOGO).flex_none())
+                    .child(
+                        div()
+                            .flex()
+                            .child(i18n::app::brand_cloud())
+                            .child(div().text_color(c.accent).child(i18n::app::brand_rs())),
+                    ),
             )
             .child(
                 sidebar_item(
                     theme,
                     "nav-search",
+                    Icon::Search,
                     i18n::nav::search(),
                     section == Section::Search,
                 )
@@ -456,6 +547,7 @@ impl Shell {
                 sidebar_item(
                     theme,
                     "nav-history",
+                    Icon::History,
                     i18n::nav::history(),
                     section == Section::History,
                 )
@@ -467,24 +559,23 @@ impl Shell {
     }
 
     fn header(&self, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme_button = button(
-            theme,
-            "theme-toggle",
-            match theme.mode {
-                ThemeMode::Dark => i18n::app::switch_to_light(),
-                ThemeMode::Light => i18n::app::switch_to_dark(),
-            },
-            ButtonKind::Ghost,
-        )
-        .on_click(|_, window, cx| {
-            let next = cx
-                .try_global::<ThemeMode>()
-                .copied()
-                .unwrap_or_default()
-                .toggled();
-            cx.set_global(next);
-            window.refresh();
-        });
+        // The icon shows what a click switches to.
+        let (toggle_icon, toggle_label) = match theme.mode {
+            ThemeMode::Dark => (Icon::Sun, i18n::app::switch_to_light()),
+            ThemeMode::Light => (Icon::Moon, i18n::app::switch_to_dark()),
+        };
+        let theme_button = icon_button(theme, "theme-toggle", toggle_icon, false)
+            .aria_label(toggle_label)
+            .tooltip(tooltip(toggle_label))
+            .on_click(|_, window, cx| {
+                let next = cx
+                    .try_global::<ThemeMode>()
+                    .copied()
+                    .unwrap_or_default()
+                    .toggled();
+                cx.set_global(next);
+                window.refresh();
+            });
         let dim = |enabled: bool| {
             if enabled {
                 1.0
@@ -537,6 +628,7 @@ impl Shell {
 /// states of a surface.
 pub(crate) fn status_view(
     theme: &Theme,
+    glyph: Icon,
     key: &'static str,
     title: &str,
     hint: &str,
@@ -550,6 +642,11 @@ pub(crate) fn status_view(
         .items_center()
         .justify_center()
         .gap(space::S2)
+        .child(
+            div()
+                .pb(space::S2)
+                .child(icon(glyph, size::ICON_STATUS, c.text_subtle)),
+        )
         .child(
             theme
                 .text(div(), typography::TITLE)
@@ -596,9 +693,18 @@ impl Render for Shell {
                 ButtonKind::Primary,
             )
             .on_click(cx.listener(Self::restart_core));
-            return root.child(status_view(&theme, "startup", title, hint, Some(retry)));
+            return root.child(status_view(
+                &theme,
+                Icon::Alert,
+                "startup",
+                title,
+                hint,
+                Some(retry),
+            ));
         }
 
+        self.sync_tint();
+        let tint_layers = self.tint_layers(&theme);
         let screen = self.screen(&theme, cx);
         let queue_panel = self
             .queue_open
@@ -626,6 +732,8 @@ impl Render for Shell {
                         .flex_col()
                         .flex_1()
                         .min_w(px(0.0))
+                        .relative()
+                        .children(tint_layers)
                         .child(header)
                         .child(
                             div()

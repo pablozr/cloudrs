@@ -90,6 +90,31 @@ impl Theme {
         }
     }
 
+    /// `color` (an artwork's dominant colour) as the top of the page tint: its
+    /// lightness and saturation are clamped for this theme and the opacity is
+    /// lower on light surfaces, so it stays quiet in both.
+    pub fn tint(&self, color: Hsla) -> Hsla {
+        use tokens::tint;
+        let (low, high, a) = match self.mode {
+            ThemeMode::Dark => (
+                tint::MIN_LIGHTNESS_DARK,
+                tint::MAX_LIGHTNESS_DARK,
+                tint::ALPHA_DARK,
+            ),
+            ThemeMode::Light => (
+                tint::MIN_LIGHTNESS_LIGHT,
+                tint::MAX_LIGHTNESS_LIGHT,
+                tint::ALPHA_LIGHT,
+            ),
+        };
+        Hsla {
+            h: color.h,
+            s: color.s.min(tint::MAX_SATURATION),
+            l: color.l.clamp(low, high),
+            a,
+        }
+    }
+
     /// Text color for a step of the scale: muted styles get the muted color.
     pub fn text_color_for(&self, token: TypeToken) -> Hsla {
         if token == tokens::typography::BODY_MUTED {

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{PageHeaderData, page_header, skeleton_header};
-use cloudrs_ui::components::{ButtonKind, button, waveform};
+use cloudrs_ui::components::{ButtonKind, Icon, button, waveform};
 use cloudrs_ui::tokens::{self, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, EventEmitter, Window, div, px};
@@ -169,6 +169,7 @@ impl Shell {
                 }));
                 return status_view(
                     theme,
+                    Icon::Alert,
                     "track-failed",
                     i18n::page::error_title(),
                     i18n::page::error_hint(),

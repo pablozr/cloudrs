@@ -10,6 +10,7 @@ mod track;
 mod user;
 
 use cloudrs_ui::browse::skeleton_header;
+use cloudrs_ui::components::Icon;
 use cloudrs_ui::tokens::space;
 use cloudrs_ui::{Theme, motion};
 use gpui::prelude::*;
@@ -41,6 +42,7 @@ impl Shell {
                 )))
                 .child(div().flex_1().child(status_view(
                     theme,
+                    Icon::Search,
                     "resolving",
                     i18n::page::resolving_title(),
                     i18n::page::resolving_hint(),

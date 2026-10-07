@@ -16,8 +16,9 @@ use gpui::{
 };
 
 use crate::Theme;
+use crate::components::{Icon, icon};
 use crate::search_edit::SearchEdit;
-use crate::tokens::{radius, space, typography};
+use crate::tokens::{radius, size, space, typography};
 
 actions!(
     search_field,
@@ -583,6 +584,7 @@ impl Render for SearchField {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            .child(icon(Icon::Search, size::ICON_S, c.text_subtle))
             .child(
                 div()
                     .flex_1()

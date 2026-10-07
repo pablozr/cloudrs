@@ -13,7 +13,8 @@ use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, AnyView, App, Bounds, ClickEvent, Context, Div, ElementId,
     Hsla, MouseButton, MouseDownEvent, ObjectFit, PathBuilder, Pixels, Render, Role, SharedString,
-    Stateful, Window, canvas, div, fill, img, linear_color_stop, linear_gradient, point, px,
+    Stateful, Svg, Window, canvas, div, fill, img, linear_color_stop, linear_gradient, point, px,
+    svg,
 };
 
 use crate::tokens::{self, radius, size, space, typography};
@@ -74,6 +75,24 @@ pub fn button(
             .text_color(c.text_muted)
             .hover(move |s| s.bg(c.surface_raised).text_color(c.text)),
     }
+}
+
+/// The artwork tint: a vertical gradient from `color` (clamped by
+/// [`Theme::tint`]) to nothing, laid at the top of its parent. The parent must
+/// be positioned; draw it before the content so it sits behind.
+pub fn artwork_tint(theme: &Theme, color: Hsla) -> Div {
+    let top = theme.tint(color);
+    div()
+        .absolute()
+        .top(px(0.0))
+        .left(px(0.0))
+        .right(px(0.0))
+        .h(tokens::tint::HEIGHT)
+        .bg(linear_gradient(
+            180.0,
+            linear_color_stop(top, 0.0),
+            linear_color_stop(top.opacity(0.0), 1.0),
+        ))
 }
 
 /// The round play/pause button with the accent gradient.
@@ -139,7 +158,7 @@ fn paint_play_glyph(bounds: Bounds<Pixels>, playing: bool, color: Hsla, window: 
     }
 }
 
-/// Glyphs of the icon buttons.
+/// The Lucide icons in use (ISC, embedded: see [`crate::assets`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
     Previous,
@@ -152,76 +171,52 @@ pub enum Icon {
     /// Back in the navigation history.
     Back,
     Forward,
+    Search,
+    History,
+    Sun,
+    Moon,
+    Volume,
+    VolumeMuted,
+    PlayNext,
+    AddToQueue,
+    Remove,
+    /// Something went wrong (error states).
+    Alert,
 }
 
-fn paint_icon(bounds: Bounds<Pixels>, icon: Icon, color: Hsla, window: &mut Window) {
-    let side = bounds.size.width.min(bounds.size.height);
-    let unit = side / 24.0;
-    let origin = bounds.origin;
-    let at = |(x, y): (f32, f32)| point(origin.x + unit * x, origin.y + unit * y);
-    let stroke = |window: &mut Window, points: &[(f32, f32)]| {
-        let mut path = PathBuilder::stroke(unit * 2.0);
-        path.move_to(at(points[0]));
-        for point in &points[1..] {
-            path.line_to(at(*point));
-        }
-        if let Ok(path) = path.build() {
-            window.paint_path(path, color);
-        }
-    };
-    let triangle = |window: &mut Window, a: (f32, f32), b: (f32, f32), c: (f32, f32)| {
-        let mut path = PathBuilder::fill();
-        path.move_to(at(a));
-        path.line_to(at(b));
-        path.line_to(at(c));
-        path.close();
-        if let Ok(path) = path.build() {
-            window.paint_path(path, color);
-        }
-    };
-    let bar = |window: &mut Window, from: (f32, f32), to: (f32, f32)| {
-        let rect = Bounds::from_corners(at(from), at(to));
-        window.paint_quad(fill(rect, color).corner_radii(unit));
-    };
-    match icon {
-        Icon::Previous => {
-            bar(window, (6.0, 6.0), (8.5, 18.0));
-            triangle(window, (18.0, 6.0), (18.0, 18.0), (9.5, 12.0));
-        }
-        Icon::Next => {
-            bar(window, (15.5, 6.0), (18.0, 18.0));
-            triangle(window, (6.0, 6.0), (6.0, 18.0), (14.5, 12.0));
-        }
-        Icon::Back => stroke(window, &[(15.0, 5.0), (8.0, 12.0), (15.0, 19.0)]),
-        Icon::Forward => stroke(window, &[(9.0, 5.0), (16.0, 12.0), (9.0, 19.0)]),
-        Icon::Queue => {
-            bar(window, (4.0, 6.0), (18.0, 8.0));
-            bar(window, (4.0, 11.0), (18.0, 13.0));
-            bar(window, (4.0, 16.0), (11.0, 18.0));
-            triangle(window, (15.0, 14.0), (21.0, 17.0), (15.0, 20.0));
-        }
-        Icon::Shuffle => {
-            stroke(
-                window,
-                &[(3.0, 7.0), (8.0, 7.0), (15.0, 17.0), (18.0, 17.0)],
-            );
-            stroke(
-                window,
-                &[(3.0, 17.0), (8.0, 17.0), (15.0, 7.0), (18.0, 7.0)],
-            );
-            triangle(window, (17.0, 4.0), (22.0, 7.0), (17.0, 10.0));
-            triangle(window, (17.0, 14.0), (22.0, 17.0), (17.0, 20.0));
-        }
-        Icon::Repeat | Icon::RepeatOne => {
-            stroke(window, &[(4.0, 12.0), (4.0, 8.0), (17.0, 8.0)]);
-            stroke(window, &[(20.0, 12.0), (20.0, 16.0), (7.0, 16.0)]);
-            triangle(window, (16.0, 4.5), (21.0, 8.0), (16.0, 11.5));
-            triangle(window, (8.0, 12.5), (3.0, 16.0), (8.0, 19.5));
-            if icon == Icon::RepeatOne {
-                bar(window, (11.0, 10.0), (13.0, 14.0));
-            }
+impl Icon {
+    fn path(self) -> &'static str {
+        match self {
+            Self::Previous => "icons/skip-back.svg",
+            Self::Next => "icons/skip-forward.svg",
+            Self::Shuffle => "icons/shuffle.svg",
+            Self::Repeat => "icons/repeat.svg",
+            Self::RepeatOne => "icons/repeat-1.svg",
+            Self::Queue => "icons/list-music.svg",
+            Self::Back => "icons/chevron-left.svg",
+            Self::Forward => "icons/chevron-right.svg",
+            Self::Search => "icons/search.svg",
+            Self::History => "icons/history.svg",
+            Self::Sun => "icons/sun.svg",
+            Self::Moon => "icons/moon.svg",
+            Self::Volume => "icons/volume-2.svg",
+            Self::VolumeMuted => "icons/volume-x.svg",
+            Self::PlayNext => "icons/list-start.svg",
+            Self::AddToQueue => "icons/list-plus.svg",
+            Self::Remove => "icons/x.svg",
+            Self::Alert => "icons/circle-alert.svg",
         }
     }
+}
+
+/// A square icon of `side`, tinted with `color`. The glyph is a mask, so it
+/// takes any color token.
+pub fn icon(icon: Icon, side: Pixels, color: Hsla) -> Svg {
+    svg()
+        .path(icon.path())
+        .size(side)
+        .flex_none()
+        .text_color(color)
 }
 
 /// A round icon-only button. Callers add the `aria_label` and a `tooltip`.
@@ -238,43 +233,42 @@ pub fn icon_button(
         .id(id)
         .flex_none()
         .size(size::ICON_BUTTON)
-        .p(space::S2)
         .rounded(radius::FULL)
         .tab_index(0)
         .focus_visible(move |s| s.shadow(tokens::focus_ring(c.accent)))
         .cursor_pointer()
         .hover(move |s| s.bg(c.surface_hover))
-        .child(
-            canvas(
-                |_, _, _| (),
-                move |bounds, (), window, _| paint_icon(bounds, icon, color, window),
-            )
-            .size_full(),
-        )
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(self::icon(icon, size::ICON_M, color))
 }
 
-/// A small text action shown on a row while it is hovered ("Play next").
-/// It handles its own click, so the row's click does not fire.
+/// A small icon action shown on a row while it is hovered ("Play next"). It
+/// handles its own click, so the row's click does not fire. `label` is the
+/// tooltip and the accessible name.
 pub fn row_action(
     theme: &Theme,
     id: impl Into<ElementId>,
+    glyph: Icon,
     label: &'static str,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let c = theme.colors;
-    theme
-        .text(div(), typography::BODY_MUTED)
+    div()
         .id(id)
-        .px(space::S2)
-        .py(space::S1)
+        .flex()
+        .items_center()
+        .justify_center()
+        .p(space::S2)
         .rounded(radius::S)
-        .text_color(c.text_muted)
         .cursor_pointer()
         .tab_index(0)
         .focus_visible(move |s| s.shadow(tokens::focus_ring(c.accent)))
-        .hover(move |s| s.bg(c.surface_hover).text_color(c.text))
+        .hover(move |s| s.bg(c.surface_hover))
         .aria_label(label)
-        .child(label)
+        .tooltip(tooltip(label))
+        .child(icon(glyph, size::ICON_S, c.text_muted))
         .on_click(move |event, window, cx| {
             cx.stop_propagation();
             on_click(event, window, cx);

@@ -193,6 +193,24 @@ pub mod typography {
     pub const MONO: TypeToken = type_token(12.0, 16.0, 400.0, FontRole::Mono);
 }
 
+/// The soft gradient at the top of the content area, tinted by the artwork's
+/// colour. `Theme::tint` blends the colour per theme.
+pub mod tint {
+    use super::*;
+    /// How far the gradient reaches down before it is gone.
+    pub const HEIGHT: Pixels = px(360.0);
+    /// Opacity at the top.
+    pub const ALPHA_DARK: f32 = 0.26;
+    pub const ALPHA_LIGHT: f32 = 0.16;
+    /// Lightness limits, so a bright cover does not glare on dark and a dark
+    /// one does not turn the light theme grey.
+    pub const MAX_LIGHTNESS_DARK: f32 = 0.5;
+    pub const MIN_LIGHTNESS_DARK: f32 = 0.22;
+    pub const MIN_LIGHTNESS_LIGHT: f32 = 0.5;
+    pub const MAX_LIGHTNESS_LIGHT: f32 = 0.78;
+    pub const MAX_SATURATION: f32 = 0.85;
+}
+
 /// Opacity of a control that has nothing to act on yet.
 pub const DISABLED_OPACITY: f32 = 0.4;
 
@@ -223,6 +241,14 @@ pub mod size {
     /// narrow strip.
     pub const WAVEFORM_GAP: Pixels = px(2.0);
     pub const WAVEFORM_BAR_MIN: Pixels = px(0.5);
+    /// Lucide icons (24 px grid, 2 px stroke): small (row actions), medium
+    /// (buttons, sidebar, fields) and the muted one above an empty state.
+    pub const ICON_S: Pixels = px(16.0);
+    pub const ICON_M: Pixels = px(20.0);
+    pub const ICON_STATUS: Pixels = px(40.0);
+    /// The logo symbol next to the wordmark. Clear space is a quarter of it.
+    pub const LOGO: Pixels = px(32.0);
+    pub const LOGO_CLEAR_SPACE: Pixels = px(8.0);
     /// Round icon buttons (previous, next, shuffle, repeat, queue).
     pub const ICON_BUTTON: Pixels = px(34.0);
     /// The queue side panel.

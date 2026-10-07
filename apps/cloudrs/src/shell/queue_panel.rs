@@ -4,7 +4,7 @@
 use std::ops::Range;
 
 use cloudrs_ui::Theme;
-use cloudrs_ui::components::{TrackRowData, drag_preview, row_action, track_row};
+use cloudrs_ui::components::{Icon, TrackRowData, drag_preview, row_action, track_row};
 use cloudrs_ui::tokens::{size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Render, Role, SharedString, Window, div, px, uniform_list};
@@ -40,6 +40,7 @@ impl Shell {
         let body = if count == 0 {
             status_view(
                 theme,
+                Icon::Queue,
                 "queue-empty",
                 i18n::queue::empty_title(),
                 i18n::queue::empty_hint(),
@@ -92,6 +93,7 @@ impl Shell {
                         row_action(
                             &theme,
                             ("queue-remove", ix),
+                            Icon::Remove,
                             i18n::queue::remove(),
                             cx.listener(move |this, _, _, _| {
                                 this.send(Command::RemoveFromQueue(ix));

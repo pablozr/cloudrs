@@ -925,8 +925,10 @@ version = "0.1.0"
 dependencies = [
  "cloudrs-ui",
  "dirs",
+ "embed-resource",
  "gpui",
  "gpui_platform",
+ "image",
  "sc-core",
  "tracing",
  "tracing-subscriber",

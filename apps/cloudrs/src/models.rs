@@ -6,10 +6,11 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-pub use sc_core::{ListId, ListItems, PlaylistId, SearchKind, TrackId, UserId};
+pub use sc_core::{ArtKey, ListId, ListItems, PlaylistId, SearchKind, TrackId, UserId};
 use sc_core::{PlaylistPage, TrackPage, UserPage};
 
 use crate::state::ArtworkMap;
+use crate::tint::Rgb;
 
 /// How close to the end of the list (in rows) the next page is requested.
 const LOAD_MORE_MARGIN: usize = 5;
@@ -161,6 +162,29 @@ pub struct Art {
     pub tracks: ArtworkMap,
     pub users: HashMap<UserId, Arc<Path>>,
     pub playlists: HashMap<PlaylistId, Arc<Path>>,
+    /// Dominant colour by image: present once requested, `Some` once computed
+    /// (`None` when the file was unreadable).
+    tints: HashMap<ArtKey, Option<Rgb>>,
+}
+
+impl Art {
+    /// Marks the image's colour as requested. True only the first time, so
+    /// each image is decoded once.
+    pub fn begin_tint(&mut self, key: ArtKey) -> bool {
+        if self.tints.contains_key(&key) {
+            return false;
+        }
+        self.tints.insert(key, None);
+        true
+    }
+
+    pub fn set_tint(&mut self, key: ArtKey, color: Option<Rgb>) {
+        self.tints.insert(key, color);
+    }
+
+    pub fn tint(&self, key: ArtKey) -> Option<Rgb> {
+        self.tints.get(&key).copied().flatten()
+    }
 }
 
 /// Everything the browsing screens render.
@@ -376,6 +400,19 @@ mod tests {
         assert!(models.fail_loading_pages());
         assert_eq!(models.playlists[&PlaylistId(1)], Page::Failed);
         assert!(!models.fail_loading_pages(), "nothing left waiting");
+    }
+
+    #[test]
+    fn an_image_colour_is_requested_once() {
+        let mut art = Art::default();
+        let key = ArtKey::Track(TrackId(1));
+        assert!(art.begin_tint(key));
+        assert!(!art.begin_tint(key), "already requested");
+        assert_eq!(art.tint(key), None, "not computed yet");
+
+        art.set_tint(key, Some(Rgb(255, 85, 0)));
+        assert!(!art.begin_tint(key), "a computed colour is kept");
+        assert_eq!(art.tint(key), Some(Rgb(255, 85, 0)));
     }
 
     #[test]
