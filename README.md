@@ -46,6 +46,8 @@ The beta is **not code-signed** yet, so your system will warn you the first time
 - **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**.
 - **macOS:** right-click the app, choose **Open**, then confirm.
 
+Signed Windows builds are on the way; see the [code signing policy](#code-signing-policy).
+
 ## What it does
 
 **Home**
@@ -214,6 +216,36 @@ SoundCloud.
 - A Jam shares only what is playing, never the audio.
 
 All trademarks belong to their owners.
+
+## Code signing policy
+
+cloudrs is applying to the [SignPath Foundation](https://signpath.org) for free code signing of
+its Windows releases. Once accepted: free code signing provided by
+[SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Only the installers built by this repository's
+  [release workflow](.github/workflows/release.yml), on GitHub-hosted runners from a `v*` tag,
+  are signed. Nothing built on a personal machine is.
+- Every signing request is approved by hand before it is signed.
+
+**Team roles**
+
+| Role | Members |
+| --- | --- |
+| Committers and reviewers | [pablozr](https://github.com/pablozr) |
+| Approvers | [pablozr](https://github.com/pablozr) |
+
+**Privacy.** cloudrs collects no telemetry and has no server of its own. It connects only to
+what you use:
+
+- **SoundCloud**, to browse, stream and manage your account
+  ([SoundCloud privacy policy](https://soundcloud.com/pages/privacy)). Your sign-in token stays
+  in your system's keychain.
+- **Discord**, through the Discord app on your computer, to show what you are listening to.
+  It can be turned off on the Account screen ([Discord privacy policy](https://discord.com/privacy)).
+- **Jam**, only when you start or join one: a peer-to-peer connection to the other listeners,
+  through public [iroh](https://iroh.computer) relay servers when a direct path is not possible.
+  It carries what is playing and your name and avatar, never the audio.
 
 ## License
 

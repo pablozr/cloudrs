@@ -26,7 +26,7 @@ from a website. PLAN M5 named `cargo-dist` or `cargo-packager` for packages.
 4. **Release builds are GUI apps on Windows** (`windows_subsystem = "windows"` outside debug
    builds), so no console window opens next to cloudrs.
 5. **Not code-signed yet.** SmartScreen and Gatekeeper warn on first launch; the README explains
-   how to continue. Signing comes with M5.
+   how to continue. Signing comes with M5 (see ADR 0016).
 
 ## Consequences
 

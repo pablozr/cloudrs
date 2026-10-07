@@ -50,3 +50,33 @@ jobs:
             target/packages/*.AppImage
             target/packages/*.dmg
           if-no-files-found: error
+      # Code signing (ADR 0016): off until the SignPath Foundation accepts the
+      # project and the SIGNPATH_* variables and secret are set on the repository.
+      - name: Upload the installer to sign
+        id: unsigned
+        if: runner.os == 'Windows' && vars.SIGNPATH_PROJECT_SLUG != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudrs-windows-unsigned
+          path: target/packages/*.exe
+          if-no-files-found: error
+      - name: Sign the installer with SignPath
+        if: steps.unsigned.outcome == 'success'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Each request waits for a manual approval on SignPath.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: target/signed
+      - name: Upload the signed installer
+        if: steps.unsigned.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudrs-windows-signed
+          path: target/signed/*.exe
+          if-no-files-found: error
