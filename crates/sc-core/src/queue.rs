@@ -153,7 +153,18 @@ impl Queue {
 
     fn insert_up_next(&mut self, at: usize, track: TrackSummary) {
         let entry = self.entry(track);
-        self.original.push(entry.key);
+        // In the pre-shuffle order the track sits right after the entry it
+        // follows now, so turning shuffle off keeps it where it was queued.
+        let after = at.checked_sub(1).map(|i| self.entries[i].key);
+        let spot = match after {
+            Some(key) => self
+                .original
+                .iter()
+                .position(|k| *k == key)
+                .map_or(self.original.len(), |p| p + 1),
+            None => 0,
+        };
+        self.original.insert(spot, entry.key);
         self.entries.insert(at, entry);
         self.up_next += 1;
     }
@@ -478,6 +489,16 @@ mod tests {
         q.extend_context(vec![track(9)]);
         q.set_shuffle(false);
         assert_eq!(ids(&q), [1, 2, 3, 4, 5, 9]);
+    }
+
+    #[test]
+    fn queued_tracks_come_back_next_to_the_current_one_when_unshuffled() {
+        let mut q = queue(&[1, 2, 3, 4, 5], 0);
+        q.set_shuffle(true);
+        q.play_next(track(9));
+        q.add_to_queue(track(8));
+        q.set_shuffle(false);
+        assert_eq!(ids(&q), [1, 9, 8, 2, 3, 4, 5]);
     }
 
     #[test]
