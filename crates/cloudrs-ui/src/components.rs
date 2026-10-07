@@ -441,8 +441,8 @@ pub fn waveform(
             // instead of the bars running past the end.
             let count = samples.len() as f32;
             let pitch = bounds.size.width / count;
-            let gap = (pitch * 0.4).min(px(2.0));
-            let bar = (pitch - gap).max(px(0.5));
+            let gap = (pitch * tokens::WAVEFORM_GAP_RATIO).min(size::WAVEFORM_GAP);
+            let bar = (pitch - gap).max(size::WAVEFORM_BAR_MIN);
             let height = bounds.size.height;
             for (i, sample) in samples.iter().enumerate() {
                 let x = bounds.origin.x + pitch * i as f32;

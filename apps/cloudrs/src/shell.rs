@@ -234,7 +234,8 @@ impl Shell {
         }
         // Playback ticks leave both false: they must not re-render the list or
         // the queue panel. Only the play/pause flip (inside `changed`) does.
-        if changed || (queue_changed && self.queue_open) {
+        let artwork_in_queue = self.queue_open && self.queue.shows_artwork_of(&event);
+        if changed || artwork_in_queue || (queue_changed && self.queue_open) {
             cx.notify();
         }
     }
