@@ -6,7 +6,15 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sc_core::{Event, PlayState, Playback, QueueSnapshot, Repeat, TrackId, TrackSummary};
+use sc_core::{
+    ArtKey, Event, ListId, ListItems, PlayState, Playback, QueueSnapshot, Repeat, SearchKind,
+    TrackId, TrackSummary,
+};
+
+/// The only list the screen draws for now: the track results of the search.
+pub const TRACK_SEARCH: ListId = ListId::Search {
+    kind: SearchKind::Tracks,
+};
 
 /// Artwork files by track, as the core reports them.
 pub type ArtworkMap = HashMap<TrackId, Arc<Path>>;
@@ -60,34 +68,41 @@ impl ResultsState {
     /// so playback ticks never re-render it.
     pub fn apply(&mut self, event: &Event) -> bool {
         match event {
-            Event::Searching { query } => {
+            Event::Searching {
+                query,
+                kind: SearchKind::Tracks,
+            } => {
                 self.query.clone_from(query);
                 self.phase = Phase::Searching;
                 self.loading_more = false;
                 true
             }
-            Event::Results {
-                query,
-                tracks,
+            Event::List {
+                list: TRACK_SEARCH,
+                items: ListItems::Tracks(tracks),
                 append,
                 has_more,
             } => {
                 if *append {
                     self.tracks.extend(tracks.iter().cloned());
                 } else {
-                    self.query.clone_from(query);
                     self.tracks.clone_from(tracks);
-                    self.phase = if query.is_empty() {
-                        Phase::Empty
-                    } else {
+                    // A list without a preceding `Searching` is a cleared query.
+                    self.phase = if self.phase == Phase::Searching {
                         Phase::Ready
+                    } else {
+                        Phase::Empty
                     };
                 }
                 self.has_more = *has_more;
                 self.loading_more = false;
                 true
             }
-            Event::SearchFailed { query, append, .. } => {
+            Event::ListFailed {
+                list: TRACK_SEARCH,
+                append,
+                ..
+            } => {
                 if *append {
                     // The core drops the next page when loading it fails and will
                     // not offer it again, so stop asking.
@@ -95,7 +110,7 @@ impl ResultsState {
                     self.has_more = false;
                     return true;
                 }
-                if self.phase != Phase::Searching || *query != self.query {
+                if self.phase != Phase::Searching {
                     return false;
                 }
                 self.phase = Phase::Failed;
@@ -110,12 +125,16 @@ impl ResultsState {
                 let playing = playback.state == PlayState::Playing;
                 std::mem::replace(&mut self.playing, playing) != playing
             }
-            Event::Artwork { track, path } => {
+            Event::Artwork {
+                key: ArtKey::Track(track),
+                path,
+            } => {
                 self.artwork.insert(*track, Arc::from(path.as_path()));
                 self.tracks.iter().any(|t| t.id == *track)
             }
-            // Playback problems only drive the toast, never the results.
-            Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) | Event::Stopped => false,
+            // Playback problems only drive the toast, never the results; the
+            // other screens' events are not drawn yet.
+            _ => false,
         }
     }
 
@@ -153,7 +172,11 @@ impl QueueState {
     /// Whether `event` brings the cover of a queued track, so an open panel
     /// must redraw (restored, autoplay and older-search tracks included).
     pub fn shows_artwork_of(&self, event: &Event) -> bool {
-        let Event::Artwork { track, .. } = event else {
+        let Event::Artwork {
+            key: ArtKey::Track(track),
+            ..
+        } = event
+        else {
             return false;
         };
         self.snapshot.tracks.iter().any(|t| t.id == *track)
@@ -213,7 +236,10 @@ impl PlayerState {
             Event::Waveform { track, bars } if self.is_current(*track) => {
                 self.waveform = Some(Arc::from(bars.as_slice()));
             }
-            Event::Artwork { track, .. } if self.is_current(*track) => {
+            Event::Artwork {
+                key: ArtKey::Track(track),
+                ..
+            } if self.is_current(*track) => {
                 self.artwork = artwork.get(track).cloned();
             }
             Event::Playback(playback) => self.playback = *playback,
@@ -292,23 +318,31 @@ mod tests {
             id: TrackId(id),
             title: format!("Track {id}"),
             artist: "Artist".into(),
+            artist_id: None,
             duration: Duration::from_secs(200),
             preview_only: false,
         }
     }
 
-    fn results(query: &str, ids: &[u64], append: bool, has_more: bool) -> Event {
-        Event::Results {
+    fn searching(query: &str) -> Event {
+        Event::Searching {
             query: query.into(),
-            tracks: ids.iter().map(|id| track(*id)).collect(),
+            kind: SearchKind::Tracks,
+        }
+    }
+
+    fn results(ids: &[u64], append: bool, has_more: bool) -> Event {
+        Event::List {
+            list: TRACK_SEARCH,
+            items: ListItems::Tracks(ids.iter().map(|id| track(*id)).collect()),
             append,
             has_more,
         }
     }
 
-    fn search_failed(query: &str, append: bool) -> Event {
-        Event::SearchFailed {
-            query: query.into(),
+    fn search_failed(append: bool) -> Event {
+        Event::ListFailed {
+            list: TRACK_SEARCH,
             append,
             problem: Problem::Offline,
         }
@@ -325,19 +359,18 @@ mod tests {
 
     fn ready(ids: &[u64], has_more: bool) -> ResultsState {
         let mut state = ResultsState::new();
-        state.apply(&results("house", ids, false, has_more));
+        state.apply(&searching("house"));
+        state.apply(&results(ids, false, has_more));
         state
     }
 
     #[test]
     fn a_search_shows_loading_then_replaces_the_results() {
         let mut state = ready(&[1, 2], false);
-        assert!(state.apply(&Event::Searching {
-            query: "techno".into()
-        }));
+        assert!(state.apply(&searching("techno")));
         assert_eq!(state.phase, Phase::Searching);
 
-        state.apply(&results("techno", &[3], false, true));
+        state.apply(&results(&[3], false, true));
         assert_eq!(state.phase, Phase::Ready);
         assert_eq!(state.tracks, vec![track(3)]);
         assert!(state.has_more);
@@ -347,7 +380,7 @@ mod tests {
     fn a_next_page_is_appended() {
         let mut state = ready(&[1, 2], true);
         state.loading_more = true;
-        state.apply(&results("house", &[3, 4], true, false));
+        state.apply(&results(&[3, 4], true, false));
         let ids: Vec<u64> = state.tracks.iter().map(|t| t.id.0).collect();
         assert_eq!(ids, [1, 2, 3, 4]);
         assert!(!state.has_more);
@@ -357,7 +390,7 @@ mod tests {
     #[test]
     fn an_empty_query_returns_to_the_initial_state() {
         let mut state = ready(&[1], false);
-        state.apply(&results("", &[], false, false));
+        state.apply(&results(&[], false, false));
         assert_eq!(state.phase, Phase::Empty);
         assert!(state.tracks.is_empty());
     }
@@ -365,30 +398,16 @@ mod tests {
     #[test]
     fn a_failed_search_leaves_loading_and_can_be_retried() {
         let mut state = ResultsState::new();
-        state.apply(&Event::Searching {
-            query: "house".into(),
-        });
-        assert!(state.apply(&search_failed("house", false)));
+        state.apply(&searching("house"));
+        assert!(state.apply(&search_failed(false)));
         assert_eq!(state.phase, Phase::Failed);
         assert_eq!(state.query, "house");
     }
 
     #[test]
-    fn a_failure_of_an_older_query_is_ignored() {
-        let mut state = ResultsState::new();
-        state.apply(&Event::Searching {
-            query: "house".into(),
-        });
-        assert!(!state.apply(&search_failed("hou", false)));
-        assert_eq!(state.phase, Phase::Searching);
-    }
-
-    #[test]
     fn an_audio_problem_during_a_search_keeps_the_skeleton() {
         let mut state = ResultsState::new();
-        state.apply(&Event::Searching {
-            query: "house".into(),
-        });
+        state.apply(&searching("house"));
         let audio = Event::Problem(Problem::Audio("device lost".into()));
         assert!(!state.apply(&audio));
         assert_eq!(state.phase, Phase::Searching);
@@ -405,7 +424,7 @@ mod tests {
     fn a_failed_next_page_stops_asking_for_more() {
         let mut state = ready(&[1, 2], true);
         assert!(state.take_load_more(2));
-        assert!(state.apply(&search_failed("house", true)));
+        assert!(state.apply(&search_failed(true)));
         assert!(!state.loading_more);
         assert!(!state.take_load_more(2));
         assert_eq!(state.phase, Phase::Ready);
@@ -428,7 +447,7 @@ mod tests {
         assert!(state.take_load_more(26), "within the margin");
         assert!(!state.take_load_more(30), "already loading");
 
-        state.apply(&results("house", &[31], true, true));
+        state.apply(&results(&[31], true, true));
         assert!(state.take_load_more(31), "the next page can be requested");
     }
 
@@ -437,9 +456,9 @@ mod tests {
         let mut last_page = ready(&[1, 2], false);
         assert!(!last_page.take_load_more(2));
 
-        let mut searching = ready(&[1, 2], true);
-        searching.apply(&Event::Searching { query: "x".into() });
-        assert!(!searching.take_load_more(2));
+        let mut state = ready(&[1, 2], true);
+        state.apply(&searching("x"));
+        assert!(!state.take_load_more(2));
     }
 
     #[test]
@@ -459,7 +478,7 @@ mod tests {
     fn artwork_is_kept_and_only_visible_rows_re_render() {
         let mut state = ready(&[1], false);
         let artwork = |id: u64| Event::Artwork {
-            track: TrackId(id),
+            key: ArtKey::Track(TrackId(id)),
             path: PathBuf::from(format!("/cache/{id}.jpg")),
         };
         assert!(state.apply(&artwork(1)));
@@ -541,7 +560,7 @@ mod tests {
         let mut queue = QueueState::default();
         queue.apply(&snapshot(&[1, 2], Some(0)));
         let artwork = |id: u64| Event::Artwork {
-            track: TrackId(id),
+            key: ArtKey::Track(TrackId(id)),
             path: PathBuf::from("/cache/x.jpg"),
         };
         assert!(queue.shows_artwork_of(&artwork(2)));

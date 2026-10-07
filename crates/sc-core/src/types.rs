@@ -5,12 +5,59 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TrackId(pub u64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UserId(pub u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlaylistId(pub u64);
+
+/// What a search looks for (the tabs of the search screen).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum SearchKind {
+    #[default]
+    Tracks,
+    People,
+    Playlists,
+    Albums,
+}
+
+/// Every list the core serves and pages (ADR 0008).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ListId {
+    Search { kind: SearchKind },
+    UserTracks(UserId),
+    UserPlaylists(UserId),
+    UserLikes(UserId),
+    Playlist(PlaylistId),
+    Related(TrackId),
+    History,
+}
+
+/// The rows of one list page.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListItems {
+    Tracks(Vec<TrackSummary>),
+    Users(Vec<UserSummary>),
+    Playlists(Vec<PlaylistSummary>),
+}
+
+/// An image the core caches on disk and announces with `Event::Artwork`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArtKey {
+    Track(TrackId),
+    User(UserId),
+    Playlist(PlaylistId),
+}
+
 /// What a list row or the player bar needs to show a track.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrackSummary {
     pub id: TrackId,
     pub title: String,
     pub artist: String,
+    /// The uploader, to open their profile. `None` for tracks restored from
+    /// a saved queue or the history.
+    pub artist_id: Option<UserId>,
     pub duration: Duration,
     /// SoundCloud only allows a 30-second preview (GO+).
     pub preview_only: bool,
@@ -26,8 +73,164 @@ impl TrackSummary {
                 .as_ref()
                 .map(|user| user.username.clone())
                 .unwrap_or_default(),
+            artist_id: track
+                .user
+                .as_ref()
+                .filter(|user| user.id != 0)
+                .map(|user| UserId(user.id)),
             duration: Duration::from_millis(track.full_duration.unwrap_or(track.duration)),
             preview_only: track.is_preview_only(),
+        }
+    }
+}
+
+/// A person in a search result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserSummary {
+    pub id: UserId,
+    pub username: String,
+    pub followers: Option<u64>,
+    pub track_count: Option<u64>,
+    pub verified: bool,
+}
+
+impl UserSummary {
+    pub(crate) fn from_api(user: &sc_api::models::User) -> Self {
+        Self {
+            id: UserId(user.id),
+            username: user.username.clone(),
+            followers: user.followers_count,
+            track_count: user.track_count,
+            verified: user.verified.unwrap_or(false),
+        }
+    }
+}
+
+/// A playlist or an album in a list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlaylistSummary {
+    pub id: PlaylistId,
+    pub title: String,
+    pub owner: String,
+    pub owner_id: Option<UserId>,
+    pub track_count: u64,
+    pub is_album: bool,
+}
+
+impl PlaylistSummary {
+    pub(crate) fn from_api(playlist: &sc_api::models::Playlist) -> Self {
+        Self {
+            id: PlaylistId(playlist.id),
+            title: playlist.title.clone(),
+            owner: owner_name(playlist),
+            owner_id: owner_id(playlist),
+            track_count: playlist.track_count.unwrap_or(playlist.tracks.len() as u64),
+            is_album: is_album(playlist),
+        }
+    }
+}
+
+fn is_album(playlist: &sc_api::models::Playlist) -> bool {
+    playlist.is_album.unwrap_or(false) || playlist.set_type.as_deref() == Some("album")
+}
+
+fn owner_name(playlist: &sc_api::models::Playlist) -> String {
+    playlist
+        .user
+        .as_ref()
+        .map(|user| user.username.clone())
+        .unwrap_or_default()
+}
+
+fn owner_id(playlist: &sc_api::models::Playlist) -> Option<UserId> {
+    playlist
+        .user
+        .as_ref()
+        .filter(|user| user.id != 0)
+        .map(|user| UserId(user.id))
+}
+
+/// The header of the track screen. The cover arrives as `Event::Artwork`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackPage {
+    pub track: TrackSummary,
+    pub description: Option<String>,
+    pub plays: Option<u64>,
+    pub likes: Option<u64>,
+    pub comments: Option<u64>,
+    /// As SoundCloud sends it (ISO 8601), for the UI to format.
+    pub created_at: Option<String>,
+    pub permalink: String,
+}
+
+impl TrackPage {
+    pub(crate) fn from_api(track: &sc_api::models::Track) -> Self {
+        Self {
+            track: TrackSummary::from_api(track),
+            description: track.description.clone().filter(|text| !text.is_empty()),
+            plays: track.playback_count,
+            likes: track.likes_count,
+            comments: track.comment_count,
+            created_at: track.created_at.clone(),
+            permalink: track.permalink_url.clone(),
+        }
+    }
+}
+
+/// The header of the profile screen. The avatar arrives as `Event::Artwork`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserPage {
+    pub id: UserId,
+    pub username: String,
+    pub full_name: Option<String>,
+    pub city: Option<String>,
+    pub description: Option<String>,
+    pub followers: Option<u64>,
+    pub followings: Option<u64>,
+    pub track_count: Option<u64>,
+    pub verified: bool,
+}
+
+impl UserPage {
+    pub(crate) fn from_api(user: &sc_api::models::User) -> Self {
+        let text = |value: &Option<String>| value.clone().filter(|text| !text.is_empty());
+        Self {
+            id: UserId(user.id),
+            username: user.username.clone(),
+            full_name: text(&user.full_name),
+            city: text(&user.city),
+            description: text(&user.description),
+            followers: user.followers_count,
+            followings: user.followings_count,
+            track_count: user.track_count,
+            verified: user.verified.unwrap_or(false),
+        }
+    }
+}
+
+/// The header of the playlist or album screen. The cover arrives as
+/// `Event::Artwork`; the tracks as `Event::List` for `ListId::Playlist`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlaylistPage {
+    pub id: PlaylistId,
+    pub title: String,
+    pub owner: String,
+    pub owner_id: Option<UserId>,
+    pub track_count: u64,
+    pub duration: Duration,
+    pub is_album: bool,
+}
+
+impl PlaylistPage {
+    pub(crate) fn from_api(playlist: &sc_api::models::Playlist) -> Self {
+        Self {
+            id: PlaylistId(playlist.id),
+            title: playlist.title.clone(),
+            owner: owner_name(playlist),
+            owner_id: owner_id(playlist),
+            track_count: playlist.track_count.unwrap_or(playlist.tracks.len() as u64),
+            duration: Duration::from_millis(playlist.duration),
+            is_album: is_album(playlist),
         }
     }
 }
@@ -60,8 +263,8 @@ pub enum Problem {
     RateLimited,
     /// The track, user or link does not exist or is private.
     NotFound,
-    /// The pasted link is not a SoundCloud track.
-    NotATrack,
+    /// The pasted link is not a track, profile or playlist cloudrs can open.
+    UnsupportedLink,
     /// Only a GO+ preview exists for this track.
     PreviewOnly,
     /// The track exists but cannot be played here (region, encrypted stream, format).

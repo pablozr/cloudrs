@@ -12,7 +12,7 @@ use crate::types::{Repeat, TrackId, TrackSummary};
 /// Name of the database file inside the data folder.
 pub const FILE_NAME: &str = "cloudrs.db";
 /// Bumped with every schema change; `migrate` upgrades older files.
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 /// How long a query waits when another instance has the file locked.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -137,6 +137,16 @@ fn migrate(conn: &Connection) -> Result<(), OpenError> {
         )
         .map_err(classify)?;
     }
+    if version < 2 {
+        // The history screen lists rows like any other track list. Rows
+        // written before this version keep a zero duration and no cover.
+        tx.execute_batch(
+            "ALTER TABLE history ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE history ADD COLUMN preview_only INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE history ADD COLUMN artwork_url TEXT;",
+        )
+        .map_err(classify)?;
+    }
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(classify)?;
     tx.commit().map_err(classify)
@@ -225,6 +235,7 @@ pub fn load_session(conn: &Connection) -> rusqlite::Result<Option<Session>> {
                     id: TrackId(row.get::<_, i64>(0)? as u64),
                     title: row.get(1)?,
                     artist: row.get(2)?,
+                    artist_id: None,
                     duration: Duration::from_millis(row.get::<_, i64>(3)?.max(0) as u64),
                     preview_only: row.get(4)?,
                 },
@@ -246,13 +257,50 @@ pub fn load_session(conn: &Connection) -> rusqlite::Result<Option<Session>> {
 pub fn record_play(
     conn: &Connection,
     track: &TrackSummary,
+    artwork_url: Option<&str>,
     played_at: i64,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "INSERT INTO history (track_id, title, artist, played_at) VALUES (?1, ?2, ?3, ?4)",
-        params![track.id.0 as i64, track.title, track.artist, played_at],
+        "INSERT INTO history
+             (track_id, title, artist, duration_ms, preview_only, artwork_url, played_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            track.id.0 as i64,
+            track.title,
+            track.artist,
+            track.duration.as_millis() as i64,
+            track.preview_only,
+            artwork_url,
+            played_at
+        ],
     )?;
     Ok(())
+}
+
+/// The most recently played tracks, newest first, each track once.
+pub fn recent_history(conn: &Connection, limit: u32) -> rusqlite::Result<Vec<SessionTrack>> {
+    let mut query = conn.prepare(
+        "SELECT track_id, title, artist, duration_ms, preview_only, artwork_url
+         FROM history
+         WHERE id IN (SELECT MAX(id) FROM history GROUP BY track_id)
+         ORDER BY id DESC
+         LIMIT ?1",
+    )?;
+    query
+        .query_map([limit], |row| {
+            Ok(SessionTrack {
+                track: TrackSummary {
+                    id: TrackId(row.get::<_, i64>(0)? as u64),
+                    title: row.get(1)?,
+                    artist: row.get(2)?,
+                    artist_id: None,
+                    duration: Duration::from_millis(row.get::<_, i64>(3)?.max(0) as u64),
+                    preview_only: row.get(4)?,
+                },
+                artwork_url: row.get(5)?,
+            })
+        })?
+        .collect()
 }
 
 #[cfg(test)]
@@ -278,6 +326,7 @@ mod tests {
                 id: TrackId(id),
                 title: format!("Title {id}"),
                 artist: "Artist".into(),
+                artist_id: None,
                 duration: Duration::from_millis(215_500),
                 preview_only: id.is_multiple_of(2),
             },
@@ -327,8 +376,8 @@ mod tests {
     fn history_keeps_every_play() {
         let conn = memory();
         let track = item(5, None).track;
-        record_play(&conn, &track, 1_000).unwrap();
-        record_play(&conn, &track, 2_000).unwrap();
+        record_play(&conn, &track, None, 1_000).unwrap();
+        record_play(&conn, &track, None, 2_000).unwrap();
         let rows: Vec<(i64, i64)> = conn
             .prepare("SELECT track_id, played_at FROM history ORDER BY played_at")
             .unwrap()
@@ -337,6 +386,45 @@ mod tests {
             .map(Result::unwrap)
             .collect();
         assert_eq!(rows, [(5, 1_000), (5, 2_000)]);
+    }
+
+    #[test]
+    fn recent_history_lists_each_track_once_newest_first() {
+        let conn = memory();
+        let (a, b) = (item(1, None).track, item(2, None).track);
+        record_play(&conn, &a, Some("https://a/1.jpg"), 1_000).unwrap();
+        record_play(&conn, &b, None, 2_000).unwrap();
+        record_play(&conn, &a, Some("https://a/1.jpg"), 3_000).unwrap();
+
+        let rows = recent_history(&conn, 10).unwrap();
+        let ids: Vec<u64> = rows.iter().map(|row| row.track.id.0).collect();
+        assert_eq!(ids, [1, 2]);
+        assert_eq!(rows[0].track, a);
+        assert_eq!(rows[0].artwork_url.as_deref(), Some("https://a/1.jpg"));
+        assert_eq!(recent_history(&conn, 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_version_one_database_gains_the_history_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE session (id INTEGER);
+             CREATE TABLE queue_items (position INTEGER);
+             CREATE TABLE history (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 track_id INTEGER NOT NULL,
+                 title TEXT NOT NULL,
+                 artist TEXT NOT NULL,
+                 played_at INTEGER NOT NULL
+             );
+             INSERT INTO history (track_id, title, artist, played_at) VALUES (7, 'Old', 'A', 1);
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        let rows = recent_history(&conn, 10).unwrap();
+        assert_eq!(rows[0].track.title, "Old");
+        assert_eq!(rows[0].track.duration, Duration::ZERO);
     }
 
     #[test]

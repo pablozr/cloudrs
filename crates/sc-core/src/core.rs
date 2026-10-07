@@ -7,20 +7,26 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use sc_api::models::{Page, Resource, Track};
+use sc_api::models::{Playlist, Resource, Track, User};
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
 use tokio::task::JoinHandle;
 
 use crate::listen::Listened;
+use crate::lists::{self, Fetched, ListState, SEARCH_KINDS};
 use crate::queue::{Queue, Step};
 use crate::store::{self, Session, SessionTrack};
-use crate::types::{PlayState, Playback, Problem, TrackId, TrackSummary};
+use crate::types::{
+    ArtKey, ListId, ListItems, PlayState, Playback, PlaylistId, PlaylistPage, PlaylistSummary,
+    Problem, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage, UserSummary,
+};
 use crate::{Command, CoreConfig, Event, artwork, waveform};
 
 /// How long the search waits for more typing.
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(300);
-/// Results per page.
-const PAGE_SIZE: u32 = 30;
+/// Tracks the history screen lists.
+const HISTORY_LIMIT: u32 = 200;
+/// Ids per `/tracks?ids=` call when filling a playlist.
+const FILL_BATCH: usize = 50;
 /// Past this position "previous" restarts the track instead of going back.
 const RESTART_AFTER: Duration = Duration::from_secs(3);
 /// How often the session is saved while playing.
@@ -39,12 +45,39 @@ enum Input {
     Ui(Command),
     UiClosed,
     Audio(sc_audio::Event),
-    SearchDone {
+    ListDone {
+        list: ListId,
         generation: u64,
         append: bool,
-        result: sc_api::Result<Page<Track>>,
+        result: sc_api::Result<Fetched>,
     },
-    Resolved(sc_api::Result<Resource>),
+    /// A screen's header answers carry the navigation counter of their request.
+    TrackOpened {
+        nav: u64,
+        result: sc_api::Result<Box<Track>>,
+    },
+    UserOpened {
+        nav: u64,
+        result: sc_api::Result<Box<User>>,
+    },
+    PlaylistOpened {
+        nav: u64,
+        result: sc_api::Result<Box<Playlist>>,
+    },
+    /// Every track of a playlist, partial ones filled in, in playlist order.
+    PlaylistTracks {
+        id: PlaylistId,
+        generation: u64,
+        result: sc_api::Result<Vec<Track>>,
+    },
+    HistoryLoaded {
+        generation: u64,
+        result: rusqlite::Result<Vec<SessionTrack>>,
+    },
+    Resolved {
+        nav: u64,
+        result: sc_api::Result<Resource>,
+    },
     StreamReady {
         generation: u64,
         start_at: Option<Duration>,
@@ -59,7 +92,7 @@ enum Input {
     },
     RelatedDone {
         generation: u64,
-        result: sc_api::Result<Page<Track>>,
+        result: sc_api::Result<sc_api::models::Page<Track>>,
     },
     /// The debounced session save after a volume change.
     SaveDue,
@@ -71,7 +104,7 @@ enum Input {
         bars: Vec<f32>,
     },
     ArtworkReady {
-        track: TrackId,
+        key: ArtKey,
         path: PathBuf,
     },
 }
@@ -174,10 +207,11 @@ async fn run<A: SoundCloudApi + 'static>(
         artwork_dir: config.cache_dir.join("artwork"),
         tracks: HashMap::new(),
         query: String::new(),
-        generation: 0,
-        search: None,
-        next_page: None,
-        results: Vec::new(),
+        kind: SearchKind::default(),
+        lists: HashMap::new(),
+        list_gen: 0,
+        nav_gen: 0,
+        other_art: HashMap::new(),
         queue: Queue::new(shuffle_seed()),
         stopped: false,
         dirty: false,
@@ -212,6 +246,32 @@ async fn run<A: SoundCloudApi + 'static>(
     }
 }
 
+/// Completes the tracks of a playlist that only carry an id, fetching them
+/// `FILL_BATCH` at a time. Tracks SoundCloud no longer returns are dropped.
+async fn fill_tracks<A: SoundCloudApi>(api: &A, tracks: Vec<Track>) -> sc_api::Result<Vec<Track>> {
+    let missing: Vec<u64> = tracks
+        .iter()
+        .filter(|t| t.title.is_empty())
+        .map(|t| t.id)
+        .collect();
+    let mut filled = HashMap::new();
+    for batch in missing.chunks(FILL_BATCH) {
+        for track in api.tracks(batch).await? {
+            filled.insert(track.id, track);
+        }
+    }
+    Ok(tracks
+        .into_iter()
+        .filter_map(|t| {
+            if t.title.is_empty() {
+                filled.remove(&t.id)
+            } else {
+                Some(t)
+            }
+        })
+        .collect())
+}
+
 /// Any value works as a shuffle seed; the clock is enough.
 fn shuffle_seed() -> u64 {
     std::time::SystemTime::now()
@@ -228,15 +288,20 @@ struct Core<A> {
     artwork_dir: PathBuf,
     /// Every track seen in this session, by id.
     tracks: HashMap<TrackId, Track>,
-    /// The query the current results belong to.
+    /// The text of the current search.
     query: String,
-    /// Bumped on every search; results from older searches are dropped.
-    generation: u64,
-    search: Option<JoinHandle<()>>,
-    /// The last page received, kept for its `next_href`.
-    next_page: Option<Page<Track>>,
-    /// The tracks of the current search, in order: the context of `Play`.
-    results: Vec<TrackSummary>,
+    /// The search tab.
+    kind: SearchKind,
+    /// Every list served: paging state and the track rows of the context of
+    /// `Play`. Re-opening a screen replaces its lists.
+    lists: HashMap<ListId, ListState>,
+    /// Source of list generations: a new or reset list takes the next number,
+    /// so answers meant for its predecessor are dropped.
+    list_gen: u64,
+    /// Bumped on every screen open: a slow older header is dropped.
+    nav_gen: u64,
+    /// Where avatars and playlist covers come from (track covers live in `tracks`).
+    other_art: HashMap<ArtKey, String>,
     queue: Queue,
     /// `Shutdown` was handled: the loop ends.
     stopped: bool,
@@ -267,7 +332,7 @@ struct Core<A> {
     pending_restore: Option<Duration>,
     current: Option<TrackId>,
     playback: Playback,
-    artwork_requested: HashSet<TrackId>,
+    artwork_requested: HashSet<ArtKey>,
 }
 
 impl<A: SoundCloudApi + 'static> Core<A> {
@@ -280,28 +345,63 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Input::Ui(command) => self.command(command),
             Input::UiClosed => {}
             Input::Audio(event) => self.audio_event(event),
-            Input::SearchDone {
+            Input::ListDone {
+                list,
                 generation,
                 append,
                 result,
-            } => {
-                if generation == self.generation {
-                    self.search = None;
-                    self.search_done(append, result);
+            } => self.list_done(list, generation, append, result),
+            Input::TrackOpened { nav, result } => {
+                if nav == self.nav_gen {
+                    match result {
+                        Ok(track) => self.track_opened(*track),
+                        Err(error) => self.emit(Event::Problem(Problem::from_api(&error))),
+                    }
                 }
             }
-            Input::Resolved(result) => match result {
-                Ok(Resource::Track(track)) => {
-                    let id = TrackId(track.id);
-                    let summary = TrackSummary::from_api(&track);
-                    self.tracks.insert(id, *track);
-                    self.queue.set_context(vec![summary], 0);
-                    self.queue_changed();
-                    self.play_current(None, false);
+            Input::UserOpened { nav, result } => {
+                if nav == self.nav_gen {
+                    match result {
+                        Ok(user) => self.user_opened(&user),
+                        Err(error) => self.emit(Event::Problem(Problem::from_api(&error))),
+                    }
                 }
-                Ok(_) => self.emit(Event::Problem(Problem::NotATrack)),
-                Err(error) => self.emit(Event::Problem(Problem::from_api(&error))),
-            },
+            }
+            Input::PlaylistOpened { nav, result } => {
+                if nav == self.nav_gen {
+                    match result {
+                        Ok(playlist) => self.playlist_opened(*playlist),
+                        Err(error) => self.emit(Event::Problem(Problem::from_api(&error))),
+                    }
+                }
+            }
+            Input::PlaylistTracks {
+                id,
+                generation,
+                result,
+            } => self.playlist_tracks(id, generation, result),
+            Input::HistoryLoaded { generation, result } => self.history_loaded(generation, result),
+            Input::Resolved { nav, result } => {
+                if nav != self.nav_gen {
+                    return;
+                }
+                match result {
+                    Ok(Resource::Track(track)) => {
+                        let id = TrackId(track.id);
+                        let summary = TrackSummary::from_api(&track);
+                        self.tracks.insert(id, *track);
+                        self.queue.set_context(vec![summary], 0);
+                        self.queue_changed();
+                        self.play_current(None, false);
+                    }
+                    Ok(Resource::User(user)) => self.user_opened(&user),
+                    Ok(Resource::Playlist(playlist)) => self.playlist_opened(*playlist),
+                    Ok(Resource::Unknown) => {
+                        self.emit(Event::Problem(Problem::UnsupportedLink));
+                    }
+                    Err(error) => self.emit(Event::Problem(Problem::from_api(&error))),
+                }
+            }
             Input::TrackFetched {
                 track,
                 generation,
@@ -369,21 +469,48 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     self.emit(Event::Waveform { track, bars });
                 }
             }
-            Input::ArtworkReady { track, path } => self.emit(Event::Artwork { track, path }),
+            Input::ArtworkReady { key, path } => self.emit(Event::Artwork { key, path }),
         }
     }
 
     fn command(&mut self, command: Command) {
         match command {
-            Command::Search(query) => self.search(query.trim().to_owned()),
-            Command::LoadMore => self.load_more(),
-            Command::Play(id) => self.play_from_results(id),
-            Command::PlayUrl(url) => {
-                let api = Arc::clone(&self.api);
-                let inputs = self.inputs.clone();
+            Command::Search(query) => {
+                self.query = query.trim().to_owned();
+                self.start_search(SEARCH_DEBOUNCE);
+            }
+            Command::SetSearchKind(kind) => {
+                if kind != self.kind {
+                    self.kind = kind;
+                    self.start_search(Duration::ZERO);
+                }
+            }
+            Command::LoadMore(list) => self.load_more(list),
+            Command::Play { list, track } => self.play_from_list(list, track),
+            Command::OpenTrack(id) => {
+                let nav = self.next_nav();
+                let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+                tokio::spawn(async move {
+                    let result = api.track(id.0).await.map(Box::new);
+                    let _ = inputs.send(Input::TrackOpened { nav, result });
+                });
+            }
+            Command::OpenUser(id) => {
+                let nav = self.next_nav();
+                let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+                tokio::spawn(async move {
+                    let result = api.user(id.0).await.map(Box::new);
+                    let _ = inputs.send(Input::UserOpened { nav, result });
+                });
+            }
+            Command::OpenPlaylist(id) => self.open_playlist(id),
+            Command::OpenHistory => self.open_history(),
+            Command::OpenUrl(url) => {
+                let nav = self.next_nav();
+                let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
                 tokio::spawn(async move {
                     let result = api.resolve(url.trim()).await;
-                    let _ = inputs.send(Input::Resolved(result));
+                    let _ = inputs.send(Input::Resolved { nav, result });
                 });
             }
             Command::Next => self.skip_forward(false),
@@ -470,117 +597,418 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let _ = self.audio.send(command);
     }
 
-    fn search(&mut self, query: String) {
-        self.generation += 1;
-        if let Some(task) = self.search.take() {
-            task.abort();
+    fn next_nav(&mut self) -> u64 {
+        self.nav_gen += 1;
+        self.nav_gen
+    }
+
+    /// Replaces the state of `list` with a fresh, loading one. Dropping the
+    /// old state cancels its fetch; the new generation drops its late answers.
+    fn reset_list(&mut self, list: ListId) -> u64 {
+        self.list_gen += 1;
+        self.lists.insert(list, ListState::new(self.list_gen));
+        self.list_gen
+    }
+
+    /// Restarts the search of the current kind, waiting `delay` first. A new
+    /// search invalidates the lists of every tab.
+    fn start_search(&mut self, delay: Duration) {
+        for kind in SEARCH_KINDS {
+            self.lists.remove(&ListId::Search { kind });
         }
-        self.next_page = None;
-        self.query = query.clone();
-        if query.is_empty() {
-            self.results.clear();
-            self.emit(Event::Results {
-                query,
-                tracks: Vec::new(),
+        let list = ListId::Search { kind: self.kind };
+        if self.query.is_empty() {
+            self.emit(Event::List {
+                list,
+                items: ListItems::empty(self.kind),
                 append: false,
                 has_more: false,
             });
             return;
         }
+        let generation = self.reset_list(list);
+        self.fetch_list(list, generation, None, delay);
+    }
+
+    /// Fetches a page of an API-backed list in the background.
+    fn fetch_list(&mut self, list: ListId, generation: u64, next: Option<String>, delay: Duration) {
         let (api, inputs, events) = (
             Arc::clone(&self.api),
             self.inputs.clone(),
             self.events.clone(),
         );
-        let generation = self.generation;
-        self.search = Some(tokio::spawn(async move {
-            tokio::time::sleep(SEARCH_DEBOUNCE).await;
-            let _ = events.send(Event::Searching {
-                query: query.clone(),
-            });
-            let result = api.search_tracks(&query, PAGE_SIZE).await;
-            let _ = inputs.send(Input::SearchDone {
+        let query = self.query.clone();
+        let task = tokio::spawn(async move {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            let append = next.is_some();
+            if let ListId::Search { kind } = list
+                && !append
+            {
+                let _ = events.send(Event::Searching {
+                    query: query.clone(),
+                    kind,
+                });
+            }
+            let result = lists::fetch(&*api, list, &query, next).await;
+            let _ = inputs.send(Input::ListDone {
+                list,
                 generation,
-                append: false,
+                append,
                 result,
             });
-        }));
+        });
+        if let Some(state) = self.lists.get_mut(&list) {
+            state.task = Some(task);
+        }
     }
 
-    fn load_more(&mut self) {
-        if self.search.is_some() {
-            return;
-        }
-        let Some(page) = self.next_page.take() else {
+    /// The next page of a list. A list never served loads its first page.
+    fn load_more(&mut self, list: ListId) {
+        let Some(state) = self.lists.get_mut(&list) else {
+            self.load_first(list);
             return;
         };
-        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
-        let generation = self.generation;
-        self.search = Some(tokio::spawn(async move {
-            let result = match api.next_page(&page).await {
-                Ok(Some(next)) => Ok(next),
-                Ok(None) => Ok(Page {
-                    collection: Vec::new(),
-                    next_href: None,
-                    total_results: None,
-                }),
-                Err(error) => Err(error),
-            };
-            let _ = inputs.send(Input::SearchDone {
-                generation,
-                append: true,
-                result,
-            });
-        }));
+        if state.loading {
+            return;
+        }
+        let Some(next) = state.next_href.clone() else {
+            return;
+        };
+        state.loading = true;
+        let generation = state.generation;
+        self.fetch_list(list, generation, Some(next), Duration::ZERO);
     }
 
-    fn search_done(&mut self, append: bool, result: sc_api::Result<Page<Track>>) {
-        let page = match result {
-            Ok(page) => page,
+    fn load_first(&mut self, list: ListId) {
+        match list {
+            ListId::Playlist(id) => self.open_playlist(id),
+            ListId::History => self.open_history(),
+            ListId::Search { .. } if self.query.is_empty() => {}
+            _ => {
+                let generation = self.reset_list(list);
+                self.fetch_list(list, generation, None, Duration::ZERO);
+            }
+        }
+    }
+
+    fn list_done(
+        &mut self,
+        list: ListId,
+        generation: u64,
+        append: bool,
+        result: sc_api::Result<Fetched>,
+    ) {
+        if self
+            .lists
+            .get(&list)
+            .is_none_or(|s| s.generation != generation)
+        {
+            return;
+        }
+        let fetched = match result {
+            Ok(fetched) => fetched,
             Err(error) => {
-                self.emit(Event::SearchFailed {
-                    query: self.query.clone(),
+                // A failed first page can be asked for again (no state); a
+                // failed next page is not offered again.
+                if append {
+                    if let Some(state) = self.lists.get_mut(&list) {
+                        state.loading = false;
+                        state.task = None;
+                        state.next_href = None;
+                    }
+                } else {
+                    self.lists.remove(&list);
+                }
+                self.emit(Event::ListFailed {
+                    list,
                     append,
                     problem: Problem::from_api(&error),
                 });
                 return;
             }
         };
-        let summaries: Vec<TrackSummary> =
-            page.collection.iter().map(TrackSummary::from_api).collect();
-        let ids: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
-        if append {
-            self.results.extend(summaries.iter().cloned());
-        } else {
-            self.results.clone_from(&summaries);
+        let next_href = fetched.next_href();
+        let (items, art) = self.absorb(fetched);
+        if let Some(state) = self.lists.get_mut(&list) {
+            state.loading = false;
+            state.task = None;
+            state.next_href.clone_from(&next_href);
+            if let ListItems::Tracks(tracks) = &items {
+                if !append {
+                    state.tracks.clear();
+                }
+                state.tracks.extend(tracks.iter().cloned());
+            }
         }
-        for track in &page.collection {
-            self.tracks.insert(TrackId(track.id), track.clone());
-        }
-        let has_more = page.next_href.is_some();
-        self.emit(Event::Results {
-            query: self.query.clone(),
-            tracks: summaries,
+        self.emit(Event::List {
+            list,
+            items,
             append,
-            has_more,
+            has_more: next_href.is_some(),
         });
-        self.next_page = has_more.then(|| Page {
-            collection: Vec::new(),
-            next_href: page.next_href,
-            total_results: page.total_results,
-        });
-        for id in ids {
-            self.request_artwork(id);
+        for key in art {
+            self.request_artwork(key);
         }
     }
 
-    /// A click in the results: the queue becomes the results, starting here.
-    fn play_from_results(&mut self, id: TrackId) {
-        if let Some(start) = self.results.iter().position(|t| t.id == id) {
-            self.queue.set_context(self.results.clone(), start);
-        } else if let Some(track) = self.tracks.get(&id) {
-            self.queue
-                .set_context(vec![TrackSummary::from_api(track)], 0);
+    /// Remembers what a page carries (tracks to play later, image URLs) and
+    /// turns it into rows.
+    fn absorb(&mut self, fetched: Fetched) -> (ListItems, Vec<ArtKey>) {
+        match fetched {
+            Fetched::Tracks(page) => self.absorb_tracks(page.collection),
+            Fetched::Likes(page) => self.absorb_tracks(
+                page.collection
+                    .into_iter()
+                    .filter_map(|l| l.track)
+                    .collect(),
+            ),
+            Fetched::Users(page) => {
+                let mut art = Vec::new();
+                let users = page
+                    .collection
+                    .iter()
+                    .map(|user| {
+                        let id = UserId(user.id);
+                        if let Some(url) = user.avatar(artwork::SIZE) {
+                            self.other_art.insert(ArtKey::User(id), url);
+                            art.push(ArtKey::User(id));
+                        }
+                        UserSummary::from_api(user)
+                    })
+                    .collect();
+                (ListItems::Users(users), art)
+            }
+            Fetched::Playlists(page) => {
+                let mut art = Vec::new();
+                let playlists = page
+                    .collection
+                    .iter()
+                    .map(|playlist| {
+                        let id = PlaylistId(playlist.id);
+                        if let Some(url) = playlist.artwork(artwork::SIZE) {
+                            self.other_art.insert(ArtKey::Playlist(id), url);
+                            art.push(ArtKey::Playlist(id));
+                        }
+                        PlaylistSummary::from_api(playlist)
+                    })
+                    .collect();
+                (ListItems::Playlists(playlists), art)
+            }
+        }
+    }
+
+    fn absorb_tracks(&mut self, tracks: Vec<Track>) -> (ListItems, Vec<ArtKey>) {
+        let summaries = tracks.iter().map(TrackSummary::from_api).collect();
+        let art = tracks
+            .iter()
+            .map(|t| ArtKey::Track(TrackId(t.id)))
+            .collect();
+        for track in tracks {
+            self.tracks.insert(TrackId(track.id), track);
+        }
+        (ListItems::Tracks(summaries), art)
+    }
+
+    /// A track summary from any list or the tracks seen so far.
+    fn find_summary(&self, id: TrackId) -> Option<TrackSummary> {
+        self.tracks
+            .get(&id)
+            .map(TrackSummary::from_api)
+            .or_else(|| {
+                self.lists
+                    .values()
+                    .find_map(|state| state.tracks.iter().find(|t| t.id == id).cloned())
+            })
+    }
+
+    fn track_opened(&mut self, track: Track) {
+        let id = TrackId(track.id);
+        self.emit(Event::TrackPage(TrackPage::from_api(&track)));
+        if let Some(url) = track.waveform_url.clone() {
+            let (api, events) = (Arc::clone(&self.api), self.events.clone());
+            tokio::spawn(async move {
+                if let Ok(wave) = api.waveform(&url).await {
+                    let bars = waveform::to_bars(&wave.samples, wave.height, waveform::BARS);
+                    let _ = events.send(Event::Waveform { track: id, bars });
+                }
+            });
+        }
+        self.tracks.insert(id, track);
+        self.request_artwork(ArtKey::Track(id));
+
+        let list = ListId::Related(id);
+        let generation = self.reset_list(list);
+        self.fetch_list(list, generation, None, Duration::ZERO);
+    }
+
+    /// The profile header, then the first page of its tracks. Playlists and
+    /// likes start over: they load when the UI asks.
+    fn user_opened(&mut self, user: &User) {
+        let id = UserId(user.id);
+        self.emit(Event::UserPage(UserPage::from_api(user)));
+        if let Some(url) = user.avatar(artwork::SIZE) {
+            self.other_art.insert(ArtKey::User(id), url);
+            self.request_artwork(ArtKey::User(id));
+        }
+        self.lists.remove(&ListId::UserPlaylists(id));
+        self.lists.remove(&ListId::UserLikes(id));
+
+        let list = ListId::UserTracks(id);
+        let generation = self.reset_list(list);
+        self.fetch_list(list, generation, None, Duration::ZERO);
+    }
+
+    fn open_playlist(&mut self, id: PlaylistId) {
+        let nav = self.next_nav();
+        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+        tokio::spawn(async move {
+            let result = api.playlist(id.0).await.map(Box::new);
+            let _ = inputs.send(Input::PlaylistOpened { nav, result });
+        });
+    }
+
+    /// The playlist header, then every track: the ones that only carry an id
+    /// are filled in batches before the list is sent.
+    fn playlist_opened(&mut self, playlist: Playlist) {
+        let id = PlaylistId(playlist.id);
+        self.emit(Event::PlaylistPage(PlaylistPage::from_api(&playlist)));
+        if let Some(url) = playlist.artwork(artwork::SIZE) {
+            self.other_art.insert(ArtKey::Playlist(id), url);
+            self.request_artwork(ArtKey::Playlist(id));
+        }
+
+        let list = ListId::Playlist(id);
+        let generation = self.reset_list(list);
+        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+        let task = tokio::spawn(async move {
+            let result = fill_tracks(&*api, playlist.tracks).await;
+            let _ = inputs.send(Input::PlaylistTracks {
+                id,
+                generation,
+                result,
+            });
+        });
+        if let Some(state) = self.lists.get_mut(&list) {
+            state.task = Some(task);
+        }
+    }
+
+    fn playlist_tracks(
+        &mut self,
+        id: PlaylistId,
+        generation: u64,
+        result: sc_api::Result<Vec<Track>>,
+    ) {
+        let list = ListId::Playlist(id);
+        if self
+            .lists
+            .get(&list)
+            .is_none_or(|s| s.generation != generation)
+        {
+            return;
+        }
+        match result {
+            Ok(tracks) => {
+                let (items, art) = self.absorb_tracks(tracks);
+                if let Some(state) = self.lists.get_mut(&list) {
+                    state.loading = false;
+                    state.task = None;
+                    if let ListItems::Tracks(tracks) = &items {
+                        state.tracks.clone_from(tracks);
+                    }
+                }
+                self.emit(Event::List {
+                    list,
+                    items,
+                    append: false,
+                    has_more: false,
+                });
+                for key in art {
+                    self.request_artwork(key);
+                }
+            }
+            Err(error) => {
+                self.lists.remove(&list);
+                self.emit(Event::ListFailed {
+                    list,
+                    append: false,
+                    problem: Problem::from_api(&error),
+                });
+            }
+        }
+    }
+
+    fn open_history(&mut self) {
+        let generation = self.reset_list(ListId::History);
+        let Some(store) = self.store.clone() else {
+            // The database is not open (yet): nothing was played that we know of.
+            self.history_loaded(generation, Ok(Vec::new()));
+            return;
+        };
+        let inputs = self.inputs.clone();
+        tokio::task::spawn_blocking(move || {
+            let store = store.lock().unwrap_or_else(PoisonError::into_inner);
+            let result = store::recent_history(&store.conn, HISTORY_LIMIT);
+            let _ = inputs.send(Input::HistoryLoaded { generation, result });
+        });
+    }
+
+    fn history_loaded(&mut self, generation: u64, result: rusqlite::Result<Vec<SessionTrack>>) {
+        let list = ListId::History;
+        if self
+            .lists
+            .get(&list)
+            .is_none_or(|s| s.generation != generation)
+        {
+            return;
+        }
+        let rows = match result {
+            Ok(rows) => rows,
+            Err(error) => {
+                tracing::warn!(%error, "could not read the history");
+                self.lists.remove(&list);
+                self.emit(Event::ListFailed {
+                    list,
+                    append: false,
+                    problem: Problem::StorageReset,
+                });
+                return;
+            }
+        };
+        let mut tracks = Vec::with_capacity(rows.len());
+        for row in rows {
+            if let Some(url) = row.artwork_url {
+                self.restored_artwork.entry(row.track.id).or_insert(url);
+            }
+            tracks.push(row.track);
+        }
+        if let Some(state) = self.lists.get_mut(&list) {
+            state.loading = false;
+            state.tracks.clone_from(&tracks);
+        }
+        let ids: Vec<TrackId> = tracks.iter().map(|t| t.id).collect();
+        self.emit(Event::List {
+            list,
+            items: ListItems::Tracks(tracks),
+            append: false,
+            has_more: false,
+        });
+        for id in ids {
+            self.request_artwork(ArtKey::Track(id));
+        }
+    }
+
+    /// A click in a list: the queue becomes the rows loaded so far, starting here.
+    fn play_from_list(&mut self, list: ListId, id: TrackId) {
+        let context = self.lists.get(&list).map(|state| &state.tracks);
+        if let Some(context) = context
+            && let Some(start) = context.iter().position(|t| t.id == id)
+        {
+            self.queue.set_context(context.clone(), start);
+        } else if let Some(summary) = self.find_summary(id) {
+            self.queue.set_context(vec![summary], 0);
         } else {
             return;
         }
@@ -588,12 +1016,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.play_current(None, false);
     }
 
-    /// Queues a track seen in the results. With nothing playing it starts.
+    /// Queues a track seen in any list. With nothing playing it starts.
     fn enqueue(&mut self, id: TrackId, next: bool) {
-        let Some(track) = self.tracks.get(&id) else {
+        let Some(summary) = self.find_summary(id) else {
             return;
         };
-        let summary = TrackSummary::from_api(track);
         if self.queue.current_track().is_none() {
             self.queue.set_context(vec![summary], 0);
             self.queue_changed();
@@ -679,9 +1106,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let played_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
+        let artwork_url = self.artwork_url(track.id);
         tokio::task::spawn_blocking(move || {
             let store = store.lock().unwrap_or_else(PoisonError::into_inner);
-            if let Err(error) = store::record_play(&store.conn, &track, played_at) {
+            if let Err(error) =
+                store::record_play(&store.conn, &track, artwork_url.as_deref(), played_at)
+            {
                 tracing::warn!(%error, "could not record the history");
             }
         });
@@ -713,8 +1143,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 continue;
             };
             let path = artwork::path_for(&self.artwork_dir, &url);
-            if path.exists() && self.artwork_requested.insert(id) {
-                self.emit(Event::Artwork { track: id, path });
+            if path.exists() && self.artwork_requested.insert(ArtKey::Track(id)) {
+                self.emit(Event::Artwork {
+                    key: ArtKey::Track(id),
+                    path,
+                });
             }
         }
         let Some(current) = self.queue.current_track().cloned() else {
@@ -730,7 +1163,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         // here could overwrite a newer session another instance just saved.
         self.playback.state = PlayState::Paused;
         self.emit(Event::Playback(self.playback));
-        self.request_artwork(id);
+        self.request_artwork(ArtKey::Track(id));
     }
 
     /// Where the artwork of a track comes from: this session's tracks, or a
@@ -770,7 +1203,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         });
     }
 
-    fn related_done(&mut self, generation: u64, result: sc_api::Result<Page<Track>>) {
+    fn related_done(
+        &mut self,
+        generation: u64,
+        result: sc_api::Result<sc_api::models::Page<Track>>,
+    ) {
         if self.autoplay != Some(generation) {
             return;
         }
@@ -794,7 +1231,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         }
         self.queue_changed();
         for id in ids {
-            self.request_artwork(id);
+            self.request_artwork(ArtKey::Track(id));
         }
         // Moving on started this fetch (the track ended or Next was pressed on
         // the last one), and any newer play would have cancelled it.
@@ -833,7 +1270,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.playback.duration = summary.duration;
         self.emit(Event::NowPlaying(summary));
         self.set_state(PlayState::Loading);
-        self.request_artwork(id);
+        self.request_artwork(ArtKey::Track(id));
         self.save_session();
 
         let generation = self.play_gen;
@@ -879,16 +1316,20 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         });
     }
 
-    fn request_artwork(&mut self, id: TrackId) {
-        if !self.artwork_requested.insert(id) {
+    fn request_artwork(&mut self, key: ArtKey) {
+        if !self.artwork_requested.insert(key) {
             return;
         }
-        let Some(url) = self.artwork_url(id) else {
+        let url = match key {
+            ArtKey::Track(id) => self.artwork_url(id),
+            ArtKey::User(_) | ArtKey::Playlist(_) => self.other_art.get(&key).cloned(),
+        };
+        let Some(url) = url else {
             return;
         };
         let path = artwork::path_for(&self.artwork_dir, &url);
         if path.exists() {
-            self.emit(Event::Artwork { track: id, path });
+            self.emit(Event::Artwork { key, path });
             return;
         }
         let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
@@ -896,7 +1337,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             match api.download(&url).await {
                 Ok(bytes) => match artwork::store(&path, &bytes) {
                     Ok(()) => {
-                        let _ = inputs.send(Input::ArtworkReady { track: id, path });
+                        let _ = inputs.send(Input::ArtworkReady { key, path });
                     }
                     Err(error) => tracing::warn!(%error, "could not cache artwork"),
                 },
