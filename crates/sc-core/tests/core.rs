@@ -350,7 +350,7 @@ fn wait_for_store(h: &Harness) {
         if let Ok(conn) = rusqlite::Connection::open(&db)
             && let Ok(version) =
                 conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
-            && version == 1
+            && version >= 1
         {
             break;
         }

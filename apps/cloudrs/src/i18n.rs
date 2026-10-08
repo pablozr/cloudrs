@@ -236,13 +236,13 @@ pub mod problem {
         cannot_play { en: "This track can\u{2019}t be played here." }
         audio { en: "Something went wrong with the audio. Try again." }
         storage_reset { en: "Your history and saved session were damaged and have been reset." }
-        sign_in_failed { en: "SoundCloud didn{2019}t accept that sign-in. Try again." }
+        sign_in_failed { en: "SoundCloud didn\u{2019}t accept that sign-in. Try again." }
         session_expired { en: "Your SoundCloud session expired. Sign in again." }
         sign_in_required { en: "Sign in to like tracks and follow people." }
         sign_in_window { en: "The sign-in window could not open. Try signing in with a token." }
-        playlist_not_saved { en: "That playlist change couldn{2019}t be saved. Try again." }
-        jam_unreachable { en: "Couldn{2019}t reach the Jam. Check your connection and the link." }
-        jam_bad_link { en: "That isn{2019}t a Jam link." }
+        playlist_not_saved { en: "That playlist change couldn\u{2019}t be saved. Try again." }
+        jam_unreachable { en: "Couldn\u{2019}t reach the Jam. Check your connection and the link." }
+        jam_bad_link { en: "That isn\u{2019}t a Jam link." }
         jam_ended { en: "The Jam has ended." }
         jam_removed { en: "The host removed you from the Jam." }
         jam_full { en: "That Jam is full." }

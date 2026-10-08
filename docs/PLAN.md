@@ -282,7 +282,7 @@ Outside text fields Space always plays/pauses, even over a focused control (Ente
 - **Media keys and Now Playing:** `souvlaki` (MPRIS / macOS / SMTC).
 - **Tokens:** `keyring`.
 - **Track-change notifications:** `notify-rust` (Linux/Windows), optional.
-- **Discord Rich Presence:** `discord-rich-presence`, optional and off by default (M5).
+- **Discord Rich Presence:** `discord-rich-presence`, on by default and switchable (ADR 0015).
 - **Tray icon:** `tray-icon` (M5).
 
 ---
