@@ -272,6 +272,7 @@ The visual rules, tokens and motion catalog live in
 | `Shift+←/→` | previous/next |
 | `Ctrl+L` | like |
 | `Ctrl+K` / `/` | search |
+| `Ctrl+P` | command palette (screens and actions) |
 | `Ctrl+V` anywhere | resolve a pasted SoundCloud URL and play it |
 
 Outside text fields Space always plays/pauses, even over a focused control (Enter activates it); the arrows and Ctrl+V act outside text fields only; `secondary` = Cmd on macOS.
@@ -357,7 +358,8 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 
 ### M4 — Desktop integration
 - [ ] MPRIS / Now Playing / SMTC.
-- [x] Full keyboard shortcuts (Ctrl K still focuses search; the command palette awaits a decision).
+- [x] Full keyboard shortcuts (Ctrl K and / focus search; Ctrl P opens the command palette,
+      ADR 0018).
 - [ ] Audio device selection and recovery.
 - [ ] Timed comments on the waveform.
 - [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker waits
@@ -383,7 +385,7 @@ Peer-to-peer, no cloudrs server; state is synced, audio never leaves SoundCloud.
 - [x] `sc-core`: host mode (broadcast, requests, start barrier) and guest mode (mirror,
       clock offset, drift correction, pre-Jam queue restored).
 - [x] UI: Jam screen in the sidebar, copy link, people, cannot-play badges, permission, end or
-      leave; a pasted link joins. (No command palette exists yet for Ctrl K.)
+      leave; a pasted link joins.
 
 ---
 

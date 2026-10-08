@@ -36,6 +36,7 @@ use crate::seam;
 use crate::state::QueueState;
 use crate::tint::{self, Rgb};
 
+pub(crate) mod palette;
 pub(crate) mod playlist_ui;
 pub(crate) mod presence;
 pub(crate) mod queue_panel;
@@ -69,6 +70,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("/", FocusSearch, Some("Shell && !SearchField")),
     ]);
     shortcuts::bind_keys(cx);
+    palette::bind_keys(cx);
 }
 
 /// The page tint and the one it is fading from. `seq` changes with every
@@ -126,6 +128,10 @@ pub struct Shell {
     pub(crate) pending_undo: Option<Command>,
     /// What plays, shown on Discord.
     pub(crate) discord: presence::DiscordPresence,
+    /// The command palette while it is open.
+    palette: Option<palette::PaletteState>,
+    /// Its search field.
+    palette_field: Entity<SearchField>,
     toast: Option<ToastState>,
     toast_timer: Option<Task<()>>,
     toasts_shown: usize,
@@ -161,6 +167,8 @@ impl Shell {
             SearchField::new(i18n::playlists::name_placeholder(), "", cx).with_icon(Icon::Rename)
         });
         let form = playlist_ui::PlaylistForm::new(cx);
+        let palette_field = cx.new(|cx| SearchField::new(i18n::palette::placeholder(), "", cx));
+        Self::watch_palette_field(cx, &palette_field);
 
         let token_field = cx.new(|cx| {
             SearchField::new(i18n::account::token_placeholder(), "", cx).with_icon(Icon::SignIn)
@@ -188,11 +196,7 @@ impl Shell {
                 PlayerAction::SetShuffle(on) => Command::SetShuffle(on),
                 PlayerAction::SetRepeat(repeat) => Command::SetRepeat(repeat),
                 PlayerAction::ToggleQueue => {
-                    this.queue_open = !this.queue_open;
-                    let open = this.queue_open;
-                    this.player
-                        .update(cx, |bar, cx| bar.set_queue_open(open, cx));
-                    cx.notify();
+                    this.toggle_queue(cx);
                     return;
                 }
             };
@@ -243,6 +247,8 @@ impl Shell {
             form,
             pending_undo: None,
             discord,
+            palette: None,
+            palette_field,
             toast: None,
             toast_timer: None,
             toasts_shown: 0,
@@ -281,6 +287,15 @@ impl Shell {
         })
         .detach();
         false
+    }
+
+    /// Shows or hides the queue panel.
+    pub(crate) fn toggle_queue(&mut self, cx: &mut Context<Self>) {
+        self.queue_open = !self.queue_open;
+        let open = self.queue_open;
+        self.player
+            .update(cx, |bar, cx| bar.set_queue_open(open, cx));
+        cx.notify();
     }
 
     pub(crate) fn send(&self, command: Command) {
@@ -1114,8 +1129,9 @@ impl Render for Shell {
         let sidebar = self.sidebar(&theme, cx).into_any_element();
         let playlist_menu = self.playlist_menu_view(&theme, cx);
         let dialog = self.dialog_view(&theme, cx);
+        let palette = self.palette_view(&theme, cx);
         let header = self.header(&theme, window, cx).into_any_element();
-        shortcuts::shortcut_actions(root, cx)
+        palette::palette_actions(shortcuts::shortcut_actions(root, cx), cx)
             .on_action(cx.listener(Self::on_go_back))
             .on_action(cx.listener(Self::on_go_forward))
             .on_mouse_down(
@@ -1167,6 +1183,7 @@ impl Render for Shell {
             .child(self.player.clone())
             .children(playlist_menu)
             .children(dialog)
+            .children(palette)
     }
 }
 

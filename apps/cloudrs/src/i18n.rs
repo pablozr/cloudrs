@@ -121,6 +121,8 @@ pub mod shortcuts {
         key_paste_mac { en: "\u{2318}V" }
         key_history { en: "Alt \u{2190} \u{2192}" }
         key_history_mac { en: "\u{2318}[ \u{2318}]" }
+        key_palette { en: "Ctrl P" }
+        key_palette_mac { en: "\u{2318}P" }
         action_play { en: "Play or pause" }
         action_seek { en: "Seek 5 seconds" }
         action_skip { en: "Previous or next track" }
@@ -128,6 +130,24 @@ pub mod shortcuts {
         action_search { en: "Search" }
         action_paste { en: "Open a copied link" }
         action_history { en: "Back or forward" }
+        action_palette { en: "Command palette" }
+    }
+}
+
+/// The command palette (ADR 0018). Screens use the `nav` names.
+pub mod palette {
+    strings! {
+        title { en: "Command palette" }
+        placeholder { en: "Go to a screen or run an action" }
+        no_matches { en: "No matching commands" }
+        play_pause { en: "Play or pause" }
+        previous { en: "Previous track" }
+        next { en: "Next track" }
+        like { en: "Like the playing track" }
+        queue { en: "Show or hide the queue" }
+        theme_system { en: "Theme: system" }
+        theme_dark { en: "Theme: dark" }
+        theme_light { en: "Theme: light" }
     }
 }
 

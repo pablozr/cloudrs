@@ -209,6 +209,8 @@ pub enum Icon {
     Crown,
     /// The Settings screen.
     Settings,
+    /// Play (the command palette's play or pause).
+    Play,
 }
 
 impl Icon {
@@ -253,6 +255,7 @@ impl Icon {
             Self::Private => "icons/lock.svg",
             Self::Crown => "icons/crown.svg",
             Self::Settings => "icons/settings.svg",
+            Self::Play => "icons/play.svg",
         }
     }
 }

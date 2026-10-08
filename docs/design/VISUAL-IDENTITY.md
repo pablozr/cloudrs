@@ -157,6 +157,9 @@ The OS "reduce motion" setting turns every duration down to an instant change.
 - **Settings rows:** a title in body semibold, a muted hint, then the control (pills, a button
   or a value); shortcut keys in key-cap style (mono, `line_strong` border).
 - **Badges:** `AAC 160k`, `GO+`, `30s preview`, `Cached`, `Explicit`.
+- **Command palette:** an overlay like a dialog, with the panel near the top: a search field,
+  then rows (icon, label, key). The selected row has the accent border; Esc, a click outside or
+  choosing a row closes it (ADR 0018).
 - **Slider:** volume.
 - **TrackRow:**
   - index, artwork, title/artist, duration;

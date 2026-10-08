@@ -274,6 +274,9 @@ pub mod size {
     pub const SEARCH_MAX_WIDTH: Pixels = px(560.0);
     /// The key column of the shortcut list in Settings.
     pub const SHORTCUT_KEY_WIDTH: Pixels = px(160.0);
+    /// The command palette, and the tallest its list grows before scrolling.
+    pub const PALETTE_WIDTH: Pixels = px(560.0);
+    pub const PALETTE_MAX_HEIGHT: Pixels = px(420.0);
     /// Skeleton text blocks.
     pub const SKELETON_TITLE_WIDTH: Pixels = px(220.0);
     pub const SKELETON_ARTIST_WIDTH: Pixels = px(140.0);

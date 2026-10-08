@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Command palette:** Ctrl P jumps to any screen or runs an action.
 - **Settings:** theme, Discord, cache size and clearing, and the keyboard shortcuts in one place.
   The gear in the title bar opens it.
 - **Themes:** follows the system’s light or dark mode; the title bar toggle picks one and it is

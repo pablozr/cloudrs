@@ -67,7 +67,7 @@ Approved decisions are recorded in the plan or as an ADR in the same commit that
   - visible focus;
   - `aria_label` on every control;
   - a tooltip on icon-only controls;
-  - every screen reachable from the command palette (`Ctrl K`).
+  - every screen reachable from the command palette (`Ctrl P`).
 
 ## Layering
 

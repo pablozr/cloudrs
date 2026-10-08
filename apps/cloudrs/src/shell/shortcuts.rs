@@ -23,10 +23,9 @@ actions!(
 );
 
 /// The keys Settings lists: the key as shown (Cmd on macOS) and what it does.
-pub(crate) fn help() -> [(&'static str, &'static str); 7] {
+pub(crate) fn help() -> [(&'static str, &'static str); 8] {
     use crate::i18n::shortcuts as t;
-    let mac = cfg!(target_os = "macos");
-    let pick = |pc: &'static str, apple: &'static str| if mac { apple } else { pc };
+    let pick = platform;
     [
         (t::key_play(), t::action_play()),
         (t::key_seek(), t::action_seek()),
@@ -41,7 +40,16 @@ pub(crate) fn help() -> [(&'static str, &'static str); 7] {
             pick(t::key_history(), t::key_history_mac()),
             t::action_history(),
         ),
+        (
+            pick(t::key_palette(), t::key_palette_mac()),
+            t::action_palette(),
+        ),
     ]
+}
+
+/// The key as written on this platform: Cmd on macOS, Ctrl or Alt elsewhere.
+pub(crate) fn platform(pc: &'static str, apple: &'static str) -> &'static str {
+    if cfg!(target_os = "macos") { apple } else { pc }
 }
 
 /// Key context of the shell when no text field has focus.
@@ -105,6 +113,11 @@ impl Shell {
     }
 
     fn on_toggle_like(&mut self, _: &ToggleLike, _: &mut Window, cx: &mut Context<Self>) {
+        self.toggle_like(cx);
+    }
+
+    /// Likes the playing track, or takes the like back.
+    pub(super) fn toggle_like(&mut self, cx: &mut Context<Self>) {
         let Some(track) = self.models.current else {
             return;
         };

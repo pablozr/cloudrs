@@ -85,7 +85,7 @@ Signed Windows builds are on the way; see the [code signing policy](#code-signin
 - Dark and light themes that follow the system and are remembered, and a title bar of its own with the cloudrs logo.
 - Each page takes on the color of its artwork.
 - Settings (the gear in the title bar): theme, Discord, cache and the list of shortcuts.
-- Keyboard: `Ctrl K` (or `/`) jumps to search. Space plays or pauses, ← → seek 5 s, Shift ← → previous/next,
+- Keyboard: `Ctrl K` (or `/`) jumps to search, `Ctrl P` opens the command palette. Space plays or pauses, ← → seek 5 s, Shift ← → previous/next,
   Ctrl L likes, Ctrl V opens a copied SoundCloud or Jam link. Every control has visible focus and a label
   for screen readers.
 
