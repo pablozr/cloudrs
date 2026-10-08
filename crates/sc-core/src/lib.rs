@@ -20,11 +20,14 @@ use std::time::Duration;
 
 pub use settings::{Language, Settings, ThemeChoice, read_settings};
 pub use types::{
-    Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems,
-    NewPlaylist, OutputDevice, PlayState, Playback, PlaylistChange, PlaylistId, PlaylistPage,
-    PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary,
-    UserId, UserPage, UserSummary,
+    Account, ArtKey, CommentSummary, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId,
+    ListItems, NewPlaylist, OutputDevice, PlayState, Playback, PlaylistChange, PlaylistId,
+    PlaylistPage, PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage,
+    TrackSummary, UserId, UserPage, UserSummary,
 };
+
+/// How many bars `Event::Waveform` carries.
+pub use waveform::BARS as WAVEFORM_BARS;
 
 /// What the UI asks for.
 #[derive(Debug, Clone, PartialEq)]
@@ -44,8 +47,15 @@ pub enum Command {
         track: TrackId,
     },
     /// Open the track screen: answers with [`Event::TrackPage`], the
-    /// [`Event::Waveform`] and a [`Event::List`] for `ListId::Related`.
+    /// [`Event::Waveform`], the [`Event::Comments`] and a [`Event::List`] for
+    /// `ListId::Related`.
     OpenTrack(TrackId),
+    /// Fetch a track's comments again after [`Event::CommentsFailed`]: answers
+    /// with [`Event::Comments`] or [`Event::CommentsFailed`].
+    LoadComments(TrackId),
+    /// Ask for an image the core knows but has not downloaded, such as a
+    /// commenter's avatar. Answered once with [`Event::Artwork`].
+    LoadArtwork(ArtKey),
     /// Open a profile: [`Event::UserPage`], then `ListId::UserTracks`.
     OpenUser(UserId),
     /// Open a playlist or album: [`Event::PlaylistPage`], then all its tracks
@@ -194,6 +204,13 @@ pub enum Event {
     NowPlaying(TrackSummary),
     /// The queue changed. Sent on every change.
     Queue(QueueSnapshot),
+    /// A track's comments: the first 200, newest first; empty when there are none.
+    Comments {
+        track: TrackId,
+        comments: Vec<CommentSummary>,
+    },
+    /// The comments could not be fetched; `Command::LoadComments` tries again.
+    CommentsFailed { track: TrackId, problem: Problem },
     /// Bars of the current track's waveform, 0.0 to 1.0.
     Waveform { track: TrackId, bars: Vec<f32> },
     /// An image (cover, avatar) is available at `path`.

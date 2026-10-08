@@ -27,6 +27,7 @@ use crate::{Command, CoreConfig, Event, Settings, artwork};
 use session::{OpenedStore, SharedStore, open_store};
 
 mod account;
+mod comments;
 mod jam;
 mod pages;
 mod paging;
@@ -90,6 +91,10 @@ enum Input {
     TrackOpened {
         nav: u64,
         result: sc_api::Result<Box<Track>>,
+    },
+    CommentsDone {
+        track: TrackId,
+        result: sc_api::Result<sc_api::models::Page<sc_api::models::Comment>>,
     },
     UserOpened {
         nav: u64,
@@ -401,6 +406,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     }
                 }
             }
+            Input::CommentsDone { track, result } => self.comments_done(track, result),
             Input::UserOpened { nav, result } => {
                 if nav == self.nav_gen {
                     match result {
@@ -515,6 +521,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Command::LoadMore(list) => self.load_more(list),
             Command::Play { list, track } => self.play_from_list(list, track),
             Command::OpenTrack(id) => self.open_track(id),
+            Command::LoadComments(id) => self.load_comments(id),
+            Command::LoadArtwork(key) => self.request_artwork(key),
             Command::OpenUser(id) => self.open_user(id),
             Command::OpenPlaylist(id) => self.open_playlist(id),
             Command::OpenHistory => self.open_history(),

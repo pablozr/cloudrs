@@ -953,6 +953,130 @@ fn opening_a_track_sends_its_page_waveform_and_related_tracks() {
 }
 
 #[test]
+fn opening_a_track_sends_its_comments() {
+    let h = Harness::new("track-comments");
+    h.core.send(Command::OpenTrack(TrackId(5)));
+    let page = h.wait(|e| match e {
+        Event::TrackPage(page) => Some(page),
+        _ => None,
+    });
+    assert!(page.commentable);
+    let comments = h.wait(|e| match e {
+        Event::Comments {
+            track: TrackId(5),
+            comments,
+        } => Some(comments),
+        _ => None,
+    });
+    let at: Vec<_> = comments.iter().map(|c| c.at).collect();
+    assert_eq!(
+        at,
+        [
+            Some(Duration::from_secs(10)),
+            Some(Duration::from_millis(10_500)),
+            None
+        ]
+    );
+    assert_eq!(comments[0].username, "fan70");
+    assert_eq!(comments[0].user, Some(UserId(70)));
+    assert_eq!(comments[0].body, "Drop!");
+}
+
+#[test]
+fn comments_turned_off_or_none_skip_the_request() {
+    let h = Harness::new("comments-skipped");
+    h.core.send(Command::OpenTrack(TrackId(60)));
+    let mut commentable = true;
+    h.wait(|e| match e {
+        Event::TrackPage(page) => {
+            commentable = page.commentable;
+            None
+        }
+        Event::Comments { .. } | Event::CommentsFailed { .. } => {
+            panic!("comments were requested for a track with them turned off")
+        }
+        Event::List {
+            list: ListId::Related(TrackId(60)),
+            ..
+        } => Some(()),
+        _ => None,
+    });
+    assert!(!commentable);
+    assert!(!h.api.calls().contains(&"comments 60".to_owned()));
+
+    h.core.send(Command::OpenTrack(TrackId(61)));
+    let comments = h.wait(|e| match e {
+        Event::Comments {
+            track: TrackId(61),
+            comments,
+        } => Some(comments),
+        _ => None,
+    });
+    assert!(comments.is_empty());
+    assert!(!h.api.calls().contains(&"comments 61".to_owned()));
+}
+
+#[test]
+fn failed_comments_can_be_retried() {
+    let h = Harness::new("comments-retry");
+    h.api.fail_comments.store(true, Ordering::SeqCst);
+    h.core.send(Command::OpenTrack(TrackId(5)));
+    h.wait(|e| match e {
+        Event::CommentsFailed {
+            track: TrackId(5), ..
+        } => Some(()),
+        _ => None,
+    });
+    h.api.fail_comments.store(false, Ordering::SeqCst);
+    h.core.send(Command::LoadComments(TrackId(5)));
+    let comments = h.wait(|e| match e {
+        Event::Comments {
+            track: TrackId(5),
+            comments,
+        } => Some(comments),
+        _ => None,
+    });
+    assert_eq!(comments.len(), 3);
+}
+
+#[test]
+fn commenters_avatars_load_on_demand_once() {
+    let h = Harness::new("comments-avatars");
+    h.core.send(Command::OpenTrack(TrackId(5)));
+    h.wait(|e| match e {
+        Event::Comments { .. } => Some(()),
+        _ => None,
+    });
+    let downloads = |h: &Harness| {
+        h.api
+            .calls()
+            .into_iter()
+            .filter(|c| c.starts_with("download") && c.contains("avatars-70"))
+            .count()
+    };
+    assert_eq!(downloads(&h), 0);
+
+    let key = ArtKey::User(UserId(70));
+    h.core.send(Command::LoadArtwork(key));
+    h.core.send(Command::LoadArtwork(key));
+    h.wait(|e| match e {
+        Event::Artwork {
+            key: ArtKey::User(UserId(70)),
+            ..
+        } => Some(()),
+        _ => None,
+    });
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(downloads(&h), 1);
+    assert!(
+        h.api
+            .calls()
+            .iter()
+            .any(|c| c.contains("avatars-70-t300x300"))
+    );
+}
+
+#[test]
 fn a_playlist_arrives_whole_with_its_partial_tracks_filled_in_batches() {
     let h = Harness::new("playlist");
     h.core.send(Command::OpenPlaylist(PlaylistId(5)));

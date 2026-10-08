@@ -53,6 +53,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     pub(super) fn track_opened(&mut self, track: Track) {
         let id = TrackId(track.id);
         self.emit(Event::TrackPage(TrackPage::from_api(&track)));
+        if track.commentable != Some(false) {
+            if track.comment_count == Some(0) {
+                self.emit(Event::Comments {
+                    track: id,
+                    comments: Vec::new(),
+                });
+            } else {
+                self.load_comments(id);
+            }
+        }
         if let Some(url) = track.waveform_url.clone() {
             let (api, events) = (Arc::clone(&self.api), self.events.clone());
             tokio::spawn(async move {

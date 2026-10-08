@@ -179,6 +179,8 @@ pub struct TrackPage {
     /// As SoundCloud sends it (ISO 8601), for the UI to format.
     pub created_at: Option<String>,
     pub permalink: String,
+    /// `false` when the artist turned comments off.
+    pub commentable: bool,
 }
 
 impl TrackPage {
@@ -191,6 +193,32 @@ impl TrackPage {
             comments: track.comment_count,
             created_at: track.created_at.clone(),
             permalink: track.permalink_url.clone(),
+            commentable: track.commentable.unwrap_or(true),
+        }
+    }
+}
+
+/// A comment on a track. The commenter's avatar arrives as `Event::Artwork`
+/// when asked for with `Command::LoadArtwork`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CommentSummary {
+    pub id: u64,
+    pub user: Option<UserId>,
+    pub username: String,
+    pub body: String,
+    /// Where in the track it was left; `None` when the comment is not timed.
+    pub at: Option<Duration>,
+}
+
+impl CommentSummary {
+    pub(crate) fn from_api(comment: &sc_api::models::Comment) -> Self {
+        let user = comment.user.as_ref().filter(|user| user.id != 0);
+        Self {
+            id: comment.id,
+            user: user.map(|user| UserId(user.id)),
+            username: user.map(|user| user.username.clone()).unwrap_or_default(),
+            body: comment.body.trim().to_owned(),
+            at: comment.timestamp_ms.map(Duration::from_millis),
         }
     }
 }

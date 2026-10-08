@@ -85,6 +85,8 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             let failed_pages = *problem != Problem::SignInFailed && models.fail_loading_pages();
             stopped_signing_in || failed_pages
         }
+        // Comments arrive in the step that shows them.
+        Event::Comments { .. } | Event::CommentsFailed { .. } => false,
         // The player bar and the queue own these.
         Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) | Event::Stopped => false,
         Event::SignedIn(account) => {
@@ -436,6 +438,7 @@ mod tests {
             comments: None,
             created_at: None,
             permalink: "https://soundcloud.com/a/b".into(),
+            commentable: true,
         };
         let user_page = UserPage {
             id: UserId(9),

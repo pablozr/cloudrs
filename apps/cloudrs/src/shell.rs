@@ -403,6 +403,8 @@ impl Shell {
             | Event::Searching { .. }
             | Event::List { .. }
             | Event::TrackPage(_)
+            | Event::Comments { .. }
+            | Event::CommentsFailed { .. }
             | Event::UserPage(_)
             | Event::PlaylistPage(_)
             | Event::LikedIds(_)
