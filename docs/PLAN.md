@@ -177,7 +177,7 @@ Encrypted transcodings (`encrypted-hls`, `ctr-encrypted-hls`, `cbc-encrypted-hls
 [fetch thread]     m3u8 → fetch segments ahead (~30 s) → bounded channel of segments
         │
 [decoder thread]   symphonia (isomp4/adts + aac | mp3 | ogg/opus) → f32 PCM
-        │          resample (linear until M5, then evaluate rubato) to the device rate
+        │          resample (rubato sinc, ADR 0022) to the device rate
         │          gain → equalizer (ADR 0022)
         │
 [cpal callback]    lock-free sample ring buffer (rtrb) → sound card

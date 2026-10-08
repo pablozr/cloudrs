@@ -682,7 +682,8 @@ impl Engine {
     }
 
     /// At the end of the last track, with nothing after it: puts what the
-    /// limiter still holds into `pending` so it is played before `Ended`.
+    /// resampler and the limiter still hold into `pending` so it is played
+    /// before `Ended`.
     /// True when there is something new to write.
     fn flush_tail(&mut self) -> bool {
         let Some(track) = self.track.as_mut() else {
@@ -694,6 +695,9 @@ impl Engine {
         track.tail_flushed = true;
         self.pending.clear();
         self.pending_at = 0;
+        track.resampler.flush(&mut self.pending);
+        let lufs = track.meter.as_ref().and_then(Meter::lufs);
+        self.run_stages(lufs);
         if let Some(limiter) = &mut self.limiter {
             limiter.drain(&mut self.pending);
         }

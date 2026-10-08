@@ -1,31 +1,52 @@
 //! Converting decoded audio to the output device's rate and channel count.
 //!
-//! Linear interpolation is enough for the M0 spike; a band-limited resampler
-//! (`rubato`) replaces it when the output path is tuned (M5).
+//! The channels are mapped first, then a band-limited sinc resampler (`rubato`,
+//! ADR 0022) changes the rate. Equal rates pass straight through.
 
-/// Streaming linear resampler with channel mapping. Keeps state between
-/// chunks so there are no clicks at chunk boundaries.
-#[derive(Debug)]
+use rubato::audioadapter_buffers::direct::InterleavedSlice;
+use rubato::{
+    Async, FixedAsync, Indexing, Resampler as _, SincInterpolationParameters,
+    SincInterpolationType, WindowFunction,
+};
+
+/// Input frames handed to the sinc resampler at a time.
+const CHUNK: usize = 1024;
+
+/// Streaming resampler with channel mapping. Keeps state between chunks so
+/// there are no clicks at chunk boundaries.
 pub struct Resampler {
     in_rate: u32,
-    out_rate: u32,
     in_channels: usize,
     out_channels: usize,
-    /// Fractional read position into the next input frame.
-    phase: f64,
-    /// Last input frame of the previous chunk (already channel-mapped).
-    previous: Vec<f32>,
+    /// `None` when the rates are equal.
+    sinc: Option<Sinc>,
+}
+
+struct Sinc {
+    resampler: Async<f32>,
+    ratio: f64,
+    /// Channel-mapped input frames waiting for a whole chunk.
+    queue: Vec<f32>,
+    /// One chunk's output, reused.
+    scratch: Vec<f32>,
+    /// Frames of start-up delay still to drop from the output.
+    skip: usize,
+    /// Input frames received and output frames passed on since the start.
+    fed: u64,
+    emitted: u64,
 }
 
 impl Resampler {
     pub fn new(in_rate: u32, in_channels: usize, out_rate: u32, out_channels: usize) -> Self {
+        let out_channels = out_channels.max(1);
+        let sinc = (in_rate != out_rate)
+            .then(|| Sinc::new(in_rate, out_rate, out_channels))
+            .flatten();
         Self {
             in_rate,
-            out_rate,
             in_channels: in_channels.max(1),
-            out_channels: out_channels.max(1),
-            phase: 0.0,
-            previous: Vec::new(),
+            out_channels,
+            sinc,
         }
     }
 
@@ -33,49 +54,120 @@ impl Resampler {
         self.in_rate == in_rate && self.in_channels == in_channels.max(1)
     }
 
-    /// Appends the converted samples of `input` (interleaved) to `out`.
+    /// Appends the converted samples of `input` (interleaved) to `out`. The
+    /// output lags the input by up to a chunk and the filter's delay; `flush`
+    /// gives the rest.
     pub fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
-        let frames: Vec<f32> = input
-            .chunks_exact(self.in_channels)
-            .flat_map(|frame| map_channels(frame, self.out_channels))
-            .collect();
-        if self.in_rate == self.out_rate {
-            out.extend_from_slice(&frames);
+        let frames = input.chunks_exact(self.in_channels);
+        let Some(sinc) = &mut self.sinc else {
+            out.extend(frames.flat_map(|frame| map_channels(frame, self.out_channels)));
             return;
-        }
-        let ch = self.out_channels;
-        let step = f64::from(self.in_rate) / f64::from(self.out_rate);
-        // Input frames available: the carried-over frame (index -1) plus this chunk.
-        let count = frames.len() / ch;
-        let frame_at = |i: isize, c: usize| -> f32 {
-            if i < 0 {
-                self.previous.get(c).copied().unwrap_or(0.0)
-            } else {
-                frames[i as usize * ch + c]
-            }
         };
-        // `phase` is measured from the carried-over frame when there is one.
-        let offset: isize = if self.previous.is_empty() { 0 } else { -1 };
-        let mut pos = self.phase;
-        loop {
-            let base = pos.floor() as isize + offset;
-            if base + 1 >= count as isize {
+        for frame in frames {
+            sinc.queue.extend(map_channels(frame, self.out_channels));
+            sinc.fed += 1;
+        }
+        while sinc.queue.len() >= CHUNK * self.out_channels {
+            sinc.run(self.out_channels, None, out);
+        }
+    }
+
+    /// Appends what is still inside the resampler, at the end of a stream, and
+    /// starts over.
+    pub fn flush(&mut self, out: &mut Vec<f32>) {
+        let channels = self.out_channels;
+        let Some(sinc) = &mut self.sinc else {
+            return;
+        };
+        let wanted = (sinc.fed as f64 * sinc.ratio).round() as u64;
+        let held = sinc.queue.len() / channels;
+        // The rest of the input (zero-padded), then a chunk of silence so the
+        // filter rings out.
+        sinc.queue.resize(CHUNK * channels, 0.0);
+        for partial in [held, 0] {
+            if sinc.emitted >= wanted {
                 break;
             }
-            let t = (pos - pos.floor()) as f32;
-            for c in 0..ch {
-                let a = frame_at(base, c);
-                let b = frame_at(base + 1, c);
-                out.push(a + (b - a) * t);
+            sinc.run(channels, Some(partial), out);
+            // The output past the end of the stream is padding.
+            let extra = sinc.emitted.saturating_sub(wanted) as usize;
+            out.truncate(out.len() - extra * channels);
+            sinc.emitted -= extra as u64;
+            sinc.queue.fill(0.0);
+        }
+        sinc.restart();
+    }
+}
+
+impl Sinc {
+    fn new(in_rate: u32, out_rate: u32, channels: usize) -> Option<Self> {
+        let ratio = f64::from(out_rate) / f64::from(in_rate);
+        let params = SincInterpolationParameters::new(128, WindowFunction::BlackmanHarris2)
+            .oversampling_factor(128)
+            .interpolation(SincInterpolationType::Linear);
+        let resampler =
+            match Async::<f32>::new_sinc(ratio, 1.1, &params, CHUNK, channels, FixedAsync::Input) {
+                Ok(resampler) => resampler,
+                Err(error) => {
+                    tracing::warn!(%error, in_rate, out_rate, "could not build the resampler");
+                    return None;
+                }
+            };
+        let scratch = vec![0.0; resampler.output_frames_max() * channels];
+        let skip = resampler.output_delay();
+        Some(Self {
+            resampler,
+            ratio,
+            queue: Vec::with_capacity(4 * CHUNK * channels),
+            scratch,
+            skip,
+            fed: 0,
+            emitted: 0,
+        })
+    }
+
+    /// Resamples the first chunk of the queue (`partial` valid frames, if it is
+    /// not full), appends the output after the start-up delay, and drops the
+    /// chunk from the queue.
+    fn run(&mut self, channels: usize, partial: Option<usize>, out: &mut Vec<f32>) {
+        let capacity = self.scratch.len() / channels;
+        let indexing = Indexing {
+            input_offset: 0,
+            output_offset: 0,
+            active_channels_mask: None,
+            partial_len: partial,
+        };
+        let result = InterleavedSlice::new(&self.queue[..CHUNK * channels], channels, CHUNK)
+            .and_then(|input| {
+                InterleavedSlice::new_mut(&mut self.scratch, channels, capacity)
+                    .map(|output| (input, output))
+            })
+            .map_err(|e| e.to_string())
+            .and_then(|(input, mut output)| {
+                self.resampler
+                    .process_into_buffer(&input, &mut output, Some(&indexing))
+                    .map_err(|e| e.to_string())
+            });
+        let (used, produced) = match result {
+            Ok(counts) => counts,
+            Err(error) => {
+                tracing::warn!(%error, "resampling failed; dropping a chunk");
+                (CHUNK, 0)
             }
-            pos += step;
-        }
-        // Carry the last frame and the remaining phase into the next chunk.
-        let consumed = (count as isize - offset - 1) as f64;
-        self.phase = (pos - consumed).max(0.0);
-        if count > 0 {
-            self.previous = frames[(count - 1) * ch..count * ch].to_vec();
-        }
+        };
+        self.queue.drain(..(used * channels).min(self.queue.len()));
+        let dropped = self.skip.min(produced);
+        self.skip -= dropped;
+        out.extend_from_slice(&self.scratch[dropped * channels..produced * channels]);
+        self.emitted += (produced - dropped) as u64;
+    }
+
+    fn restart(&mut self) {
+        self.resampler.reset();
+        self.queue.clear();
+        self.skip = self.resampler.output_delay();
+        self.fed = 0;
+        self.emitted = 0;
     }
 }
 
@@ -92,6 +184,28 @@ fn map_channels(frame: &[f32], out_channels: usize) -> impl Iterator<Item = f32>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sine(rate: u32, hz: f64, frames: usize) -> Vec<f32> {
+        (0..frames)
+            .map(|i| {
+                (0.5 * (2.0 * std::f64::consts::PI * hz * i as f64 / f64::from(rate)).sin()) as f32
+            })
+            .collect()
+    }
+
+    /// Resamples `input` in chunks of `size` frames, then flushes.
+    fn run(r: &mut Resampler, input: &[f32], size: usize) -> Vec<f32> {
+        let mut out = Vec::new();
+        for chunk in input.chunks(size) {
+            r.process(chunk, &mut out);
+        }
+        r.flush(&mut out);
+        out
+    }
+
+    fn rms(samples: &[f32]) -> f32 {
+        (samples.iter().map(|v| v * v).sum::<f32>() / samples.len() as f32).sqrt()
+    }
 
     #[test]
     fn passes_through_when_formats_match() {
@@ -115,22 +229,71 @@ mod tests {
     fn keeps_the_rate_ratio_across_chunks() {
         let mut r = Resampler::new(44_100, 1, 48_000, 1);
         let mut out = Vec::new();
-        let chunk: Vec<f32> = (0..441).map(|i| (i as f32 / 441.0).sin()).collect();
+        let chunk = sine(44_100, 440.0, 441);
         for _ in 0..100 {
             r.process(&chunk, &mut out);
         }
-        // 1 s of input becomes ~1 s of output (one frame of latency).
-        let expected = 48_000.0;
-        assert!((out.len() as f64 - expected).abs() < 4.0, "{}", out.len());
+        // 1 s of input becomes ~1 s of output, minus what waits for a whole
+        // chunk and the filter's delay.
+        assert!(
+            (out.len() as f64 - 48_000.0).abs() < 1200.0,
+            "{}",
+            out.len()
+        );
     }
 
     #[test]
-    fn is_continuous_across_chunk_boundaries() {
-        let mut r = Resampler::new(2, 1, 3, 1);
-        let mut out = Vec::new();
-        r.process(&[0.0, 1.0], &mut out);
-        r.process(&[2.0, 3.0], &mut out);
-        // A ramp stays a monotonic ramp.
-        assert!(out.windows(2).all(|w| w[1] >= w[0]), "{out:?}");
+    fn flushing_gives_exactly_the_resampled_length() {
+        let mut r = Resampler::new(44_100, 2, 48_000, 2);
+        let input: Vec<f32> = sine(44_100, 440.0, 44_100)
+            .into_iter()
+            .flat_map(|v| [v, v])
+            .collect();
+        let out = run(&mut r, &input, 1000);
+        assert_eq!(out.len(), 48_000 * 2);
+        // It starts over afterwards.
+        let again = run(&mut r, &input, 1000);
+        assert_eq!(again.len(), out.len());
+    }
+
+    #[test]
+    fn a_sine_keeps_its_level() {
+        let input = sine(44_100, 1000.0, 44_100);
+        let out = run(&mut Resampler::new(44_100, 1, 48_000, 1), &input, 1024);
+        let before = rms(&input[4000..40_000]);
+        let after = rms(&out[4000..44_000]);
+        let db = 20.0 * (after / before).log10();
+        assert!(db.abs() < 0.1, "{db} dB");
+    }
+
+    #[test]
+    fn the_chunk_size_does_not_change_the_result() {
+        let input = sine(44_100, 1000.0, 20_000);
+        let whole = run(
+            &mut Resampler::new(44_100, 1, 48_000, 1),
+            &input,
+            input.len(),
+        );
+        for size in [37, 4096] {
+            let chunked = run(&mut Resampler::new(44_100, 1, 48_000, 1), &input, size);
+            assert_eq!(chunked.len(), whole.len(), "{size}");
+            assert!(
+                whole
+                    .iter()
+                    .zip(&chunked)
+                    .all(|(a, b)| (a - b).abs() < 1e-5),
+                "{size}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_start_is_not_shifted_by_the_filter_delay() {
+        // A burst at 1000 Hz after 0.5 s stays near 0.5 s in the output.
+        let mut input = vec![0.0; 22_050];
+        input.extend(sine(44_100, 1000.0, 4410));
+        let out = run(&mut Resampler::new(44_100, 1, 48_000, 1), &input, 1024);
+        let first = out.iter().position(|v| v.abs() > 0.25).unwrap();
+        assert!((first as i64 - 24_000).abs() < 100, "{first}");
     }
 }

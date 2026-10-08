@@ -2,10 +2,8 @@
 
 Status: accepted · 2026-10-08 (approved by the maintainer)
 
-This ADR groups the M5 playback-quality work. It grows with the commits that implement each
-part: the sections for loudness normalization, the equalizer, the volume boost with a limiter,
-the settings they need and the better resampler arrive with those commits. Only Gapless is
-written so far.
+This ADR groups the M5 playback-quality work, one section per part: Gapless, Equalizer, Loudness
+normalization, Volume boost and limiter, Settings, App and Resampling.
 
 ## Gapless
 
@@ -262,3 +260,49 @@ with the fake audio channel for each rule above. Nobody listened to it.
 Unit tests for the slider mapping and the preset labels. The screens were not run or captured:
 this environment is Windows with no Linux container for the Xvfb flow, so the Sound section and the
 caution fill were not looked at in either theme.
+
+## Resampling
+
+### Context
+
+The engine converted every track to the device's rate with linear interpolation. At 44.1 to
+48 kHz (the common case: SoundCloud streams at 44.1 kHz, most devices run at 48 kHz) linear
+interpolation dulls the treble and folds some high frequencies back as aliasing.
+
+### Decisions
+
+1. **`rubato` 5.0.1** (MIT or Apache-2.0, approved), without its default FFT feature. Its async sinc
+   resampler is used with a 128-tap filter, an oversampling factor of 128, linear interpolation
+   between filter phases and the BlackmanHarris2 window.
+2. **The same interface.** `Resampler::{new, matches, process}` is unchanged, so the engine's
+   chain does not move; `flush` is new. Channels are mapped first, as before, then the rate is
+   changed. Equal rates pass straight through without the filter.
+3. **Fixed chunks through a queue.** The resampler takes 1024 input frames at a time. Decoded
+   packets go into a queue that is allocated up front, and whole chunks are processed from it,
+   so the output is the same whatever the size of the packets. The scratch buffer is allocated once.
+   This replaces the old per-chunk `collect`.
+4. **The filter delay is dropped**, so positions do not shift: the first output frames, which
+   are the filter's start-up, are discarded.
+5. **The tail is flushed.** At the end of the last track, with nothing after it, the engine
+   flushes the resampler (the queued frames zero-padded, then a chunk of silence so the filter rings
+   out) before the limiter drains, and the output is cut to the exact resampled length. At a
+   gapless handover the resampler continues into the next track when the format matches.
+6. **Cost.** Resampling 60 s of 44.1 kHz stereo to 48 kHz takes about 0.18 s in a release build
+   on the development machine, about 0.3% of one core. A comparison with the old linear code, and a
+   measurement on a live stream with `cargo run --release -p sc-audio --example play -- <url>`,
+   were not made (no stream to play here).
+7. **New crates**: `rubato`, plus `audioadapter`, `audioadapter-buffers`, `audioadapter-sample`,
+   `audio-codec-algorithms`, `windowfunctions` and `visibility`, which it needs.
+
+### Accepted limits
+
+- Up to 1024 input frames (about 23 ms) wait in the queue, and the filter has its own delay; the
+  output lags the input by that much, which the ring buffer already hides.
+- The position at a gapless handover can be off by the same few milliseconds.
+
+### Validation
+
+Unit tests: the equal-rate and channel cases, the output length across chunks and after the
+flush (exactly the resampled length), a 1 kHz sine keeping its level within 0.1 dB at 44.1 to
+48 kHz, the same output for chunks of 37, 4096 and one block, and a burst not shifted by the
+delay. Nobody listened to it, and the engine was not run on a device.
