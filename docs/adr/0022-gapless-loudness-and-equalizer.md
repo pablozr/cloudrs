@@ -99,3 +99,33 @@ Manual listening checklist:
 - No new dependency. Two commands and one event are added to `sc-audio`; the callback and the
   ring buffer are untouched.
 - One short-lived thread per preload.
+
+## Equalizer
+
+### Decisions
+
+1. **Own code, presets only.** `sc-audio/src/equalizer.rs` is ten RBJ peaking filters (31 Hz to
+   16 kHz, one per octave, Q of the square root of 2) in cascade, as transposed direct form II
+   biquads on interleaved `f32`. Coefficients are computed in `f64`. No dependency. The person
+   picks a preset in Settings; there are no sliders yet.
+2. **On the engine thread, never in the callback.** The equalizer runs on the converted samples
+   (output rate and channel count) before they enter the ring buffer. The callback is untouched
+   and still only multiplies by the volume. The state is allocated when the equalizer is built,
+   so processing allocates nothing.
+3. **A preamp stops boosts from clipping.** It lowers the signal by the largest boost, so the
+   loudest band is at unity. A flat setting skips the equalizer entirely (the samples stay
+   bit-identical).
+4. **Bands that do not fit are skipped.** A band above 45% of the sample rate is not built (at
+   32 kHz the 16 kHz band is left out), and a gain of 0 dB costs nothing.
+5. **Changes keep the filter memory.** A new preset recomputes the coefficients and keeps the
+   state, so switching presets while playing does not click. A seek, a load or a stop resets it;
+   a device switch rebuilds it for the new rate.
+6. **Latency.** The ring buffer holds about 0.5 s, so a preset is heard up to that long after it
+   is chosen. Accepted.
+
+### Validation
+
+Unit tests on synthetic sines: +6 dB at 1 kHz comes out at the preamp's level, a distant
+frequency gets only the preamp, flat gains are bit-identical, nothing turns to NaN from 22.05 to
+96 kHz, and the top band is skipped at 32 kHz. Nobody listened to it, and the engine was not run
+on a device. The preset tables (in `sc-core`) are proposals, to be tuned by ear.

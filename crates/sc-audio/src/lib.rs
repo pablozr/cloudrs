@@ -18,6 +18,7 @@
 //! `sc-core` resolves that URL with `sc-api` and hands it over.
 
 mod decode;
+mod equalizer;
 mod error;
 mod fetch;
 mod output;
@@ -26,6 +27,7 @@ mod resample;
 mod timeline;
 
 pub use decode::Decoder;
+pub use equalizer::EQ_BANDS;
 pub use error::{Error, Result};
 pub use fetch::{Opened, Stream};
 pub use output::{OutputDevice, output_devices};

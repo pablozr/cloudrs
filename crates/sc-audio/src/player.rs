@@ -5,7 +5,9 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::EQ_BANDS;
 use crate::decode::Decoder;
+use crate::equalizer::Equalizer;
 use crate::fetch::Stream;
 use crate::output::{self, Fault, Output};
 use crate::resample::Resampler;
@@ -39,6 +41,9 @@ pub enum Command {
     Preload(Source),
     /// Forget the preloaded source, if any.
     CancelPreload,
+    /// The equalizer's gain in dB for each of the [`EQ_BANDS`] bands, 31 Hz to
+    /// 16 kHz; `None` turns it off.
+    SetEqualizer(Option<[f32; EQ_BANDS]>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,6 +162,9 @@ struct Engine {
     /// The helper thread opening the preload.
     preloading: Option<flume::Receiver<Result<Track>>>,
     timeline: Timeline,
+    /// The equalizer's gains; `None` (or all zero) means no equalizer.
+    eq_gains: Option<[f32; EQ_BANDS]>,
+    eq: Option<Equalizer>,
 }
 
 impl Engine {
@@ -176,6 +184,8 @@ impl Engine {
             next: None,
             preloading: None,
             timeline: Timeline::default(),
+            eq_gains: None,
+            eq: None,
         }
     }
 
@@ -292,7 +302,19 @@ impl Engine {
             }
             Command::Preload(source) => self.start_preload(source),
             Command::CancelPreload => self.drop_preload(),
+            Command::SetEqualizer(gains) => {
+                self.eq_gains = gains;
+                self.rebuild_eq();
+            }
         }
+    }
+
+    /// Builds the equalizer for the output's format from `eq_gains`.
+    fn rebuild_eq(&mut self) {
+        self.eq = self
+            .eq_gains
+            .filter(|gains| gains.iter().any(|&g| g != 0.0))
+            .map(|gains| Equalizer::new(self.output.sample_rate, self.output.channels, gains));
     }
 
     fn drop_preload(&mut self) {
@@ -435,6 +457,7 @@ impl Engine {
         self.pending.clear();
         self.pending_at = 0;
         self.output = new;
+        self.rebuild_eq();
         self.timeline.reset();
         if let Some(mut next) = self.next.take() {
             next.resampler = self.resampler_for(&next.decoder);
@@ -461,6 +484,9 @@ impl Engine {
         self.track = None;
         self.pending.clear();
         self.pending_at = 0;
+        if let Some(eq) = &mut self.eq {
+            eq.reset();
+        }
         let shared = &self.output.shared;
         shared.flush.store(true, Ordering::Release);
         // The callback clears the flag on its next run (a few ms).
@@ -510,6 +536,9 @@ impl Engine {
                     );
                 }
                 track.resampler.process(&self.decoded, &mut self.pending);
+                if let Some(eq) = &mut self.eq {
+                    eq.process(&mut self.pending);
+                }
             }
             let room = self.output.producer.slots();
             if room == 0 {
