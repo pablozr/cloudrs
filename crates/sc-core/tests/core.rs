@@ -605,7 +605,7 @@ fn a_damaged_database_is_reset_and_reported() {
     let version: i32 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 4);
+    assert_eq!(version, 5);
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -717,6 +717,185 @@ fn choosing_a_device_tells_the_player() {
         !h.audio_commands
             .try_iter()
             .any(|c| matches!(c, sc_audio::Command::SetDevice(_)))
+    );
+}
+
+fn sound_settings(boost: bool) -> sc_core::Settings {
+    sc_core::Settings {
+        volume_boost: boost,
+        ..sc_core::Settings::default()
+    }
+}
+
+/// Sends the settings and waits until the core has echoed them.
+fn set_settings(h: &Harness, settings: sc_core::Settings) {
+    h.core.send(Command::SetSettings(settings));
+    h.wait(|e| matches!(e, Event::Settings(_)).then_some(()));
+}
+
+/// The volume the core reports after a `SetVolume`.
+fn volume_after(h: &Harness, volume: f32) -> f32 {
+    h.core.send(Command::SetVolume(volume));
+    h.wait(|e| match e {
+        Event::Playback(p) => Some(p.volume),
+        _ => None,
+    })
+}
+
+#[test]
+fn the_volume_stops_at_100_percent_without_boost() {
+    let h = Harness::new("volume-no-boost");
+    assert_eq!(volume_after(&h, 1.5), 1.0);
+    assert!(
+        h.audio_commands
+            .try_iter()
+            .any(|c| matches!(c, sc_audio::Command::SetVolume(v) if v == 1.0))
+    );
+}
+
+#[test]
+fn with_boost_the_volume_goes_to_200_percent() {
+    let h = Harness::new("volume-boost");
+    set_settings(&h, sound_settings(true));
+    assert!(
+        h.audio_commands
+            .try_iter()
+            .any(|c| matches!(c, sc_audio::Command::SetVolumeBoost(true)))
+    );
+    assert_eq!(volume_after(&h, 1.5), 1.5);
+    assert_eq!(volume_after(&h, 3.0), 2.0);
+}
+
+#[test]
+fn turning_boost_off_brings_the_volume_back_to_100() {
+    let h = Harness::new("boost-off");
+    set_settings(&h, sound_settings(true));
+    assert_eq!(volume_after(&h, 1.5), 1.5);
+    h.audio_commands.try_iter().for_each(drop);
+
+    h.core.send(Command::SetSettings(sound_settings(false)));
+    let volume = h.wait(|e| match e {
+        Event::Playback(p) => Some(p.volume),
+        _ => None,
+    });
+    assert_eq!(volume, 1.0);
+    let sent: Vec<_> = h.audio_commands.try_iter().collect();
+    assert!(
+        sent.iter()
+            .any(|c| matches!(c, sc_audio::Command::SetVolumeBoost(false)))
+    );
+    assert!(
+        sent.iter()
+            .any(|c| matches!(c, sc_audio::Command::SetVolume(v) if *v == 1.0))
+    );
+}
+
+#[test]
+fn sound_settings_tell_the_player_only_on_change() {
+    let h = Harness::new("sound-changes");
+    let is_sound = |c: &sc_audio::Command| {
+        matches!(
+            c,
+            sc_audio::Command::SetNormalize(_)
+                | sc_audio::Command::SetEqualizer(_)
+                | sc_audio::Command::SetVolumeBoost(_)
+        )
+    };
+    // Unchanged sound settings send nothing.
+    set_settings(&h, sc_core::Settings::default());
+    set_settings(
+        &h,
+        sc_core::Settings {
+            theme: sc_core::ThemeChoice::Dark,
+            ..sc_core::Settings::default()
+        },
+    );
+    assert!(!h.audio_commands.try_iter().any(|c| is_sound(&c)));
+
+    set_settings(
+        &h,
+        sc_core::Settings {
+            normalize: false,
+            ..sc_core::Settings::default()
+        },
+    );
+    let sent: Vec<_> = h.audio_commands.try_iter().filter(is_sound).collect();
+    assert_eq!(sent.len(), 1);
+    assert!(matches!(sent[0], sc_audio::Command::SetNormalize(false)));
+}
+
+#[test]
+fn choosing_an_equalizer_preset_tells_the_player() {
+    let h = Harness::new("eq-preset");
+    set_settings(
+        &h,
+        sc_core::Settings {
+            equalizer: sc_core::EqPreset::Bass,
+            ..sc_core::Settings::default()
+        },
+    );
+    let gains = h
+        .audio_commands
+        .try_iter()
+        .find_map(|c| match c {
+            sc_audio::Command::SetEqualizer(gains) => Some(gains),
+            _ => None,
+        })
+        .expect("the player was told");
+    assert_eq!(gains, sc_core::EqPreset::Bass.gains());
+
+    set_settings(&h, sc_core::Settings::default());
+    let gains = h.audio_commands.try_iter().find_map(|c| match c {
+        sc_audio::Command::SetEqualizer(gains) => Some(gains),
+        _ => None,
+    });
+    assert_eq!(gains, Some(None));
+}
+
+#[test]
+fn a_boosted_volume_comes_back_at_100_percent_without_boost() {
+    let h = Harness::new("boost-restore");
+    wait_for_store(&h);
+    h.search();
+    set_settings(&h, sound_settings(true));
+    assert_eq!(volume_after(&h, 1.5), 1.5);
+    h.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(1),
+    });
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.audio_events
+        .send(sc_audio::Event::Position(Duration::from_secs(42)))
+        .unwrap();
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Paused))
+        .unwrap();
+
+    // The write happens off the actor loop: restart until the latest has landed.
+    // The restarted core has the boost off.
+    let mut restored = None;
+    for _ in 0..30 {
+        let (core, audio) = restart(&h);
+        while let Ok(event) = core.events().recv_timeout(Duration::from_millis(300)) {
+            if let Event::Playback(p) = event
+                && p.state == PlayState::Paused
+            {
+                if p.position == Duration::from_secs(42) {
+                    restored = Some((p.volume, audio));
+                }
+                break;
+            }
+        }
+        if restored.is_some() {
+            break;
+        }
+    }
+    let (volume, audio) = restored.expect("the session was saved");
+    assert_eq!(volume, 1.0);
+    assert!(
+        audio
+            .try_iter()
+            .any(|c| matches!(c, sc_audio::Command::SetVolume(v) if v == 1.0))
     );
 }
 

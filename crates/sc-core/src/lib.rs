@@ -18,7 +18,7 @@ mod waveform;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use settings::{Language, Settings, ThemeChoice, read_settings};
+pub use settings::{EqPreset, Language, Settings, ThemeChoice, max_volume, read_settings};
 pub use types::{
     Account, ArtKey, CommentSummary, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId,
     ListItems, NewPlaylist, OutputDevice, PlayState, Playback, PlaylistChange, PlaylistId,
@@ -92,7 +92,7 @@ pub enum Command {
     /// Pause if playing, otherwise play (restarting a finished track).
     TogglePlay,
     Seek(Duration),
-    /// 0.0 to 1.0.
+    /// 0.0 to 1.0, or to 2.0 with [`Settings::volume_boost`].
     SetVolume(f32),
     /// Sign in with a soundcloud.com `oauth_token`: answers with
     /// [`Event::SignedIn`], or `Problem::SignInFailed` when it is refused.
@@ -329,8 +329,13 @@ impl std::fmt::Debug for CoreConfig {
 /// Starts the core with the real SoundCloud client and the default audio device.
 pub fn start(config: CoreConfig) -> Result<CoreHandle, StartError> {
     let api = sc_api::ScClient::new(sc_api::ClientConfig::default())?;
-    let audio = sc_audio::Player::spawn(config.settings.output_device.clone())?.into_channels();
-    Ok(spawn(api, audio, config))
+    let player = sc_audio::Player::spawn(config.settings.output_device.clone())?;
+    // The engine starts neutral; tell it the sound settings before anything plays.
+    let sound = &config.settings;
+    let _ = player.send(sc_audio::Command::SetNormalize(sound.normalize));
+    let _ = player.send(sc_audio::Command::SetEqualizer(sound.equalizer.gains()));
+    let _ = player.send(sc_audio::Command::SetVolumeBoost(sound.volume_boost));
+    Ok(spawn(api, player.into_channels(), config))
 }
 
 /// Starts the core with any API and any audio link (tests use fakes).

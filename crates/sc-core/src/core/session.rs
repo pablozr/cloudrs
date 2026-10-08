@@ -8,7 +8,7 @@ use sc_api::SoundCloudApi;
 use super::{Core, Input};
 use crate::store::{self, Session, SessionTrack};
 use crate::types::{ArtKey, PlayState, Problem, TrackSummary};
-use crate::{Event, artwork};
+use crate::{Event, artwork, max_volume};
 
 /// How long after the last volume change the session is saved.
 const VOLUME_SAVE_DELAY: Duration = Duration::from_secs(1);
@@ -154,8 +154,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         }
         self.queue
             .restore(tracks, session.current, session.shuffle, session.repeat);
-        self.playback.volume = session.volume;
-        self.to_audio(sc_audio::Command::SetVolume(session.volume));
+        // A volume above 100% was saved with the boost on; without it, it comes back at 100%.
+        let volume = if session.volume.is_finite() {
+            session
+                .volume
+                .clamp(0.0, max_volume(self.settings.volume_boost))
+        } else {
+            1.0
+        };
+        self.playback.volume = volume;
+        self.to_audio(sc_audio::Command::SetVolume(volume));
         self.emit(Event::Queue(self.queue.snapshot()));
 
         // Covers already on disk show at once; only the current one may download.
@@ -206,7 +214,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     /// Sets the volume now; the session is saved once the slider rests.
     pub(super) fn set_volume(&mut self, volume: f32) {
-        let volume = volume.clamp(0.0, 1.0);
+        let volume = volume.clamp(0.0, max_volume(self.settings.volume_boost));
         self.to_audio(sc_audio::Command::SetVolume(volume));
         self.playback.volume = volume;
         self.dirty = true;

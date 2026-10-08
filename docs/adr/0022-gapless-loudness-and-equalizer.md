@@ -216,3 +216,26 @@ to exactly unity after a peak (the test runs 3 s after the peak: the release is 
 1.5 s is not enough to get within 1e-6), both channels get the same gain, and a reset drops what
 was held. Also the volume split, and that the callback's volume cannot go above 1. Nobody listened
 to it, and the engine was not run on a device.
+
+## Settings
+
+1. **Three new settings** in `sc-core`: `normalize` (default on), `equalizer` (an `EqPreset`:
+   Off, Bass, Treble, Vocal, Electronic; default Off) and `volume_boost` (default off).
+   `EqPreset::gains` holds the dB tables; they are proposals, to be tuned by ear.
+2. **Schema version 5** adds three columns to `settings`: `normalize INTEGER NOT NULL DEFAULT 1`,
+   `equalizer INTEGER NOT NULL DEFAULT 0` (a code; an unknown one reads as Off) and
+   `volume_boost INTEGER NOT NULL DEFAULT 0`. A version-4 database migrates in place.
+3. **The player is told only on change.** `set_settings` compares with what is in effect and sends
+   `SetNormalize`, `SetEqualizer` or `SetVolumeBoost` for what changed. At start, `sc_core::start`
+   sends all three right after `Player::spawn` and before the core runs, because the engine starts
+   neutral. (`sc_core::spawn` does not, so tests with a fake channel see only real commands.)
+4. **The volume follows the boost.** `max_volume(boost)` is 2.0 or 1.0. `set_volume` clamps to it;
+   turning the boost off while the volume is above 100% sets it to 100%. On restore, a saved
+   volume above the limit comes back clamped (a boosted 150% returns as 100% without the boost) and
+   a non-finite one becomes 100%.
+5. **The volume is not synced in a Jam**; it stays local.
+
+### Validation
+
+Unit tests for the codes, defaults and migration (v4 to v5, round trip, unknown code), and core tests
+with the fake audio channel for each rule above. Nobody listened to it.

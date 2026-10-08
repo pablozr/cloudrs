@@ -220,7 +220,8 @@ Encrypted transcodings (`encrypted-hls`, `ctr-encrypted-hls`, `cbc-encrypted-hls
   - `session` (queue, position, volume);
   - `history`;
   - `cache_tracks` (JSON + TTL);
-  - `settings` (theme, language, Discord; ADR 0017).
+  - `settings` (theme, language, Discord; ADR 0017; sound: normalization, equalizer preset,
+    volume boost; ADR 0022).
 - **Image cache:** files in `dirs::cache_dir()/cloudrs/img/`, keyed by URL hash, with an LRU
   size limit.
 - **API for the UI:** a `Command` enum goes in, `Event`s and snapshots come out. The UI never

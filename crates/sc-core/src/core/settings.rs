@@ -14,10 +14,23 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     /// Keeps and saves the settings, then tells the UI what is now in effect.
     pub(super) fn set_settings(&mut self, settings: Settings) {
         if settings != self.settings {
-            if settings.output_device != self.settings.output_device {
-                self.to_audio(sc_audio::Command::SetDevice(settings.output_device.clone()));
+            let old = std::mem::replace(&mut self.settings, settings.clone());
+            if settings.output_device != old.output_device {
+                self.to_audio(sc_audio::Command::SetDevice(settings.output_device));
             }
-            self.settings = settings;
+            if settings.normalize != old.normalize {
+                self.to_audio(sc_audio::Command::SetNormalize(settings.normalize));
+            }
+            if settings.equalizer != old.equalizer {
+                self.to_audio(sc_audio::Command::SetEqualizer(settings.equalizer.gains()));
+            }
+            if settings.volume_boost != old.volume_boost {
+                self.to_audio(sc_audio::Command::SetVolumeBoost(settings.volume_boost));
+                // Above 100% only exists with the boost.
+                if !settings.volume_boost && self.playback.volume > 1.0 {
+                    self.set_volume(1.0);
+                }
+            }
             self.settings_changed = true;
             self.save_settings();
         }

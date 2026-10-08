@@ -44,6 +44,65 @@ impl Language {
     }
 }
 
+/// The equalizer presets (ADR 0022). There are no sliders yet; the gains
+/// are proposals, to be tuned by ear.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EqPreset {
+    #[default]
+    Off,
+    Bass,
+    Treble,
+    Vocal,
+    Electronic,
+}
+
+impl EqPreset {
+    /// Every preset, in the order Settings lists them.
+    pub const ALL: [EqPreset; 5] = [
+        Self::Off,
+        Self::Bass,
+        Self::Treble,
+        Self::Vocal,
+        Self::Electronic,
+    ];
+
+    /// The stable code saved in the database.
+    pub fn code(self) -> i64 {
+        match self {
+            Self::Off => 0,
+            Self::Bass => 1,
+            Self::Treble => 2,
+            Self::Vocal => 3,
+            Self::Electronic => 4,
+        }
+    }
+
+    /// The preset for a saved code; an unknown one gives `Off`.
+    pub fn from_code(code: i64) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|preset| preset.code() == code)
+            .unwrap_or_default()
+    }
+
+    /// The gain in dB for each band, 31 Hz to 16 kHz; `None` for `Off`.
+    pub fn gains(self) -> Option<[f32; sc_audio::EQ_BANDS]> {
+        match self {
+            Self::Off => None,
+            Self::Bass => Some([6., 5., 4., 2., 0., 0., 0., 0., 0., 0.]),
+            Self::Treble => Some([0., 0., 0., 0., 0., 0., 1.5, 3., 4.5, 6.]),
+            Self::Vocal => Some([-2., -2., -1., 0., 2., 3., 3., 2., 0., -1.]),
+            Self::Electronic => Some([5., 4., 1., 0., -2., 0., 1., 2., 4., 5.]),
+        }
+    }
+}
+
+/// The highest volume the player accepts: 200% with the volume boost on,
+/// 100% without it.
+pub fn max_volume(volume_boost: bool) -> f32 {
+    if volume_boost { 2.0 } else { 1.0 }
+}
+
 /// Everything the person can change in Settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
@@ -53,6 +112,11 @@ pub struct Settings {
     pub discord: bool,
     /// A cpal device id (`host:id`); `None` follows the system default (ADR 0020).
     pub output_device: Option<String>,
+    /// Even out loud and quiet tracks (ADR 0022).
+    pub normalize: bool,
+    pub equalizer: EqPreset,
+    /// Let the volume go up to 200%, behind a limiter (ADR 0022).
+    pub volume_boost: bool,
 }
 
 impl Default for Settings {
@@ -62,6 +126,9 @@ impl Default for Settings {
             language: Language::default(),
             discord: true,
             output_device: None,
+            normalize: true,
+            equalizer: EqPreset::Off,
+            volume_boost: false,
         }
     }
 }
@@ -122,6 +189,30 @@ mod tests {
         assert!(!dir.join(LEGACY_DISCORD_OFF).exists());
         assert!(!read_settings(&dir).discord, "kept in the database");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn equalizer_codes_round_trip() {
+        for preset in EqPreset::ALL {
+            assert_eq!(EqPreset::from_code(preset.code()), preset);
+        }
+        assert_eq!(EqPreset::from_code(77), EqPreset::Off);
+        assert_eq!(EqPreset::Off.gains(), None);
+        assert!(EqPreset::ALL[1..].iter().all(|p| p.gains().is_some()));
+    }
+
+    #[test]
+    fn the_sound_settings_default_to_a_plain_sound() {
+        let settings = Settings::default();
+        assert!(settings.normalize);
+        assert_eq!(settings.equalizer, EqPreset::Off);
+        assert!(!settings.volume_boost);
+    }
+
+    #[test]
+    fn the_boost_allows_up_to_200_percent() {
+        assert_eq!(max_volume(false), 1.0);
+        assert_eq!(max_volume(true), 2.0);
     }
 
     #[test]
