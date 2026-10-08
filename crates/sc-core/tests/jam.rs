@@ -7,7 +7,7 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::*;
-use sc_core::{Command, Event, JamRole, JamState, Problem, TrackId};
+use sc_core::{ArtKey, Command, Event, JamRole, JamState, Problem, TrackId};
 
 const WAIT: Duration = Duration::from_secs(15);
 
@@ -204,4 +204,22 @@ fn a_guest_sees_the_host_first() {
     let state = jam(&guest, |s| !s.people.is_empty());
     assert!(state.people[0].host, "{:?}", state.people);
     assert_eq!(state.people[0].id, 0);
+}
+
+#[test]
+fn a_guest_gets_the_covers_of_the_whole_queue() {
+    let (host, guest) = pair("covers");
+    host.search();
+    host.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(1),
+    });
+    // The guest never saw track 2: it comes with the host's queue, cover too.
+    guest.wait(|e| match e {
+        Event::Artwork {
+            key: ArtKey::Track(TrackId(2)),
+            ..
+        } => Some(()),
+        _ => None,
+    });
 }

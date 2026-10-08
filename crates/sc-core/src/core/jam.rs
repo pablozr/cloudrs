@@ -1206,8 +1206,13 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             .filter_map(|id| self.find_summary(TrackId(*id)))
             .collect();
         let start = current.map_or(0, |i| i as usize);
+        let art: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
         self.queue.set_context(summaries, start);
         self.emit(Event::Queue(self.queue.snapshot()));
+        // Tracks fetched for the mirror were never on a list here.
+        for id in art {
+            self.request_artwork(ArtKey::Track(id));
+        }
     }
 
     /// The host prepared a track: load it here, paused at `pos`.

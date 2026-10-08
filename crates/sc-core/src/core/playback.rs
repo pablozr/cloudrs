@@ -63,6 +63,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             self.queue.add_to_queue(summary);
         }
         self.queue_changed();
+        // A Jam guest's track may never have been on a list here.
+        self.request_artwork(ArtKey::Track(id));
     }
 
     pub(super) fn queue_changed(&mut self) {
