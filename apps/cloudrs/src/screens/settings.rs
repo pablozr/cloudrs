@@ -1,5 +1,5 @@
-//! The Settings screen (ADR 0017): theme, the audio output (ADR 0020), Discord,
-//! the artwork cache and the keyboard shortcuts. Every change goes to the core as a whole `Settings`
+//! The Settings screen (ADR 0017): theme, the audio output (ADR 0020), sound
+//! (ADR 0022), Discord, the artwork cache and the keyboard shortcuts. Every change goes to the core as a whole `Settings`
 //! and takes effect when the core echoes it.
 
 use cloudrs_ui::Theme;
@@ -7,7 +7,7 @@ use cloudrs_ui::components::{ButtonKind, button, pill};
 use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, FontWeight, div};
-use sc_core::{Command, ThemeChoice};
+use sc_core::{Command, EqPreset, ThemeChoice};
 
 use super::account::muted;
 use crate::i18n::{discord as d, settings as t};
@@ -39,6 +39,7 @@ impl Shell {
             )
             .child(self.theme_setting(theme, cx))
             .child(self.output_setting(theme, cx))
+            .child(self.sound_setting(theme, cx))
             .children(self.discord_setting(theme, cx))
             // The language picker appears with a second language (ADR 0017).
             .child(self.cache_setting(theme, cx))
@@ -136,6 +137,62 @@ impl Shell {
         section(theme, t::output(), t::output_hint()).child(row)
     }
 
+    /// Normalization, the equalizer preset and the volume boost (ADR 0022).
+    fn sound_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let settings = &self.models.settings;
+        let (normalize, preset, boost) = (
+            settings.normalize,
+            settings.equalizer,
+            settings.volume_boost,
+        );
+        let row = || div().flex().flex_wrap().gap(space::S2).pt(space::S1);
+        let on_off = |id: &'static str, label: &'static str, selected: bool, ix: usize| {
+            pill(theme, (id, ix), label, selected)
+                .tab_index(0)
+                .aria_label(label)
+        };
+        let normalize_row = row()
+            .child(
+                on_off("normalize", d::on(), normalize, 0).on_click(cx.listener(
+                    |this, _, _, _| this.change_settings(|settings| settings.normalize = true),
+                )),
+            )
+            .child(
+                on_off("normalize", d::off(), !normalize, 1).on_click(cx.listener(
+                    |this, _, _, _| this.change_settings(|settings| settings.normalize = false),
+                )),
+            );
+        let presets = EqPreset::ALL.into_iter().enumerate().map(|(ix, value)| {
+            let label = preset_label(value);
+            pill(theme, ("equalizer", ix), label, preset == value)
+                .tab_index(0)
+                .aria_label(label)
+                .on_click(cx.listener(move |this, _, _, _| {
+                    this.change_settings(|settings| settings.equalizer = value);
+                }))
+        });
+        let boost_row = row()
+            .child(
+                on_off("boost", d::on(), boost, 0).on_click(cx.listener(|this, _, _, _| {
+                    this.change_settings(|settings| settings.volume_boost = true);
+                })),
+            )
+            .child(
+                on_off("boost", d::off(), !boost, 1).on_click(cx.listener(|this, _, _, _| {
+                    this.change_settings(|settings| settings.volume_boost = false);
+                })),
+            );
+        section(theme, t::sound(), t::sound_hint())
+            .child(sub_title(theme, t::normalize()))
+            .child(muted(theme, t::normalize_hint()))
+            .child(normalize_row)
+            .child(sub_title(theme, t::equalizer()))
+            .child(row().children(presets))
+            .child(sub_title(theme, t::volume_boost()))
+            .child(muted(theme, t::volume_boost_hint()))
+            .child(boost_row)
+    }
+
     /// "Show what I play on Discord", when this build can talk to Discord.
     fn discord_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<Div> {
         if !self.discord.available() {
@@ -197,6 +254,27 @@ impl Shell {
                 ),
         )
     }
+}
+
+/// The name of a preset, for its pill.
+fn preset_label(preset: EqPreset) -> &'static str {
+    match preset {
+        EqPreset::Off => t::eq_off(),
+        EqPreset::Bass => t::eq_bass(),
+        EqPreset::Treble => t::eq_treble(),
+        EqPreset::Vocal => t::eq_vocal(),
+        EqPreset::Electronic => t::eq_electronic(),
+    }
+}
+
+/// The name of one setting inside a section.
+fn sub_title(theme: &Theme, title: &'static str) -> Div {
+    div().pt(space::S2).child(
+        theme
+            .text(div(), typography::BODY)
+            .text_color(theme.colors.text)
+            .child(title),
+    )
 }
 
 /// A titled group: the title, a muted hint, then whatever the caller adds.
@@ -269,6 +347,15 @@ mod tests {
         assert_eq!(megabytes(0), "0.0");
         assert_eq!(megabytes(1_572_864), "1.5");
         assert_eq!(megabytes(10 * 1_048_576), "10.0");
+    }
+
+    #[test]
+    fn every_preset_has_a_label() {
+        assert!(
+            EqPreset::ALL
+                .into_iter()
+                .all(|p| !preset_label(p).is_empty())
+        );
     }
 
     #[test]

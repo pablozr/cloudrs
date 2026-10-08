@@ -13,7 +13,10 @@ use gpui::{Context, EventEmitter, ObjectFit, Window, div, img, px};
 use sc_core::{Event, Repeat};
 
 use crate::i18n::player as t;
-use crate::state::{ArtworkMap, PlayerState, format_time, next_repeat, nudge_target, seek_target};
+use crate::state::{
+    ArtworkMap, PlayerState, format_time, next_repeat, nudge_target, seek_target, volume_fraction,
+    volume_from_fraction, volume_percent,
+};
 
 /// What the person asked of the player.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -25,7 +28,7 @@ pub enum PlayerAction {
     SetRepeat(Repeat),
     ToggleQueue,
     Seek(Duration),
-    /// 0.0 to 1.0.
+    /// 0.0 to 2.0 (above 1.0 only with the volume boost).
     SetVolume(f32),
 }
 
@@ -43,9 +46,12 @@ pub struct PlayerBar {
 impl EventEmitter<PlayerAction> for PlayerBar {}
 
 impl PlayerBar {
-    pub fn new() -> Self {
+    pub fn new(volume_boost: bool) -> Self {
         Self {
-            state: PlayerState::new(),
+            state: PlayerState {
+                volume_boost,
+                ..PlayerState::new()
+            },
             flat_waveform: vec![tokens::PLACEHOLDER_LEVEL; tokens::PLACEHOLDER_BARS].into(),
             hover: None,
             queue_open: false,
@@ -60,6 +66,14 @@ impl PlayerBar {
             self.state.playback.duration,
             forward,
         )
+    }
+
+    /// The volume boost was turned on or off in Settings.
+    pub fn set_volume_boost(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.state.volume_boost != on {
+            self.state.volume_boost = on;
+            cx.notify();
+        }
     }
 
     pub fn set_queue_open(&mut self, open: bool, cx: &mut Context<Self>) {
@@ -239,6 +253,15 @@ impl Render for PlayerBar {
         } else {
             Icon::Volume
         };
+        let boost = state.volume_boost;
+        let level = state.playback.volume;
+        let percent = volume_percent(level);
+        // Above 100% the fill warns: loud sound can harm the ears.
+        let fill = if level > 1.0 {
+            theme.readable(tokens::status::warning())
+        } else {
+            c.accent
+        };
         let volume = div()
             .flex()
             .flex_none()
@@ -250,12 +273,19 @@ impl Render for PlayerBar {
                     slider(
                         &theme,
                         "volume",
-                        state.playback.volume,
-                        cx.processor(|_, volume: f32, _, cx| {
-                            cx.emit(PlayerAction::SetVolume(volume))
+                        volume_fraction(level, boost),
+                        fill,
+                        cx.processor(move |_, fraction: f32, _, cx| {
+                            cx.emit(PlayerAction::SetVolume(volume_from_fraction(
+                                fraction, boost,
+                            )))
                         }),
                     )
                     .aria_label(t::volume())
+                    .aria_value(t::volume_percent(percent))
+                    .aria_numeric_value(f64::from(percent))
+                    .aria_min_numeric_value(0.0)
+                    .aria_max_numeric_value(f64::from(sc_core::max_volume(boost) * 100.0))
                     .tooltip(tooltip(t::volume())),
                 ),
             );

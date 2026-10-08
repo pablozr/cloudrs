@@ -79,8 +79,9 @@ The accent is reserved for: the primary action, the play button, progress, selec
 ### Status
 
 `success #3DD68C` · `warning #FFC145` · `danger #FF4D5E` · `info #5AA9FF`. Status colors never
-replace the accent. Used as text on the light theme they are darkened (`Theme::readable`) to
-keep contrast.
+replace the accent, with one exception: a caution state, where the accent would mislead (the
+volume slider above 100%, below). Used as text on the light theme they are darkened
+(`Theme::readable`) to keep contrast.
 
 ## Typography
 
@@ -160,7 +161,8 @@ The OS "reduce motion" setting turns every duration down to an instant change.
 - **Command palette:** an overlay like a dialog, with the panel near the top: a search field,
   then rows (icon, label, key). The selected row has the accent border; Esc, a click outside or
   choosing a row closes it (ADR 0018).
-- **Slider:** volume.
+- **Slider:** volume. With Volume boost on it reaches 200%; above 100% the fill is `warning`
+  (`Theme::readable` on light) as a caution, not as an accent. The focus ring stays the accent.
 - **Timed comments (track page, ADR 0021):** pins in a thin lane under the large waveform, one per
   bar (muted dots; the one under the pointer is larger and in accent). Hovering a pin opens a
   popover with up to three comments (avatar, name, time, text) and "+N more". The Comments tab

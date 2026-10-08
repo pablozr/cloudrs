@@ -68,6 +68,24 @@ pub struct PlayerState {
     pub playback: Playback,
     pub shuffle: bool,
     pub repeat: Repeat,
+    /// The volume boost is on, so the slider reaches 200%.
+    pub volume_boost: bool,
+}
+
+/// Where the volume sits on the slider, 0..=1: the slider's end is 200% with
+/// the boost and 100% without it.
+pub fn volume_fraction(volume: f32, boost: bool) -> f32 {
+    (volume / sc_core::max_volume(boost)).clamp(0.0, 1.0)
+}
+
+/// The volume for a position on the slider; the opposite of [`volume_fraction`].
+pub fn volume_from_fraction(fraction: f32, boost: bool) -> f32 {
+    fraction.clamp(0.0, 1.0) * sc_core::max_volume(boost)
+}
+
+/// The volume as a whole percent, for the label.
+pub fn volume_percent(volume: f32) -> u32 {
+    (volume * 100.0).round().max(0.0) as u32
 }
 
 impl PlayerState {
@@ -78,6 +96,7 @@ impl PlayerState {
             waveform: None,
             shuffle: false,
             repeat: Repeat::Off,
+            volume_boost: false,
             // The core starts at full volume and only reports it on change.
             playback: Playback {
                 volume: 1.0,
@@ -280,6 +299,17 @@ mod tests {
         assert!(player.playing());
         assert_eq!(player.progress(), 0.25);
         assert_eq!(player.playback.volume, 0.5);
+    }
+
+    #[test]
+    fn the_slider_maps_the_volume_with_and_without_the_boost() {
+        assert_eq!(volume_fraction(1.5, true), 0.75);
+        assert_eq!(volume_from_fraction(0.75, true), 1.5);
+        assert_eq!(volume_from_fraction(0.75, false), 0.75);
+        assert_eq!(volume_fraction(1.5, false), 1.0);
+        assert_eq!(volume_fraction(0.5, false), 0.5);
+        assert_eq!(volume_percent(1.5), 150);
+        assert_eq!(volume_percent(0.0), 0);
     }
 
     fn snapshot(ids: &[u64], current: Option<usize>) -> Event {

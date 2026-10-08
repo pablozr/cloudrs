@@ -239,3 +239,26 @@ to it, and the engine was not run on a device.
 
 Unit tests for the codes, defaults and migration (v4 to v5, round trip, unknown code), and core tests
 with the fake audio channel for each rule above. Nobody listened to it.
+
+## App
+
+1. **A Sound section in Settings**, right after Output, with three rows of pills: Normalize volume
+   (On, Off), Equalizer (one pill per preset) and Volume boost (On, Off). Every pill is reachable by
+   keyboard and has an `aria_label`; the texts come from `i18n`. Each change goes to the core as a
+   whole `Settings`, like the other settings, and takes effect when the core echoes it.
+2. **A warning next to the boost.** The hint under Volume boost says that loud sound can harm
+   hearing. The text is a proposal.
+3. **The volume slider reaches 200% with the boost on.** The slider keeps its 0..1 range; the app
+   maps it with `volume_fraction` and `volume_from_fraction` (the end of the slider is 200% with the
+   boost and 100% without it). Above 100% the fill uses `warning` through `Theme::readable`, a
+   caution state recorded in VISUAL-IDENTITY. `slider` takes the fill colour as a parameter; the
+   focus ring stays the accent. The value is announced as a percent, with its minimum and maximum.
+4. **The player bar learns about the boost** from the `Event::Settings` the shell already receives.
+5. **The operating system's volume stays at 0 to 100%.** Media controls get `min(volume, 1.0)`, and a
+   volume coming from them is clamped to 0..1.
+
+### Validation
+
+Unit tests for the slider mapping and the preset labels. The screens were not run or captured:
+this environment is Windows with no Linux container for the Xvfb flow, so the Sound section and the
+caution fill were not looked at in either theme.

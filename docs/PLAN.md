@@ -378,8 +378,12 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 - [x] Gapless (ADR 0022).
   - [ ] Listened to by the maintainer: an album, repeat one, reordering near the end, a device
     switch near the end.
-- [ ] Loudness normalization.
-- [ ] Equalizer.
+- [x] Loudness normalization (ADR 0022).
+  - [ ] Listened to by the maintainer.
+- [x] Equalizer, with presets (ADR 0022).
+  - [ ] Listened to by the maintainer.
+- [x] Volume boost up to 200% behind a limiter (ADR 0022).
+  - [ ] Listened to by the maintainer.
 - [ ] Mini player, tray, Discord RPC.
 - [ ] Packaging: `.AppImage`/`.deb`/Flatpak, `.dmg`, `.msi` (via `cargo-dist` or
       `cargo-packager`).

@@ -100,6 +100,18 @@ pub mod settings {
         output_default { en: "System default" }
         output_none { en: "No other output devices found." }
         refresh { en: "Refresh" }
+        sound { en: "Sound" }
+        sound_hint { en: "How cloudrs shapes what you hear." }
+        normalize { en: "Normalize volume" }
+        normalize_hint { en: "Evens out loud and quiet tracks." }
+        equalizer { en: "Equalizer" }
+        eq_off { en: "Off" }
+        eq_bass { en: "Bass" }
+        eq_treble { en: "Treble" }
+        eq_vocal { en: "Vocal" }
+        eq_electronic { en: "Electronic" }
+        volume_boost { en: "Volume boost" }
+        volume_boost_hint { en: "Lets the volume go up to 200% and lifts quiet tracks. Loud sound can harm your hearing." }
         cache { en: "Cache" }
         cache_hint { en: "Covers kept on this computer so pages open faster. Covers on screen stay." }
         clear_cache { en: "Clear cache" }
@@ -320,6 +332,9 @@ pub mod player {
         queue { en: "Queue" }
         seek { en: "Seek" }
         volume { en: "Volume" }
+    }
+    formats! {
+        volume_percent(percent) { en: "{percent}%" }
     }
 }
 

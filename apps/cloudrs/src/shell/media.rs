@@ -106,9 +106,11 @@ impl SystemMedia {
                 self.sent = Some(next);
             }
         }
-        if self.sent_volume != Some(playback.volume) {
-            controls.set_volume(playback.volume);
-            self.sent_volume = Some(playback.volume);
+        // The system's volume knows nothing above 100%.
+        let volume = playback.volume.min(1.0);
+        if self.sent_volume != Some(volume) {
+            controls.set_volume(volume);
+            self.sent_volume = Some(volume);
         }
     }
 }

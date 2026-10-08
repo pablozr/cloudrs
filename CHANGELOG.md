@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Sound:** loudness normalization (on by default), an equalizer with presets, and an optional
+  volume boost up to 200% with a limiter, in Settings › Sound.
 - **Gapless:** the next track is buffered about 20 s before the end and follows with no gap (not
   in a Jam, and not into autoplay yet).
 - **Comments:** a track page lists its comments, and pins under its waveform show the timed

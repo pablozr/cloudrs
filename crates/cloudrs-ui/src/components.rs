@@ -573,11 +573,13 @@ pub fn comment_lane(
 }
 
 /// A horizontal slider (`value` 0..=1) with click and drag. Fills its parent's
-/// width at [`size::SLIDER_HEIGHT`]; the caller adds the `aria_label`.
+/// width at [`size::SLIDER_HEIGHT`]; the caller adds the `aria_label`. `filled_color`
+/// colours the filled part; the focus ring stays the accent.
 pub fn slider(
     theme: &Theme,
     id: impl Into<ElementId>,
     value: f32,
+    filled_color: Hsla,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let c = theme.colors;
@@ -603,7 +605,7 @@ pub fn slider(
                 track.origin,
                 point(thumb_x + thumb / 2.0, mid + track_h / 2.0),
             );
-            window.paint_quad(fill(filled, c.accent).corner_radii(track_h / 2.0));
+            window.paint_quad(fill(filled, filled_color).corner_radii(track_h / 2.0));
             let knob = Bounds::from_corners(
                 point(thumb_x, mid - thumb / 2.0),
                 point(thumb_x + thumb, mid + thumb / 2.0),

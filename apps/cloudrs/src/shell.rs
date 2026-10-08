@@ -193,7 +193,7 @@ impl Shell {
         })
         .detach();
 
-        let player = cx.new(|_| PlayerBar::new());
+        let player = cx.new(|_| PlayerBar::new(config.settings.volume_boost));
         cx.subscribe(&player, |this, _, action: &PlayerAction, cx| {
             let command = match *action {
                 PlayerAction::TogglePlay => Command::TogglePlay,
@@ -375,6 +375,9 @@ impl Shell {
             Event::Settings(settings) => {
                 appearance::apply(settings, cx);
                 self.discord.set_enabled(settings.discord);
+                self.player.update(cx, |bar, cx| {
+                    bar.set_volume_boost(settings.volume_boost, cx)
+                });
                 cx.refresh_windows();
             }
             Event::CacheCleared => {
