@@ -372,7 +372,11 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
       for a second language (M5).
 
 ### M5 — Polish and 0.1 release
-- [ ] Gapless, loudness normalization, equalizer.
+- [x] Gapless (ADR 0022).
+  - [ ] Listened to by the maintainer: an album, repeat one, reordering near the end, a device
+    switch near the end.
+- [ ] Loudness normalization.
+- [ ] Equalizer.
 - [ ] Mini player, tray, Discord RPC.
 - [ ] Packaging: `.AppImage`/`.deb`/Flatpak, `.dmg`, `.msi` (via `cargo-dist` or
       `cargo-packager`).

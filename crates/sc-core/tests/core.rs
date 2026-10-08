@@ -1442,3 +1442,187 @@ fn playlists_need_an_account() {
     h.core.send(Command::DeletePlaylist(PlaylistId(5)));
     h.wait(|e| matches!(e, Event::Problem(Problem::SignInRequired)).then_some(()));
 }
+
+/// The next audio command that satisfies `pick`, if one arrives in time.
+fn audio_within(
+    h: &Harness,
+    wait: Duration,
+    pick: impl Fn(&sc_audio::Command) -> bool,
+) -> Option<sc_audio::Command> {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        match h.audio_commands.recv_timeout(left) {
+            Ok(command) if pick(&command) => return Some(command),
+            Ok(_) => {}
+            Err(_) => return None,
+        }
+    }
+}
+
+fn is_preload(command: &sc_audio::Command) -> bool {
+    matches!(command, sc_audio::Command::Preload(_))
+}
+
+fn is_load(command: &sc_audio::Command) -> bool {
+    matches!(command, sc_audio::Command::Load(_))
+}
+
+/// The URL of the next `Preload`.
+fn preloaded_url(h: &Harness) -> String {
+    match audio_within(h, Duration::from_secs(10), is_preload) {
+        Some(sc_audio::Command::Preload(source)) => source.url,
+        other => panic!("expected a Preload, got {other:?}"),
+    }
+}
+
+fn no_preload(h: &Harness) -> bool {
+    audio_within(h, Duration::from_millis(300), is_preload).is_none()
+}
+
+/// Tells the core the engine is at `seconds` and waits until it was handled.
+fn at_second(h: &Harness, seconds: u64) {
+    let position = Duration::from_secs(seconds);
+    h.audio_events
+        .send(sc_audio::Event::Position(position))
+        .unwrap();
+    h.wait(|e| match e {
+        Event::Playback(p) if p.position == position => Some(()),
+        _ => None,
+    });
+}
+
+/// Plays the current track as the engine would: loaded, then playing.
+fn engine_plays(h: &Harness) {
+    assert!(audio_within(h, Duration::from_secs(10), is_load).is_some());
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Playing))
+        .unwrap();
+    h.wait(|e| match e {
+        Event::Playback(p) if p.state == PlayState::Playing => Some(()),
+        _ => None,
+    });
+}
+
+/// Opens the profile whose tracks are 70 and 71 and plays 70.
+fn play_user_tracks(h: &Harness) {
+    let list = ListId::UserTracks(UserId(50));
+    h.core.send(Command::OpenUser(UserId(50)));
+    h.list(list);
+    h.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    engine_plays(h);
+}
+
+#[test]
+fn the_next_track_is_preloaded_near_the_end() {
+    let h = Harness::new("preload");
+    play_user_tracks(&h);
+    at_second(&h, 100);
+    assert!(no_preload(&h));
+    at_second(&h, 185);
+    assert!(preloaded_url(&h).ends_with("/71.m3u8"));
+    // Once per track.
+    at_second(&h, 186);
+    assert!(no_preload(&h));
+}
+
+#[test]
+fn next_started_moves_on_without_loading() {
+    let h = Harness::new("next-started");
+    play_user_tracks(&h);
+    at_second(&h, 185);
+    preloaded_url(&h);
+
+    h.audio_events.send(sc_audio::Event::NextStarted).unwrap();
+    let queue = h.wait(|e| match e {
+        Event::Queue(q) if q.current == Some(1) => Some(q),
+        _ => None,
+    });
+    assert_eq!(queue.tracks[1].id, TrackId(71));
+    let now = h.wait(|e| match e {
+        Event::NowPlaying(track) => Some(track),
+        _ => None,
+    });
+    assert_eq!(now.id, TrackId(71));
+    let playback = h.wait(|e| match e {
+        Event::Playback(p) if p.state == PlayState::Playing => Some(p),
+        _ => None,
+    });
+    assert_eq!(playback.position, Duration::ZERO);
+    assert!(audio_within(&h, Duration::from_millis(300), is_load).is_none());
+}
+
+#[test]
+fn a_queue_change_cancels_the_preload() {
+    let h = Harness::new("preload-queue");
+    h.search();
+    play_user_tracks(&h);
+    at_second(&h, 185);
+    assert!(preloaded_url(&h).ends_with("/71.m3u8"));
+
+    h.core.send(Command::PlayNext(TrackId(1)));
+    let cancel = audio_within(&h, Duration::from_secs(10), |c| {
+        matches!(c, sc_audio::Command::CancelPreload)
+    });
+    assert!(cancel.is_some());
+    at_second(&h, 186);
+    assert!(preloaded_url(&h).ends_with("/1.m3u8"));
+}
+
+#[test]
+fn pausing_cancels_the_preload() {
+    let h = Harness::new("preload-pause");
+    play_user_tracks(&h);
+    at_second(&h, 185);
+    preloaded_url(&h);
+
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Paused))
+        .unwrap();
+    let cancel = audio_within(&h, Duration::from_secs(10), |c| {
+        matches!(c, sc_audio::Command::CancelPreload)
+    });
+    assert!(cancel.is_some());
+}
+
+#[test]
+fn repeat_one_preloads_the_same_track() {
+    let h = Harness::new("preload-repeat");
+    h.search();
+    h.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(1),
+    });
+    engine_plays(&h);
+    h.core.send(Command::SetRepeat(sc_core::Repeat::One));
+    at_second(&h, 185);
+    assert!(preloaded_url(&h).ends_with("/1.m3u8"));
+}
+
+#[test]
+fn a_preview_is_not_preloaded() {
+    let h = Harness::new("preload-preview");
+    h.search();
+    h.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(1),
+    });
+    engine_plays(&h);
+    at_second(&h, 185);
+    assert!(no_preload(&h));
+}
+
+#[test]
+fn a_cancelled_preload_that_started_is_replaced() {
+    let h = Harness::new("preload-late");
+    play_user_tracks(&h);
+    h.audio_events.send(sc_audio::Event::NextStarted).unwrap();
+    let load = audio_within(&h, Duration::from_secs(10), is_load);
+    assert!(
+        matches!(&load, Some(sc_audio::Command::Load(source)) if source.url.ends_with("/71.m3u8")),
+        "{load:?}"
+    );
+}

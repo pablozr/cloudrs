@@ -45,6 +45,27 @@ continuous album or a split DJ mix should play without a break.
 7. **Autoplay of related tracks keeps its gap for now.** The related list is fetched only when
    the queue ends, so there is nothing to preload.
 
+### The core's part
+
+8. **The trigger.** On each `Position`, while playing, outside a Jam, with a known duration and
+   at most 20 s left, the core asks the queue what plays after the current track
+   (`Queue::peek_next`, which mirrors `next` for a natural end without moving) and, unless it is
+   a preview, resolves its stream URL (fetching the track first if it was never cached) and
+   sends `Preload`. It acts once per play.
+9. **Invalidation by key.** Each queue entry has a key. The prepared track remembers the key it
+   was prepared for, and every queue change compares it with `peek_next`: a mismatch (reorder,
+   Play next, shuffle, removal) sends `CancelPreload`. Answers from a resolve that finished late
+   are ignored when the play or the key no longer matches.
+10. **Pause cancels.** A long pause could outlive the segment URLs, so pausing cancels the
+    preload; the next `Position` while playing prepares it again.
+11. **`NextStarted` moves the core on without loading.** The queue advances, the screens show
+    the new track, and no `Load` is sent. If the preload was cancelled but the engine had
+    already started it, or the queue changed meanwhile, the core falls back to the normal path
+    and loads whatever is next. A resolve error is logged and not retried: the track takes the
+    normal path when the current one ends.
+12. **Starting a Jam cancels the preload**, and a `NextStarted` that arrives in a Jam moves on
+    through the normal path.
+
 ### Accepted limits
 
 - **AAC priming.** Each AAC stream starts with about 46 ms of encoder delay that symphonia does

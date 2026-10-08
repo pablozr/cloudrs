@@ -134,6 +134,14 @@ enum Input {
         generation: u64,
         result: sc_api::Result<sc_api::models::Page<Track>>,
     },
+    /// The track that follows the current one has its stream URL (and, if it
+    /// was not cached, its details), for gapless playback.
+    PreloadReady {
+        generation: u64,
+        key: u64,
+        track: Option<Box<Track>>,
+        result: sc_api::Result<StreamSource>,
+    },
     /// The debounced session save after a volume change.
     SaveDue,
     /// The database opened (or not) off the actor loop, with the saved session.
@@ -252,6 +260,7 @@ async fn run<A: SoundCloudApi + 'static>(
         autoplay: None,
         autoplay_gen: 0,
         play_gen: 0,
+        preload: None,
         skip_on_failure: false,
         failed_in_row: 0,
         volume_save: None,
@@ -334,6 +343,8 @@ struct Core<A> {
     /// Bumped on every play; stream and waveform answers of an older play are
     /// dropped (a double click, repeat one or a quick Previous).
     play_gen: u64,
+    /// The next track being prepared for gapless playback, if any (ADR 0022).
+    preload: Option<playback::Preload>,
     /// The current track was reached by moving on, so if it cannot play the
     /// core moves on again. A track the person picked does not skip.
     skip_on_failure: bool,
@@ -445,6 +456,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 }
             }
             Input::RelatedDone { generation, result } => self.related_done(generation, result),
+            Input::PreloadReady {
+                generation,
+                key,
+                track,
+                result,
+            } => self.preload_ready(generation, key, track, result),
             Input::SaveDue => self.save_session(),
             Input::StoreReady(opened) => self.store_ready(opened),
             Input::StreamReady {

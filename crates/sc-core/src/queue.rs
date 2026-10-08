@@ -267,6 +267,29 @@ impl Queue {
         Step::End
     }
 
+    /// What [`Queue::next`] would play when the track ends by itself, without
+    /// moving. The key changes whenever the answer does (reorder, play next,
+    /// shuffle), so a caller can tell if something it prepared is still right.
+    pub fn peek_next(&self) -> Option<(u64, &TrackSummary)> {
+        let current = self.current?;
+        let index = if self.repeat == Repeat::One {
+            current
+        } else if current + 1 < self.entries.len() {
+            current + 1
+        } else if self.repeat == Repeat::All {
+            0
+        } else {
+            return None;
+        };
+        let entry = &self.entries[index];
+        Some((entry.key, &entry.track))
+    }
+
+    /// The key of the current entry.
+    pub fn current_key(&self) -> Option<u64> {
+        self.current.map(|i| self.entries[i].key)
+    }
+
     /// The track before the current one; the first track plays again.
     pub fn previous(&mut self) -> Option<usize> {
         let current = self.current?;
@@ -353,6 +376,59 @@ mod tests {
         let q = queue(&[1, 2, 3, 4], 2);
         assert_eq!(ids(&q), [1, 2, 3, 4]);
         assert_eq!(q.snapshot().current, Some(2));
+    }
+
+    fn peeked_id(q: &Queue) -> Option<u64> {
+        q.peek_next().map(|(_, t)| t.id.0)
+    }
+
+    #[test]
+    fn peek_next_is_the_following_track_without_moving() {
+        let q = queue(&[1, 2, 3], 0);
+        assert_eq!(peeked_id(&q), Some(2));
+        assert_eq!(current_id(&q), Some(1));
+    }
+
+    #[test]
+    fn peek_next_at_the_end_depends_on_repeat() {
+        let mut q = queue(&[1, 2, 3], 2);
+        assert_eq!(peeked_id(&q), None);
+        q.set_repeat(Repeat::All);
+        assert_eq!(peeked_id(&q), Some(1));
+        q.set_repeat(Repeat::One);
+        assert_eq!(peeked_id(&q), Some(3));
+        assert_eq!(q.peek_next().map(|(k, _)| k), q.current_key());
+    }
+
+    #[test]
+    fn peek_next_of_an_empty_queue_is_none() {
+        assert!(Queue::new(1).peek_next().is_none());
+        assert!(Queue::new(1).current_key().is_none());
+    }
+
+    #[test]
+    fn play_next_changes_the_peeked_key() {
+        let mut q = queue(&[1, 2, 3], 0);
+        let before = q.peek_next().map(|(k, _)| k);
+        q.play_next(track(9));
+        assert_eq!(peeked_id(&q), Some(9));
+        assert_ne!(q.peek_next().map(|(k, _)| k), before);
+    }
+
+    #[test]
+    fn shuffle_changes_the_peeked_key() {
+        let mut q = queue(&(1..=30).collect::<Vec<_>>(), 0);
+        let before = q.peek_next().map(|(k, _)| k);
+        q.set_shuffle(true);
+        assert_ne!(q.peek_next().map(|(k, _)| k), before);
+    }
+
+    #[test]
+    fn peek_next_matches_what_next_plays() {
+        let mut q = queue(&[1, 2, 3], 0);
+        let peeked = q.peek_next().map(|(k, _)| k);
+        assert_eq!(q.next(true), Step::Play(1));
+        assert_eq!(q.current_key(), peeked);
     }
 
     #[test]

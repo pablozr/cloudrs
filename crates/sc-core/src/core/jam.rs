@@ -314,6 +314,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     }
 
     fn start_jam(&mut self, link: Option<String>) {
+        // A Jam starts every track together; nothing may follow by itself.
+        self.cancel_preload();
         self.jam_gen += 1;
         let generation = self.jam_gen;
         let (session, role) = match link {

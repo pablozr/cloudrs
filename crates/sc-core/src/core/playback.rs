@@ -16,6 +16,19 @@ use crate::{Event, artwork, waveform};
 const SAVE_EVERY: Duration = Duration::from_secs(5);
 /// Tracks fetched when the queue runs out.
 const AUTOPLAY_COUNT: u32 = 20;
+/// How long before the end of a track the next one is prepared (ADR 0022).
+const PRELOAD_BEFORE: Duration = Duration::from_secs(20);
+
+/// The next track being prepared, so playback can move on without a gap.
+#[derive(Debug)]
+pub(super) struct Preload {
+    /// The play it belongs to; a newer play makes it stale.
+    generation: u64,
+    /// The queue entry it was prepared for.
+    key: u64,
+    /// The audio engine has been told to open it.
+    sent: bool,
+}
 
 impl<A: SoundCloudApi + 'static> Core<A> {
     /// Seeks the audio, or moves the saved position of a restored track that
@@ -71,6 +84,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.emit(Event::Queue(self.queue.snapshot()));
         self.host_broadcast_queue();
         self.save_session();
+        // The track after this one may have changed too.
+        let stale = self
+            .preload
+            .as_ref()
+            .is_some_and(|p| self.queue.peek_next().map(|(key, _)| key) != Some(p.key));
+        if stale {
+            self.cancel_preload();
+        }
     }
 
     /// Where the artwork of a track comes from: this session's tracks, or a
@@ -179,23 +200,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         moving_on: bool,
     ) {
         let id = summary.id;
-        self.current = Some(id);
-        self.autoplay = None;
-        self.play_gen += 1;
-        self.jam_track_starts(id, start_at);
-        self.skip_on_failure = moving_on;
-        if !moving_on {
-            self.failed_in_row = 0;
-        }
-        self.pending_restore = None;
-        self.listened.reset();
-        self.playback.position = start_at.unwrap_or_default();
-        self.playback.duration = summary.duration;
-        self.emit(Event::NowPlaying(summary));
-        self.set_state(PlayState::Loading);
-        self.request_artwork(ArtKey::Track(id));
-        self.save_session();
-
+        self.begin_track(summary, start_at, moving_on, PlayState::Loading);
         let generation = self.play_gen;
         match self.tracks.get(&id).cloned() {
             Some(track) => self.start_stream(track, start_at),
@@ -214,16 +219,40 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         }
     }
 
+    /// Everything that happens when a track becomes the current one, except
+    /// getting its stream: `state` is Loading, or Playing when the audio
+    /// engine already moved on by itself.
+    fn begin_track(
+        &mut self,
+        summary: TrackSummary,
+        start_at: Option<Duration>,
+        moving_on: bool,
+        state: PlayState,
+    ) {
+        let id = summary.id;
+        self.cancel_preload();
+        self.current = Some(id);
+        self.autoplay = None;
+        self.play_gen += 1;
+        self.jam_track_starts(id, start_at);
+        self.skip_on_failure = moving_on;
+        if !moving_on {
+            self.failed_in_row = 0;
+        }
+        self.pending_restore = None;
+        self.listened.reset();
+        self.playback.position = start_at.unwrap_or_default();
+        self.playback.duration = summary.duration;
+        self.emit(Event::NowPlaying(summary));
+        self.set_state(state);
+        self.request_artwork(ArtKey::Track(id));
+        self.save_session();
+    }
+
     pub(super) fn start_stream(&mut self, track: Track, start_at: Option<Duration>) {
-        let id = TrackId(track.id);
-        self.emit(Event::NowPlayingLinks {
-            track: id,
-            cover_url: track.artwork("t500x500"),
-            page_url: Some(track.permalink_url.clone()).filter(|url| !url.is_empty()),
-        });
+        self.track_extras(&track);
         let generation = self.play_gen;
         let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
-        let waveform_url = track.waveform_url.clone();
         tokio::spawn(async move {
             let result = api.stream_url(&track).await;
             let _ = inputs.send(Input::StreamReady {
@@ -231,9 +260,24 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 start_at,
                 result,
             });
-            if let Some(url) = waveform_url
-                && let Ok(wave) = api.waveform(&url).await
-            {
+        });
+    }
+
+    /// What the current track shows besides its audio: its links and waveform.
+    fn track_extras(&mut self, track: &Track) {
+        let id = TrackId(track.id);
+        self.emit(Event::NowPlayingLinks {
+            track: id,
+            cover_url: track.artwork("t500x500"),
+            page_url: Some(track.permalink_url.clone()).filter(|url| !url.is_empty()),
+        });
+        let Some(url) = track.waveform_url.clone() else {
+            return;
+        };
+        let generation = self.play_gen;
+        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+        tokio::spawn(async move {
+            if let Ok(wave) = api.waveform(&url).await {
                 let bars = waveform::to_bars(&wave.samples, wave.height, waveform::BARS);
                 let _ = inputs.send(Input::WaveformReady {
                     track: id,
@@ -242,6 +286,127 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 });
             }
         });
+    }
+
+    /// Prepares the track that follows the current one, once the current one
+    /// is close to its end. It acts at most once per play.
+    fn maybe_preload(&mut self, position: Duration) {
+        if self.preload.is_some()
+            || self.jam.is_some()
+            || self.playback.state != PlayState::Playing
+            || self.playback.duration.is_zero()
+            || position + PRELOAD_BEFORE < self.playback.duration
+        {
+            return;
+        }
+        let Some((key, next)) = self.queue.peek_next() else {
+            return;
+        };
+        // A preview is not the whole track; it takes the normal path.
+        if next.preview_only {
+            return;
+        }
+        let id = next.id;
+        let cached = self.tracks.get(&id).cloned();
+        let generation = self.play_gen;
+        self.preload = Some(Preload {
+            generation,
+            key,
+            sent: false,
+        });
+        let (api, inputs) = (Arc::clone(&self.api), self.inputs.clone());
+        tokio::spawn(async move {
+            let (track, result) = match cached {
+                Some(track) => {
+                    let result = api.stream_url(&track).await;
+                    (None, result)
+                }
+                None => match api.track(id.0).await {
+                    Ok(track) => {
+                        let result = api.stream_url(&track).await;
+                        (Some(Box::new(track)), result)
+                    }
+                    Err(error) => (None, Err(error)),
+                },
+            };
+            let _ = inputs.send(Input::PreloadReady {
+                generation,
+                key,
+                track,
+                result,
+            });
+        });
+    }
+
+    pub(super) fn preload_ready(
+        &mut self,
+        generation: u64,
+        key: u64,
+        track: Option<Box<Track>>,
+        result: sc_api::Result<StreamSource>,
+    ) {
+        let current = self
+            .preload
+            .as_ref()
+            .is_some_and(|p| p.generation == generation && p.key == key);
+        if !current {
+            return;
+        }
+        if let Some(track) = track {
+            self.tracks.insert(TrackId(track.id), *track);
+        }
+        match result {
+            Ok(stream) => {
+                self.to_audio(sc_audio::Command::Preload(to_source(stream)));
+                if let Some(p) = self.preload.as_mut() {
+                    p.sent = true;
+                }
+            }
+            // No retry: the track takes the normal path when this one ends.
+            Err(error) => tracing::debug!(%error, "could not prepare the next track"),
+        }
+    }
+
+    /// Forgets the prepared track, telling the engine if it was handed over.
+    pub(super) fn cancel_preload(&mut self) {
+        if let Some(p) = self.preload.take()
+            && p.sent
+        {
+            self.to_audio(sc_audio::Command::CancelPreload);
+        }
+    }
+
+    /// The engine started the preloaded track by itself: move the queue and
+    /// the screens on to it without loading anything.
+    fn next_started(&mut self) {
+        let Some(p) = self.preload.take() else {
+            // The engine played a preload that was cancelled in time: the
+            // normal path loads whatever is next now.
+            return self.skip_forward(true);
+        };
+        if self.jam.is_some() {
+            return self.skip_forward(true);
+        }
+        match self.queue.next(true) {
+            Step::Play(_) if self.queue.current_key() == Some(p.key) => {
+                self.queue_changed();
+                let Some(summary) = self.queue.current_track().cloned() else {
+                    return;
+                };
+                let id = summary.id;
+                self.begin_track(summary, None, true, PlayState::Playing);
+                self.failed_in_row = 0;
+                if let Some(track) = self.tracks.get(&id).cloned() {
+                    self.track_extras(&track);
+                }
+            }
+            // The queue changed under the preload: play what is next now.
+            Step::Play(_) => {
+                self.queue_changed();
+                self.play_current(None, true);
+            }
+            Step::End => self.autoplay(),
+        }
     }
 
     pub(super) fn set_state(&mut self, state: PlayState) {
@@ -263,6 +428,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     sc_audio::PlaybackState::Ended => PlayState::Ended,
                 };
                 self.set_state(state);
+                // A long pause could outlive the prepared stream's URL; the
+                // next position while playing prepares it again.
+                if state == PlayState::Paused {
+                    self.cancel_preload();
+                }
                 self.jam_state_changed(state);
                 if state == PlayState::Ended && !self.jam_owns_track_end() {
                     self.skip_forward(true);
@@ -271,6 +441,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             sc_audio::Event::Position(position) => {
                 self.playback.position = position;
                 self.emit(Event::Playback(self.playback));
+                self.maybe_preload(position);
                 self.jam_position(position);
                 if self.listened.tick(position)
                     && let Some(track) = self.queue.current_track().cloned()
@@ -281,8 +452,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     self.save_session();
                 }
             }
-            // The core starts preloading in the next commit.
-            sc_audio::Event::NextStarted => {}
+            sc_audio::Event::NextStarted => self.next_started(),
             sc_audio::Event::DeviceLost => self.output_fell_back(Problem::OutputDeviceLost),
             sc_audio::Event::DeviceMissing => self.output_fell_back(Problem::OutputDeviceMissing),
             sc_audio::Event::Error(detail) => {
@@ -319,14 +489,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Err(error) => return self.play_failed(Problem::from_api(&error)),
         };
         self.failed_in_row = 0;
-        let kind = match stream.protocol {
-            StreamProtocol::Hls => sc_audio::SourceKind::Hls,
-            StreamProtocol::Progressive => sc_audio::SourceKind::Progressive,
-        };
-        let source = sc_audio::Source {
-            url: stream.url,
-            kind,
-        };
+        let source = to_source(stream);
         if self.jam_prepare(&source, start_at) {
             return;
         }
@@ -334,5 +497,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if let Some(at) = start_at {
             let _ = self.audio.send(sc_audio::Command::Seek(at));
         }
+    }
+}
+
+fn to_source(stream: StreamSource) -> sc_audio::Source {
+    let kind = match stream.protocol {
+        StreamProtocol::Hls => sc_audio::SourceKind::Hls,
+        StreamProtocol::Progressive => sc_audio::SourceKind::Progressive,
+    };
+    sc_audio::Source {
+        url: stream.url,
+        kind,
     }
 }

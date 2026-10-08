@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Gapless:** the next track is buffered about 20 s before the end and follows with no gap (not
+  in a Jam, and not into autoplay yet).
 - **Comments:** a track page lists its comments, and pins under its waveform show the timed
   ones; hover a pin to read them, click it to jump there while the track plays.
 - **Audio output:** pick the output device in Settings; unplugging it pauses and moves to the

@@ -223,3 +223,30 @@ fn a_guest_gets_the_covers_of_the_whole_queue() {
         _ => None,
     });
 }
+
+#[test]
+fn a_jam_host_does_not_preload() {
+    let host = Harness::new("no-preload");
+    host.core.send(Command::StartJam);
+    jam(&host, |s| s.link.is_some());
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    prepared(&host);
+    plays(&host);
+    send_audio(&host, sc_audio::Event::Position(Duration::from_secs(185)));
+    host.wait(|e| match e {
+        Event::Playback(p) if p.position == Duration::from_secs(185) => Some(()),
+        _ => None,
+    });
+    let preloaded = host
+        .audio_commands
+        .try_iter()
+        .chain(host.audio_commands.recv_timeout(Duration::from_millis(300)))
+        .any(|c| matches!(c, sc_audio::Command::Preload(_)));
+    assert!(!preloaded);
+}
