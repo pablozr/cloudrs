@@ -8,6 +8,9 @@
 //! [cpal callback]  volume, pause, position → sound card
 //! ```
 //!
+//! When the output device is lost, or the system default changes, the engine
+//! thread reopens the default and rebuilds the track at the position reached.
+//!
 //! The crate knows nothing about SoundCloud: it plays a [`Source`] URL.
 //! `sc-core` resolves that URL with `sc-api` and hands it over.
 

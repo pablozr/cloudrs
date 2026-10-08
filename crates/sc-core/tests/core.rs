@@ -693,6 +693,13 @@ fn settings_are_echoed_and_saved() {
 }
 
 #[test]
+fn a_lost_output_device_is_reported() {
+    let h = Harness::new("device-lost");
+    h.audio_events.send(sc_audio::Event::DeviceLost).unwrap();
+    h.wait(|e| matches!(e, Event::Problem(Problem::OutputDeviceLost)).then_some(()));
+}
+
+#[test]
 fn a_new_folder_reads_default_settings() {
     let h = Harness::new("default-settings");
     assert_eq!(

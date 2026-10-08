@@ -289,6 +289,8 @@ pub enum Problem {
     CannotPlay,
     /// The audio engine failed; the detail is for logs, not for the UI.
     Audio(String),
+    /// The audio device went away; playback moved to the system default, paused.
+    OutputDeviceLost,
     /// The saved session and history were damaged and have been reset.
     StorageReset,
     /// SoundCloud refused the token given to sign in.

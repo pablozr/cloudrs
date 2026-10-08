@@ -281,6 +281,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     self.save_session();
                 }
             }
+            sc_audio::Event::DeviceLost => self.emit(Event::Problem(Problem::OutputDeviceLost)),
             sc_audio::Event::Error(detail) => {
                 tracing::warn!(%detail, "audio error");
                 self.emit(Event::Problem(Problem::Audio(detail)));

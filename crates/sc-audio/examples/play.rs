@@ -29,6 +29,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 break;
             }
             Event::State(state) => eprintln!("\n{state:?}"),
+            Event::DeviceLost => eprintln!(
+                "
+output device lost; paused"
+            ),
             Event::Error(error) => {
                 eprintln!("\nerror: {error}");
                 std::process::exit(1);

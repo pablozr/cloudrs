@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use crate::decode::Decoder;
 use crate::fetch::Stream;
-use crate::output::{self, Output};
+use crate::output::{self, Fault, Output};
 use crate::resample::Resampler;
 use crate::{Error, Result, Source};
 
@@ -50,6 +50,8 @@ pub enum Event {
     Position(Duration),
     /// Something went wrong with the current source; the player is idle again.
     Error(String),
+    /// The output device went away; the player moved to the system default and paused.
+    DeviceLost,
 }
 
 /// Handle to the engine thread. Dropping it stops playback.
@@ -60,6 +62,8 @@ pub struct Player {
 
 const POSITION_EVERY: Duration = Duration::from_millis(100);
 const IDLE_WAIT: Duration = Duration::from_millis(20);
+/// How often to try the default device again while there is none.
+const REOPEN_EVERY: Duration = Duration::from_secs(1);
 
 impl Player {
     /// Opens the default audio device and starts the engine thread.
@@ -122,6 +126,9 @@ struct Engine {
     last_position: Instant,
     /// Start of the track that just ended, for its final position report.
     ended_at: Duration,
+    /// Set while the output is dead and no device could be opened yet: when
+    /// to try again.
+    reopen_at: Option<Instant>,
 }
 
 impl Engine {
@@ -136,6 +143,7 @@ impl Engine {
             pending_at: 0,
             last_position: Instant::now(),
             ended_at: Duration::ZERO,
+            reopen_at: None,
         }
     }
 
@@ -152,6 +160,7 @@ impl Engine {
             while let Ok(command) = commands.try_recv() {
                 self.handle(command);
             }
+            self.check_output();
             if let Err(error) = self.feed() {
                 self.fail(error);
             }
@@ -164,6 +173,12 @@ impl Engine {
     }
 
     fn set_state(&mut self, state: PlaybackState) {
+        // Nothing can play while there is no device.
+        let state = if self.reopen_at.is_some() && state == PlaybackState::Playing {
+            PlaybackState::Paused
+        } else {
+            state
+        };
         if self.state != state {
             self.state = state;
             self.output
@@ -225,6 +240,76 @@ impl Engine {
                 self.clear();
                 self.set_state(PlaybackState::Idle);
             }
+        }
+    }
+
+    /// Reacts to what the stream's error callback reported, and retries the
+    /// default device while there is none.
+    fn check_output(&mut self) {
+        let fault = self.output.shared.take_fault();
+        let retry = self.reopen_at.is_some_and(|at| Instant::now() >= at);
+        if fault != Fault::None || retry {
+            self.recover(fault);
+        }
+    }
+
+    /// Moves to the system default device. A change of default with the old
+    /// device still around keeps playing; a loss pauses and says so.
+    fn recover(&mut self, fault: Fault) {
+        let retrying = self.reopen_at.is_some();
+        let old_present = fault == Fault::Invalidated
+            && !retrying
+            && self
+                .output
+                .device_id
+                .as_deref()
+                .is_some_and(output::is_present);
+        let plan = plan_recovery(fault, old_present, self.state == PlaybackState::Playing);
+        if !plan.keep_playing && self.state == PlaybackState::Playing {
+            self.set_state(PlaybackState::Paused);
+        }
+        match output::open() {
+            Ok(output) => {
+                self.reopen_at = None;
+                self.switch_output(output);
+            }
+            Err(error) => {
+                tracing::warn!(%error, "no audio output to move to");
+                self.reopen_at = Some(Instant::now() + REOPEN_EVERY);
+            }
+        }
+        if plan.lost && !retrying {
+            self.emit(Event::DeviceLost);
+        }
+    }
+
+    /// Replaces the output, rebuilding the current track for its sample rate
+    /// at the position reached. The old output is not flushed: its callback
+    /// may never run again.
+    fn switch_output(&mut self, new: Output) {
+        let old = &self.output;
+        let frames = old.shared.frames_played.load(Ordering::Relaxed);
+        let resume = self
+            .track
+            .as_ref()
+            .map(|t| position_at(t.start, frames, old.sample_rate));
+        new.shared.set_volume(old.shared.volume());
+        self.pending.clear();
+        self.pending_at = 0;
+        self.output = new;
+        if let (Some(track), Some(at)) = (self.track.take(), resume) {
+            match seek_track(track, at, &self.output) {
+                Ok(track) => self.track = Some(track),
+                Err(error) => self.fail(error),
+            }
+        }
+        // `set_state` does nothing when the state did not change.
+        self.output
+            .shared
+            .paused
+            .store(self.state != PlaybackState::Playing, Ordering::Relaxed);
+        if resume.is_some() {
+            self.report_position();
         }
     }
 
@@ -306,9 +391,32 @@ impl Engine {
     fn report_position(&mut self) {
         self.last_position = Instant::now();
         let frames = self.output.shared.frames_played.load(Ordering::Relaxed);
-        let played = Duration::from_secs_f64(frames as f64 / f64::from(self.output.sample_rate));
         let start = self.track.as_ref().map_or(self.ended_at, |t| t.start);
-        self.emit(Event::Position(start + played));
+        self.emit(Event::Position(position_at(
+            start,
+            frames,
+            self.output.sample_rate,
+        )));
+    }
+}
+
+/// Position in a track that started at `start` once `frames` have reached the device.
+fn position_at(start: Duration, frames: u64, rate: u32) -> Duration {
+    start + Duration::from_secs_f64(frames as f64 / f64::from(rate))
+}
+
+struct Recovery {
+    /// A voluntary change of default: nothing needs to stop.
+    keep_playing: bool,
+    /// The device is gone: tell the user.
+    lost: bool,
+}
+
+fn plan_recovery(fault: Fault, old_present: bool, playing: bool) -> Recovery {
+    let lost = fault == Fault::Lost || !old_present;
+    Recovery {
+        keep_playing: playing && !lost,
+        lost,
     }
 }
 
@@ -337,4 +445,38 @@ fn track_at(stream: Stream, at: Duration, output: &Output) -> Result<Track> {
         resampler,
         finished_decoding: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lost_device_pauses_and_tells() {
+        let plan = plan_recovery(Fault::Lost, false, true);
+        assert!(plan.lost && !plan.keep_playing);
+    }
+
+    #[test]
+    fn a_new_default_with_the_old_device_present_keeps_playing_quietly() {
+        let plan = plan_recovery(Fault::Invalidated, true, true);
+        assert!(!plan.lost && plan.keep_playing);
+    }
+
+    #[test]
+    fn an_invalidated_stream_whose_device_vanished_is_a_loss() {
+        let plan = plan_recovery(Fault::Invalidated, false, true);
+        assert!(plan.lost && !plan.keep_playing);
+    }
+
+    #[test]
+    fn a_paused_player_stays_paused() {
+        assert!(!plan_recovery(Fault::Invalidated, true, false).keep_playing);
+    }
+
+    #[test]
+    fn position_is_the_start_plus_the_frames_played() {
+        let at = position_at(Duration::from_secs(10), 96_000, 48_000);
+        assert_eq!(at, Duration::from_secs(12));
+    }
 }

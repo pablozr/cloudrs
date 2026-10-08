@@ -3,12 +3,41 @@
 //! The callback never allocates, locks or blocks. Everything it needs to know
 //! from the engine travels through atomics in [`Shared`].
 
+use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{Error, Result};
+
+/// What the stream's error callback told the engine. Ordered by severity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Fault {
+    None = 0,
+    /// The stream stopped working, for instance because the default device changed.
+    Invalidated = 1,
+    /// The device is gone.
+    Lost = 2,
+}
+
+impl Fault {
+    pub(crate) fn from_kind(kind: cpal::ErrorKind) -> Self {
+        match kind {
+            cpal::ErrorKind::DeviceNotAvailable => Self::Lost,
+            cpal::ErrorKind::StreamInvalidated => Self::Invalidated,
+            _ => Self::None,
+        }
+    }
+
+    fn from_u8(value: u8) -> Self {
+        match value {
+            2 => Self::Lost,
+            1 => Self::Invalidated,
+            _ => Self::None,
+        }
+    }
+}
 
 /// State shared between the engine thread and the audio callback.
 #[derive(Debug)]
@@ -19,6 +48,8 @@ pub struct Shared {
     pub flush: AtomicBool,
     /// Frames sent to the device since the last flush.
     pub frames_played: AtomicU64,
+    /// Worst [`Fault`] reported since the engine last looked.
+    fault: AtomicU8,
 }
 
 impl Shared {
@@ -28,7 +59,18 @@ impl Shared {
             paused: AtomicBool::new(true),
             flush: AtomicBool::new(false),
             frames_played: AtomicU64::new(0),
+            fault: AtomicU8::new(Fault::None as u8),
         }
+    }
+
+    /// Called from the stream's error callback.
+    pub(crate) fn report(&self, fault: Fault) {
+        self.fault.fetch_max(fault as u8, Ordering::Relaxed);
+    }
+
+    /// The worst fault since the last call, and resets it.
+    pub(crate) fn take_fault(&self) -> Fault {
+        Fault::from_u8(self.fault.swap(0, Ordering::Relaxed))
     }
 
     pub fn set_volume(&self, volume: f32) {
@@ -36,7 +78,7 @@ impl Shared {
             .store(volume.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
     }
 
-    fn volume(&self) -> f32 {
+    pub(crate) fn volume(&self) -> f32 {
         f32::from_bits(self.volume.load(Ordering::Relaxed))
     }
 }
@@ -50,6 +92,16 @@ pub struct Output {
     pub producer: rtrb::Producer<f32>,
     pub capacity: usize,
     pub shared: Arc<Shared>,
+    /// The device's cpal id, captured at open: a stream on the default device
+    /// keeps following it, so asking later would name the new default.
+    pub device_id: Option<String>,
+}
+
+/// Whether a device with this cpal id is currently plugged in and active.
+pub(crate) fn is_present(id: &str) -> bool {
+    cpal::DeviceId::from_str(id)
+        .ok()
+        .is_some_and(|id| cpal::default_host().device_by_id(&id).is_some())
 }
 
 /// Opens the default output device. The ring buffer holds about half a second.
@@ -66,6 +118,8 @@ pub fn open() -> Result<Output> {
     let (producer, mut consumer) = rtrb::RingBuffer::<f32>::new(capacity);
     let shared = Arc::new(Shared::new());
     let callback_shared = Arc::clone(&shared);
+    let error_shared = Arc::clone(&shared);
+    let device_id = device.id().ok().map(|id| id.to_string());
 
     let stream = device
         .build_output_stream::<f32, _, _>(
@@ -101,7 +155,10 @@ pub fn open() -> Result<Output> {
                     .frames_played
                     .fetch_add((available / channels) as u64, Ordering::Relaxed);
             },
-            |error| tracing::warn!(%error, "audio output error"),
+            move |error| {
+                error_shared.report(Fault::from_kind(error.kind()));
+                tracing::warn!(%error, "audio output error");
+            },
             None,
         )
         .map_err(|e| Error::Output(e.to_string()))?;
@@ -114,5 +171,38 @@ pub fn open() -> Result<Output> {
         producer,
         capacity,
         shared,
+        device_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_kinds_map_to_faults() {
+        assert_eq!(
+            Fault::from_kind(cpal::ErrorKind::DeviceNotAvailable),
+            Fault::Lost
+        );
+        assert_eq!(
+            Fault::from_kind(cpal::ErrorKind::StreamInvalidated),
+            Fault::Invalidated
+        );
+        assert_eq!(Fault::from_kind(cpal::ErrorKind::Xrun), Fault::None);
+        assert_eq!(
+            Fault::from_kind(cpal::ErrorKind::DeviceChanged),
+            Fault::None
+        );
+    }
+
+    #[test]
+    fn the_worst_fault_wins_and_is_taken_once() {
+        let shared = Shared::new();
+        shared.report(Fault::Invalidated);
+        shared.report(Fault::Lost);
+        shared.report(Fault::Invalidated);
+        assert_eq!(shared.take_fault(), Fault::Lost);
+        assert_eq!(shared.take_fault(), Fault::None);
+    }
 }

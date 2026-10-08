@@ -521,6 +521,7 @@ impl Shell {
             Problem::UnsupportedLink => (ToastKind::Error, t::unsupported_link()),
             Problem::PreviewOnly => (ToastKind::Info, t::preview_only()),
             Problem::CannotPlay => (ToastKind::Error, t::cannot_play()),
+            Problem::OutputDeviceLost => (ToastKind::Info, t::output_lost()),
             Problem::StorageReset => (ToastKind::Warning, t::storage_reset()),
             Problem::SignInFailed => (ToastKind::Error, t::sign_in_failed()),
             Problem::SessionExpired => (ToastKind::Warning, t::session_expired()),
