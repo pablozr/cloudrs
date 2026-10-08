@@ -281,6 +281,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     self.save_session();
                 }
             }
+            // The core starts preloading in the next commit.
+            sc_audio::Event::NextStarted => {}
             sc_audio::Event::DeviceLost => self.output_fell_back(Problem::OutputDeviceLost),
             sc_audio::Event::DeviceMissing => self.output_fell_back(Problem::OutputDeviceMissing),
             sc_audio::Event::Error(detail) => {

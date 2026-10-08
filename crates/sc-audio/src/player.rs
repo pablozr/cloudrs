@@ -9,6 +9,7 @@ use crate::decode::Decoder;
 use crate::fetch::Stream;
 use crate::output::{self, Fault, Output};
 use crate::resample::Resampler;
+use crate::timeline::Timeline;
 use crate::{Error, Result, Source};
 
 /// What the player is told to do.
@@ -33,6 +34,11 @@ pub enum Command {
     /// follows the system default. Keeps the playback state and position.
     SetDevice(Option<String>),
     Stop,
+    /// Open this source in the background so it follows the current one
+    /// without a gap; replaces an earlier preload. Ignored with nothing loaded.
+    Preload(Source),
+    /// Forget the preloaded source, if any.
+    CancelPreload,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +63,9 @@ pub enum Event {
     DeviceLost,
     /// The chosen device is not available; the system default plays instead.
     DeviceMissing,
+    /// The preloaded source started right after the previous one ended;
+    /// positions now refer to it.
+    NextStarted,
 }
 
 /// Handle to the engine thread. Dropping it stops playback.
@@ -143,6 +152,11 @@ struct Engine {
     /// Set while the output is dead and no device could be opened yet: when
     /// to try again.
     reopen_at: Option<Instant>,
+    /// The preloaded source, ready to follow the current track.
+    next: Option<Track>,
+    /// The helper thread opening the preload.
+    preloading: Option<flume::Receiver<Result<Track>>>,
+    timeline: Timeline,
 }
 
 impl Engine {
@@ -159,6 +173,9 @@ impl Engine {
             last_position: Instant::now(),
             ended_at: Duration::ZERO,
             reopen_at: None,
+            next: None,
+            preloading: None,
+            timeline: Timeline::default(),
         }
     }
 
@@ -176,9 +193,11 @@ impl Engine {
                 self.handle(command);
             }
             self.check_output();
+            self.poll_preload();
             if let Err(error) = self.feed() {
                 self.fail(error);
             }
+            self.check_handover();
             self.report_progress();
         }
     }
@@ -207,6 +226,7 @@ impl Engine {
     fn handle(&mut self, command: Command) {
         match command {
             Command::Load(source) => {
+                self.drop_preload();
                 self.clear();
                 self.set_state(PlaybackState::Loading);
                 match open_track(&source, &self.output) {
@@ -218,9 +238,12 @@ impl Engine {
                 }
             }
             Command::Prepare { source, at } => {
+                self.drop_preload();
                 self.clear();
                 self.set_state(PlaybackState::Loading);
-                match Stream::open(&source).and_then(|stream| track_at(stream, at, &self.output)) {
+                let (rate, channels) = (self.output.sample_rate, self.output.channels);
+                match Stream::open(&source).and_then(|stream| track_at(stream, at, rate, channels))
+                {
                     Ok(track) => {
                         self.track = Some(track);
                         self.set_state(PlaybackState::Paused);
@@ -240,6 +263,7 @@ impl Engine {
             Command::Pause => {}
             Command::Seek(at) => {
                 if let Some(track) = self.track.take() {
+                    self.complete_handover();
                     self.clear();
                     match seek_track(track, at, &self.output) {
                         Ok(track) => {
@@ -262,9 +286,89 @@ impl Engine {
                 }
             }
             Command::Stop => {
+                self.drop_preload();
                 self.clear();
                 self.set_state(PlaybackState::Idle);
             }
+            Command::Preload(source) => self.start_preload(source),
+            Command::CancelPreload => self.drop_preload(),
+        }
+    }
+
+    fn drop_preload(&mut self) {
+        self.next = None;
+        self.preloading = None;
+    }
+
+    /// Opens `source` on a short-lived thread: `Stream::open` blocks on the
+    /// network and the engine thread must keep feeding the ring buffer.
+    fn start_preload(&mut self, source: Source) {
+        if self.track.is_none() {
+            tracing::debug!("preload ignored: nothing is loaded");
+            return;
+        }
+        self.drop_preload();
+        let (rate, channels) = (self.output.sample_rate, self.output.channels);
+        let (tx, rx) = flume::bounded(1);
+        let spawned = thread::Builder::new()
+            .name("cloudrs-preload".into())
+            .spawn(move || {
+                let track = Stream::open(&source)
+                    .and_then(|stream| track_at(stream, Duration::ZERO, rate, channels));
+                let _ = tx.send(track);
+            });
+        match spawned {
+            Ok(_) => self.preloading = Some(rx),
+            Err(error) => tracing::warn!(%error, "could not start the preload thread"),
+        }
+    }
+
+    /// Takes the preloaded track once its thread is done.
+    fn poll_preload(&mut self) {
+        let Some(rx) = &self.preloading else {
+            return;
+        };
+        let result = match rx.try_recv() {
+            Ok(result) => result,
+            Err(flume::TryRecvError::Empty) => return,
+            Err(flume::TryRecvError::Disconnected) => {
+                self.preloading = None;
+                return;
+            }
+        };
+        self.preloading = None;
+        match result {
+            Ok(mut track) => {
+                track.resampler = self.resampler_for(&track.decoder);
+                self.next = Some(track);
+            }
+            Err(error) => tracing::warn!(%error, "preload failed"),
+        }
+    }
+
+    fn resampler_for(&self, decoder: &Decoder) -> Resampler {
+        Resampler::new(
+            decoder.sample_rate(),
+            decoder.channels(),
+            self.output.sample_rate,
+            self.output.channels,
+        )
+    }
+
+    /// Emits `NextStarted` if a handover was still pending.
+    fn complete_handover(&mut self) {
+        if self.timeline.finish() {
+            self.emit(Event::NextStarted);
+        }
+    }
+
+    /// Once the device has played up to the handover point, the next track is
+    /// the one playing.
+    fn check_handover(&mut self) {
+        let played = self.output.shared.frames_played.load(Ordering::Relaxed);
+        if self.timeline.crossed(played) {
+            self.emit(Event::NextStarted);
+            self.report_position();
         }
     }
 
@@ -321,16 +425,21 @@ impl Engine {
     /// at the position reached. The old output is not flushed: its callback
     /// may never run again.
     fn switch_output(&mut self, new: Output) {
-        let old = &self.output;
-        let frames = old.shared.frames_played.load(Ordering::Relaxed);
-        let resume = self
-            .track
-            .as_ref()
-            .map(|t| position_at(t.start, frames, old.sample_rate));
-        new.shared.set_volume(old.shared.volume());
+        self.complete_handover();
+        let frames = self.output.shared.frames_played.load(Ordering::Relaxed);
+        let resume = self.track.as_ref().map(|t| {
+            self.timeline
+                .position(t.start, frames, self.output.sample_rate)
+        });
+        new.shared.set_volume(self.output.shared.volume());
         self.pending.clear();
         self.pending_at = 0;
         self.output = new;
+        self.timeline.reset();
+        if let Some(mut next) = self.next.take() {
+            next.resampler = self.resampler_for(&next.decoder);
+            self.next = Some(next);
+        }
         if let (Some(track), Some(at)) = (self.track.take(), resume) {
             match seek_track(track, at, &self.output) {
                 Ok(track) => self.track = Some(track),
@@ -359,30 +468,37 @@ impl Engine {
         while shared.flush.load(Ordering::Acquire) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(2));
         }
+        self.timeline.reset();
     }
 
     fn fail(&mut self, error: Error) {
         tracing::warn!(%error, "playback failed");
+        self.drop_preload();
         self.clear();
         self.emit(Event::Error(error.to_string()));
         self.set_state(PlaybackState::Idle);
     }
 
-    /// Decodes and pushes samples until the ring buffer is full.
+    /// Decodes and pushes samples until the ring buffer is full. When the
+    /// current track is fully written and the next one is ready, the next one
+    /// follows in the same buffer, with no gap.
     fn feed(&mut self) -> Result<()> {
-        let Some(track) = self.track.as_mut() else {
-            return Ok(());
-        };
         loop {
+            let Some(track) = self.track.as_mut() else {
+                return Ok(());
+            };
             if self.pending_at >= self.pending.len() {
                 if track.finished_decoding {
+                    if self.hand_over() {
+                        continue;
+                    }
                     break;
                 }
                 self.pending.clear();
                 self.pending_at = 0;
                 if !track.decoder.next_chunk(&mut self.decoded)? {
                     track.finished_decoding = true;
-                    break;
+                    continue;
                 }
                 let (rate, channels) = (track.decoder.sample_rate(), track.decoder.channels());
                 if !track.resampler.matches(rate, channels) {
@@ -405,15 +521,44 @@ impl Engine {
                 chunk.fill_from_iter(samples.iter().copied());
             }
             self.pending_at += n;
+            self.timeline.wrote(n);
         }
         let drained = self.output.producer.slots() == self.output.capacity;
-        if track.finished_decoding && self.pending_at >= self.pending.len() && drained {
+        if let Some(track) = &self.track
+            && track.finished_decoding
+            && self.pending_at >= self.pending.len()
+            && self.next.is_none()
+            && drained
+        {
             self.ended_at = track.start;
             self.track = None;
+            // A preload still opening is too late: the core loads the next one.
+            self.drop_preload();
             self.report_position();
             self.set_state(PlaybackState::Ended);
         }
         Ok(())
+    }
+
+    /// Makes the preloaded track the current one, carrying the resampler over
+    /// when the format is the same so the join is continuous.
+    fn hand_over(&mut self) -> bool {
+        let Some(mut next) = self.next.take() else {
+            return false;
+        };
+        let Some(old) = self.track.take() else {
+            return false;
+        };
+        self.timeline
+            .begin_handover(old.start, self.output.channels);
+        if old
+            .resampler
+            .matches(next.decoder.sample_rate(), next.decoder.channels())
+        {
+            next.resampler = old.resampler;
+        }
+        self.track = Some(next);
+        true
     }
 
     fn report_progress(&mut self) {
@@ -426,17 +571,12 @@ impl Engine {
         self.last_position = Instant::now();
         let frames = self.output.shared.frames_played.load(Ordering::Relaxed);
         let start = self.track.as_ref().map_or(self.ended_at, |t| t.start);
-        self.emit(Event::Position(position_at(
+        self.emit(Event::Position(self.timeline.position(
             start,
             frames,
             self.output.sample_rate,
         )));
     }
-}
-
-/// Position in a track that started at `start` once `frames` have reached the device.
-fn position_at(start: Duration, frames: u64, rate: u32) -> Duration {
-    start + Duration::from_secs_f64(frames as f64 / f64::from(rate))
 }
 
 struct Recovery {
@@ -455,22 +595,23 @@ fn plan_recovery(fault: Fault, old_present: bool, playing: bool) -> Recovery {
 }
 
 fn open_track(source: &Source, output: &Output) -> Result<Track> {
-    track_at(Stream::open(source)?, Duration::ZERO, output)
+    let stream = Stream::open(source)?;
+    track_at(stream, Duration::ZERO, output.sample_rate, output.channels)
 }
 
 fn seek_track(track: Track, at: Duration, output: &Output) -> Result<Track> {
-    track_at(track.stream, at, output)
+    track_at(track.stream, at, output.sample_rate, output.channels)
 }
 
-fn track_at(stream: Stream, at: Duration, output: &Output) -> Result<Track> {
+fn track_at(stream: Stream, at: Duration, out_rate: u32, out_channels: usize) -> Result<Track> {
     let (opened, skip) = stream.read_from(at)?;
     let mut decoder = Decoder::new(opened.reader, opened.extension.as_deref())?;
     decoder.skip(skip);
     let resampler = Resampler::new(
         decoder.sample_rate(),
         decoder.channels(),
-        output.sample_rate,
-        output.channels,
+        out_rate,
+        out_channels,
     );
     Ok(Track {
         stream,
@@ -508,9 +649,10 @@ mod tests {
         assert!(!plan_recovery(Fault::Invalidated, true, false).keep_playing);
     }
 
+    /// The preload thread hands a whole track to the engine thread.
     #[test]
-    fn position_is_the_start_plus_the_frames_played() {
-        let at = position_at(Duration::from_secs(10), 96_000, 48_000);
-        assert_eq!(at, Duration::from_secs(12));
+    fn a_track_can_cross_threads() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Track>();
     }
 }

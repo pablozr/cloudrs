@@ -8,6 +8,9 @@
 //! [cpal callback]  volume, pause, position → sound card
 //! ```
 //!
+//! A preloaded next source is opened on a helper thread and follows the
+//! current one in the ring buffer, so tracks join without a gap.
+//!
 //! When the output device is lost, or the system default changes, the engine
 //! thread reopens the default and rebuilds the track at the position reached.
 //!
@@ -20,6 +23,7 @@ mod fetch;
 mod output;
 mod player;
 mod resample;
+mod timeline;
 
 pub use decode::Decoder;
 pub use error::{Error, Result};

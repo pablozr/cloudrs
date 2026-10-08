@@ -37,6 +37,7 @@ output device lost; paused"
                 "
 chosen output device missing; using the default"
             ),
+            Event::NextStarted => {}
             Event::Error(error) => {
                 eprintln!("\nerror: {error}");
                 std::process::exit(1);

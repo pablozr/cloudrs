@@ -184,13 +184,15 @@ Encrypted transcodings (`encrypted-hls`, `ctr-encrypted-hls`, `cbc-encrypted-hls
 
 - **Seeking in HLS:** use each segment's `#EXTINF` to find the target segment, fetch from it
   and drop samples up to the exact time.
-- **Gapless / preload:** with about 20 s left, the next track is resolved and buffered.
+- **Gapless / preload (ADR 0022):** the core decides from the position and duration; with
+  about 20 s left it resolves the next track and sends `Preload(Source)`, which the engine
+  opens on a helper thread and writes into the ring buffer right behind the current track.
 - **URL expiry:** stream URLs expire after a few minutes. After a long pause or a seek, ask
   `sc-core` for a fresh URL through a refresh channel.
-- **Events out:** `Position(Duration)` at about 10 Hz, `Buffering(bool)`, `TrackEnded`,
-  `Error(..)`, `NearEnd`.
+- **Events out:** `Position(Duration)` at about 10 Hz, `Buffering(bool)`, `TrackEnded`
+  (`State(Ended)`), `NextStarted` (the preloaded source began), `Error(..)`.
 - **Commands in:** `Load(Source)`, `Play`, `Pause`, `Seek(Duration)`, `SetVolume(f32)`,
-  `Preload(Source)`, `Stop`.
+  `Preload(Source)`, `CancelPreload`, `Stop`.
 - **Output device (ADR 0020):** list and switch with cpal, and recover when the device disappears
   (headphones unplugged).
 - **Never allocate or lock inside the cpal callback.**
