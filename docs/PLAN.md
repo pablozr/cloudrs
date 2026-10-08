@@ -360,7 +360,8 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 - [x] Full keyboard shortcuts (Ctrl K still focuses search; the command palette awaits a decision).
 - [ ] Audio device selection and recovery.
 - [ ] Timed comments on the waveform.
-- [ ] Settings + light/dark themes + language picker.
+- [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker waits
+      for a second language (M5).
 
 ### M5 — Polish and 0.1 release
 - [ ] Gapless, loudness normalization, equalizer.

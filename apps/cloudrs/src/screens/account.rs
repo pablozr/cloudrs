@@ -108,7 +108,6 @@ impl Shell {
                     .child(t::title()),
             )
             .child(div().max_w(size::SEARCH_MAX_WIDTH).child(body))
-            .children(self.discord_setting(theme, cx))
             .child(
                 theme
                     .text(div(), typography::BODY_MUTED)
@@ -146,7 +145,7 @@ impl Shell {
     }
 }
 
-fn muted(theme: &Theme, text: &'static str) -> gpui::Div {
+pub(super) fn muted(theme: &Theme, text: &'static str) -> gpui::Div {
     theme
         .text(div(), typography::BODY_MUTED)
         .text_color(theme.colors.text_muted)
@@ -160,50 +159,5 @@ pub fn account_list_title(list: ListId) -> &'static str {
         ListId::Library => i18n::nav::library(),
         ListId::Followings(_) => i18n::nav::following(),
         _ => i18n::nav::likes(),
-    }
-}
-
-impl Shell {
-    /// "Show what I play on Discord", when this build can talk to Discord.
-    fn discord_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
-        use crate::i18n::discord as d;
-        if !self.discord.available() {
-            return None;
-        }
-        let c = theme.colors;
-        let on = self.models.settings.discord;
-        let choice = |ix: usize, label: &'static str, selected: bool| {
-            cloudrs_ui::components::pill(theme, ("discord", ix), label, selected)
-                .tab_index(0)
-                .aria_label(label)
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.change_settings(|settings| settings.discord = ix == 0);
-                }))
-        };
-        Some(
-            div()
-                .max_w(size::SEARCH_MAX_WIDTH)
-                .flex()
-                .flex_col()
-                .gap(space::S2)
-                .pt(space::S8)
-                .child(
-                    theme
-                        .text(div(), typography::BODY)
-                        .text_color(c.text)
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child(d::setting()),
-                )
-                .child(muted(theme, d::setting_hint()))
-                .child(
-                    div()
-                        .flex()
-                        .gap(space::S2)
-                        .pt(space::S1)
-                        .child(choice(0, d::on(), on))
-                        .child(choice(1, d::off(), !on)),
-                )
-                .into_any_element(),
-        )
     }
 }

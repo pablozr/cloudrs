@@ -207,6 +207,8 @@ pub enum Icon {
     Private,
     /// The host of a Jam.
     Crown,
+    /// The Settings screen.
+    Settings,
 }
 
 impl Icon {
@@ -250,6 +252,7 @@ impl Icon {
             Self::Public => "icons/globe.svg",
             Self::Private => "icons/lock.svg",
             Self::Crown => "icons/crown.svg",
+            Self::Settings => "icons/settings.svg",
         }
     }
 }
@@ -615,6 +618,7 @@ pub fn pill(
         .py(px(6.0))
         .rounded(radius::FULL)
         .border_1()
+        .focus_visible(move |s| s.shadow(tokens::focus_ring(c.accent)))
         .cursor_pointer()
         .child(label.into());
     if selected {

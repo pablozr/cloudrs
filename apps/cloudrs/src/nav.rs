@@ -21,6 +21,8 @@ pub enum Route {
     Account,
     /// Start, share or leave a Jam.
     Jam,
+    /// Theme, Discord, cache and the keyboard shortcuts.
+    Settings,
     /// A pasted link the core is still resolving: shows a loading page until
     /// the core answers with the screen to open.
     Resolving(String),
@@ -38,6 +40,7 @@ pub enum Section {
     Following,
     Jam,
     Account,
+    Settings,
 }
 
 impl Route {
@@ -53,6 +56,7 @@ impl Route {
             Self::Following(_) => Section::Following,
             Self::Account => Section::Account,
             Self::Jam => Section::Jam,
+            Self::Settings => Section::Settings,
             _ => Section::Search,
         }
     }
@@ -145,6 +149,12 @@ mod tests {
 
     fn user(id: u64) -> Route {
         Route::User(UserId(id))
+    }
+
+    #[test]
+    fn settings_has_its_own_section() {
+        assert_eq!(Route::Settings.section(), Section::Settings);
+        assert_eq!(Route::Account.section(), Section::Account);
     }
 
     #[test]

@@ -432,6 +432,7 @@ impl Shell {
             | Route::Library
             | Route::Following(_)
             | Route::Account
+            | Route::Settings
             | Route::Jam => ArtKey::Track(self.models.current?),
             Route::Resolving(_) => return None,
         };
@@ -659,6 +660,11 @@ impl Shell {
         self.wave.update(cx, |wave, cx| wave.show(track, cx));
         if *self.router.current() == Route::Home {
             self.refresh_home(cx);
+        }
+        if *self.router.current() == Route::Settings {
+            // A skeleton until the core answers with the size.
+            self.models.cache_size = None;
+            self.send(Command::MeasureCache);
         }
         cx.notify();
     }
@@ -914,6 +920,15 @@ impl Shell {
                     };
                 });
             }));
+        let settings_button = icon_button(
+            theme,
+            "open-settings",
+            Icon::Settings,
+            *self.router.current() == Route::Settings,
+        )
+        .aria_label(i18n::nav::settings())
+        .tooltip(tooltip(i18n::nav::settings()))
+        .on_click(cx.listener(|this, _, _, cx| this.navigate(Route::Settings, cx)));
         let dim = |enabled: bool| {
             if enabled {
                 1.0
@@ -976,7 +991,15 @@ impl Shell {
                 ),
             )
             .children(jam)
-            .child(div().occlude().child(theme_button))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .gap(space::S1)
+                    .occlude()
+                    .child(settings_button)
+                    .child(theme_button),
+            )
             .children(controls)
     }
 }

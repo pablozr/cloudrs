@@ -152,7 +152,10 @@ The OS "reduce motion" setting turns every duration down to an instant change.
   - ghost;
   - round icon button.
 - **Search field:** pill shape, accent ring on focus, `Ctrl K` hint.
-- **Filter pills:** the selected one is inverted (text color as fill).
+- **Filter pills:** the selected one is inverted (text color as fill). They are focusable and
+  show the focus ring.
+- **Settings rows:** a title in body semibold, a muted hint, then the control (pills, a button
+  or a value); shortcut keys in key-cap style (mono, `line_strong` border).
 - **Badges:** `AAC 160k`, `GO+`, `30s preview`, `Cached`, `Explicit`.
 - **Slider:** volume.
 - **TrackRow:**

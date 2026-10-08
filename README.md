@@ -84,6 +84,7 @@ Signed Windows builds are on the way; see the [code signing policy](#code-signin
 **Look and feel**
 - Dark and light themes that follow the system and are remembered, and a title bar of its own with the cloudrs logo.
 - Each page takes on the color of its artwork.
+- Settings (the gear in the title bar): theme, Discord, cache and the list of shortcuts.
 - Keyboard: `Ctrl K` (or `/`) jumps to search. Space plays or pauses, ← → seek 5 s, Shift ← → previous/next,
   Ctrl L likes, Ctrl V opens a copied SoundCloud or Jam link. Every control has visible focus and a label
   for screen readers.
@@ -243,7 +244,7 @@ what you use:
   ([SoundCloud privacy policy](https://soundcloud.com/pages/privacy)). Your sign-in token stays
   in your system's keychain.
 - **Discord**, through the Discord app on your computer, to show what you are listening to.
-  It can be turned off on the Account screen ([Discord privacy policy](https://discord.com/privacy)).
+  It can be turned off in Settings ([Discord privacy policy](https://discord.com/privacy)).
 - **Jam**, only when you start or join one: a peer-to-peer connection to the other listeners,
   through public [iroh](https://iroh.computer) relay servers when a direct path is not possible.
   It carries what is playing and your name and avatar, never the audio.

@@ -89,7 +89,45 @@ pub mod app {
 /// The Settings screen.
 pub mod settings {
     strings! {
+        title { en: "Settings" }
+        theme { en: "Theme" }
+        theme_hint { en: "System follows the light or dark mode of your computer." }
+        theme_system { en: "System" }
+        theme_dark { en: "Dark" }
+        theme_light { en: "Light" }
+        cache { en: "Cache" }
+        cache_hint { en: "Covers kept on this computer so pages open faster. Covers on screen stay." }
+        clear_cache { en: "Clear cache" }
         cache_cleared { en: "Cache cleared" }
+        shortcuts { en: "Keyboard shortcuts" }
+    }
+    formats! {
+        cache_size(megabytes) { en: "{megabytes} MB" }
+    }
+}
+
+/// The keys listed in Settings, and what they do. The `_mac` keys are shown
+/// on macOS.
+pub mod shortcuts {
+    strings! {
+        key_play { en: "Space" }
+        key_seek { en: "\u{2190} \u{2192}" }
+        key_skip { en: "Shift \u{2190} \u{2192}" }
+        key_like { en: "Ctrl L" }
+        key_like_mac { en: "\u{2318}L" }
+        key_search { en: "Ctrl K  /" }
+        key_search_mac { en: "\u{2318}K  /" }
+        key_paste { en: "Ctrl V" }
+        key_paste_mac { en: "\u{2318}V" }
+        key_history { en: "Alt \u{2190} \u{2192}" }
+        key_history_mac { en: "\u{2318}[ \u{2318}]" }
+        action_play { en: "Play or pause" }
+        action_seek { en: "Seek 5 seconds" }
+        action_skip { en: "Previous or next track" }
+        action_like { en: "Like the playing track" }
+        action_search { en: "Search" }
+        action_paste { en: "Open a copied link" }
+        action_history { en: "Back or forward" }
     }
 }
 
@@ -135,6 +173,7 @@ pub mod nav {
         following { en: "Following" }
         sign_in { en: "Sign in" }
         jam { en: "Jam" }
+        settings { en: "Settings" }
         your_playlists { en: "YOUR PLAYLISTS" }
     }
 }

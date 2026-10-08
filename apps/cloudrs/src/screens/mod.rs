@@ -10,6 +10,7 @@ mod library;
 mod list;
 mod playlist;
 mod search;
+mod settings;
 mod track;
 mod user;
 
@@ -38,6 +39,7 @@ impl Shell {
             Route::History => self.history_screen(theme, cx),
             Route::Account => self.account_screen(theme, cx),
             Route::Jam => self.jam_screen(theme, cx),
+            Route::Settings => self.settings_screen(theme, cx),
             Route::Library => self.library_screen(theme, cx),
             route @ (Route::Feed | Route::Likes(_) | Route::Following(_)) => {
                 let list = route.account_list().expect("an account list route");

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Settings:** theme, Discord, cache size and clearing, and the keyboard shortcuts in one place.
+  The gear in the title bar opens it.
 - **Themes:** follows the system’s light or dark mode; the title bar toggle picks one and it is
   remembered.
 - **Keyboard:** Space plays or pauses, ← → seek 5 s, Shift ← → go to the previous or next

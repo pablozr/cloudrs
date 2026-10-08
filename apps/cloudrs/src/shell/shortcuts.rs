@@ -22,6 +22,28 @@ actions!(
     ]
 );
 
+/// The keys Settings lists: the key as shown (Cmd on macOS) and what it does.
+pub(crate) fn help() -> [(&'static str, &'static str); 7] {
+    use crate::i18n::shortcuts as t;
+    let mac = cfg!(target_os = "macos");
+    let pick = |pc: &'static str, apple: &'static str| if mac { apple } else { pc };
+    [
+        (t::key_play(), t::action_play()),
+        (t::key_seek(), t::action_seek()),
+        (t::key_skip(), t::action_skip()),
+        (pick(t::key_like(), t::key_like_mac()), t::action_like()),
+        (
+            pick(t::key_search(), t::key_search_mac()),
+            t::action_search(),
+        ),
+        (pick(t::key_paste(), t::key_paste_mac()), t::action_paste()),
+        (
+            pick(t::key_history(), t::key_history_mac()),
+            t::action_history(),
+        ),
+    ]
+}
+
 /// Key context of the shell when no text field has focus.
 const NOT_TYPING: &str = "Shell && !SearchField";
 
@@ -97,6 +119,18 @@ impl Shell {
             .and_then(|text| UiIntent::from_link(&text));
         if let Some(intent) = intent {
             self.dispatch(intent, cx);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_shortcut_has_a_key_and_an_action() {
+        for (keys, action) in help() {
+            assert!(!keys.is_empty() && !action.is_empty());
         }
     }
 }

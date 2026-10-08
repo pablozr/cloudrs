@@ -46,7 +46,19 @@ file (`discord-off`) in the data folder. `sc-core` already owns the SQLite file 
    first `read_settings` that finds the file saves `discord = false`, deletes the file and
    keeps the value in the database; later reads never look at it again. The presence follows
    `Event::Settings` (`DiscordPresence::set_enabled`) and no longer touches the disk. The
-   switch moves to Settings with commit 5; until then it stays on the Account screen.
+   switch lives on the Settings screen (§8).
+8. **The Settings screen.** A gear button in the title bar, next to the theme toggle, opens it
+   (the command palette reaches it too); there is no sidebar item. It holds:
+   - **Theme:** three pills, System, Dark and Light, with visible focus;
+   - **Discord:** the on/off pills, moved from the Account screen unchanged, hidden when the
+     build has no Discord application id;
+   - **Cache:** the size of the cover cache (a skeleton until the core measures it) and
+     "Clear cache". Clearing deletes only the covers this session is not showing, so no image
+     on screen points at a missing file and the UI never edits its artwork map; the toast
+     confirms and the size shown is what remains. `Command::MeasureCache` and
+     `Command::ClearCache` do the disk work on a blocking thread;
+   - **Keyboard shortcuts:** the list of keys, taken from `shell/shortcuts.rs`, in key-cap style;
+   - the language picker is not drawn until a second language exists.
 
 ## Consequences
 

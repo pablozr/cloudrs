@@ -272,6 +272,8 @@ pub mod size {
     pub const TOAST_MAX_WIDTH: Pixels = px(420.0);
     /// Longest the search field grows in the header.
     pub const SEARCH_MAX_WIDTH: Pixels = px(560.0);
+    /// The key column of the shortcut list in Settings.
+    pub const SHORTCUT_KEY_WIDTH: Pixels = px(160.0);
     /// Skeleton text blocks.
     pub const SKELETON_TITLE_WIDTH: Pixels = px(220.0);
     pub const SKELETON_ARTIST_WIDTH: Pixels = px(140.0);
