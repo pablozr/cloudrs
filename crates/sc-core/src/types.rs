@@ -94,6 +94,14 @@ impl TrackSummary {
     }
 }
 
+/// An audio output device the person can choose (ADR 0020).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputDevice {
+    /// Saved in [`crate::Settings::output_device`].
+    pub id: String,
+    pub name: String,
+}
+
 /// A person in a search result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UserSummary {
@@ -291,6 +299,8 @@ pub enum Problem {
     Audio(String),
     /// The audio device went away; playback moved to the system default, paused.
     OutputDeviceLost,
+    /// The chosen audio device is not available; the system default plays instead.
+    OutputDeviceMissing,
     /// The saved session and history were damaged and have been reset.
     StorageReset,
     /// SoundCloud refused the token given to sign in.

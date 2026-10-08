@@ -163,6 +163,8 @@ enum Input {
         following: bool,
         result: sc_api::Result<()>,
     },
+    /// The audio devices were listed.
+    OutputDevices(Vec<sc_audio::OutputDevice>),
     /// The artwork folder was measured.
     CacheMeasured(u64),
     /// The artwork folder was cleared of what is not in use.
@@ -478,6 +480,15 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 following,
                 result,
             } => self.follow_done(user, following, result),
+            Input::OutputDevices(devices) => self.emit(Event::OutputDevices(
+                devices
+                    .into_iter()
+                    .map(|d| crate::OutputDevice {
+                        id: d.id,
+                        name: d.name,
+                    })
+                    .collect(),
+            )),
             Input::CacheMeasured(bytes) => self.emit(Event::CacheSize(bytes)),
             Input::CacheCleared {
                 remaining,
@@ -603,6 +614,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             | Command::RemoveFromJam(_) => {}
             Command::SetVolume(volume) => self.set_volume(volume),
             Command::SetSettings(settings) => self.set_settings(settings),
+            Command::ListOutputDevices => self.list_output_devices(),
             Command::MeasureCache => self.measure_cache(),
             Command::ClearCache => self.clear_cache(),
         }

@@ -29,6 +29,9 @@ pub enum Command {
     Seek(Duration),
     /// 0.0 to 1.0.
     SetVolume(f32),
+    /// Play on this device (a cpal id from [`crate::output_devices`]); `None`
+    /// follows the system default. Keeps the playback state and position.
+    SetDevice(Option<String>),
     Stop,
 }
 
@@ -52,6 +55,8 @@ pub enum Event {
     Error(String),
     /// The output device went away; the player moved to the system default and paused.
     DeviceLost,
+    /// The chosen device is not available; the system default plays instead.
+    DeviceMissing,
 }
 
 /// Handle to the engine thread. Dropping it stops playback.
@@ -66,17 +71,24 @@ const IDLE_WAIT: Duration = Duration::from_millis(20);
 const REOPEN_EVERY: Duration = Duration::from_secs(1);
 
 impl Player {
-    /// Opens the default audio device and starts the engine thread.
-    pub fn spawn() -> Result<Self> {
+    /// Opens an audio device and starts the engine thread. `device` is a cpal
+    /// id from [`crate::output_devices`]; `None`, or a device that is gone,
+    /// gives the system default (and, for a gone one, `Event::DeviceMissing`).
+    pub fn spawn(device: Option<String>) -> Result<Self> {
         let (commands, command_rx) = flume::unbounded();
         let (event_tx, events) = flume::unbounded();
         let (ready_tx, ready_rx) = flume::bounded(1);
         thread::Builder::new()
             .name("cloudrs-audio".into())
-            .spawn(move || match output::open() {
-                Ok(output) => {
+            .spawn(move || match output::open(device.as_deref()) {
+                Ok((output, missing)) => {
                     let _ = ready_tx.send(Ok(()));
-                    Engine::new(output, event_tx).run(&command_rx);
+                    let wanted = if missing { None } else { device };
+                    let engine = Engine::new(output, wanted, event_tx);
+                    if missing {
+                        engine.emit(Event::DeviceMissing);
+                    }
+                    engine.run(&command_rx);
                 }
                 Err(error) => {
                     let _ = ready_tx.send(Err(error));
@@ -116,6 +128,8 @@ struct Track {
 
 struct Engine {
     output: Output,
+    /// The chosen device's id; `None` follows the system default.
+    wanted: Option<String>,
     events: flume::Sender<Event>,
     state: PlaybackState,
     track: Option<Track>,
@@ -132,9 +146,10 @@ struct Engine {
 }
 
 impl Engine {
-    fn new(output: Output, events: flume::Sender<Event>) -> Self {
+    fn new(output: Output, wanted: Option<String>, events: flume::Sender<Event>) -> Self {
         Self {
             output,
+            wanted,
             events,
             state: PlaybackState::Idle,
             track: None,
@@ -236,6 +251,16 @@ impl Engine {
                 }
             }
             Command::SetVolume(volume) => self.output.shared.set_volume(volume),
+            Command::SetDevice(device) => {
+                if device != self.wanted {
+                    self.wanted = device;
+                    if let Err(error) = self.reopen() {
+                        tracing::warn!(%error, "could not open the chosen output device");
+                        self.wanted = None;
+                        self.emit(Event::DeviceMissing);
+                    }
+                }
+            }
             Command::Stop => {
                 self.clear();
                 self.set_state(PlaybackState::Idle);
@@ -268,19 +293,28 @@ impl Engine {
         if !plan.keep_playing && self.state == PlaybackState::Playing {
             self.set_state(PlaybackState::Paused);
         }
-        match output::open() {
-            Ok(output) => {
-                self.reopen_at = None;
-                self.switch_output(output);
-            }
-            Err(error) => {
-                tracing::warn!(%error, "no audio output to move to");
-                self.reopen_at = Some(Instant::now() + REOPEN_EVERY);
-            }
+        if plan.lost {
+            self.wanted = None;
+        }
+        if let Err(error) = self.reopen() {
+            tracing::warn!(%error, "no audio output to move to");
+            self.reopen_at = Some(Instant::now() + REOPEN_EVERY);
         }
         if plan.lost && !retrying {
             self.emit(Event::DeviceLost);
         }
+    }
+
+    /// Opens the wanted device (the default when it is gone) and moves to it.
+    fn reopen(&mut self) -> Result<()> {
+        let (output, missing) = output::open(self.wanted.as_deref())?;
+        self.reopen_at = None;
+        self.switch_output(output);
+        if missing {
+            self.wanted = None;
+            self.emit(Event::DeviceMissing);
+        }
+        Ok(())
     }
 
     /// Replaces the output, rebuilding the current track for its sample rate

@@ -24,6 +24,7 @@ mod resample;
 pub use decode::Decoder;
 pub use error::{Error, Result};
 pub use fetch::{Opened, Stream};
+pub use output::{OutputDevice, output_devices};
 pub use player::{Command, Event, PlaybackState, Player};
 
 /// How a stream is delivered.

@@ -14,6 +14,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     /// Keeps and saves the settings, then tells the UI what is now in effect.
     pub(super) fn set_settings(&mut self, settings: Settings) {
         if settings != self.settings {
+            if settings.output_device != self.settings.output_device {
+                self.to_audio(sc_audio::Command::SetDevice(settings.output_device.clone()));
+            }
             self.settings = settings;
             self.settings_changed = true;
             self.save_settings();
@@ -55,6 +58,26 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if let Err(error) = store::save_settings(&store.conn, &self.settings) {
             tracing::warn!(%error, "could not save the settings on exit");
         }
+    }
+
+    /// The player left the chosen device: tell the person and go back to the
+    /// system default, so the next start does not try the missing one again.
+    pub(super) fn output_fell_back(&mut self, problem: Problem) {
+        self.emit(Event::Problem(problem));
+        if self.settings.output_device.is_some() {
+            self.settings.output_device = None;
+            self.settings_changed = true;
+            self.save_settings();
+            self.emit(Event::Settings(self.settings.clone()));
+        }
+    }
+
+    /// Lists the audio devices off the actor loop (WASAPI opens each one).
+    pub(super) fn list_output_devices(&self) {
+        let inputs = self.inputs.clone();
+        tokio::task::spawn_blocking(move || {
+            let _ = inputs.send(Input::OutputDevices(sc_audio::output_devices()));
+        });
     }
 
     /// Measures the artwork cache off the actor loop.

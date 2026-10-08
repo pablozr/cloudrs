@@ -21,9 +21,9 @@ use std::time::Duration;
 pub use settings::{Language, Settings, ThemeChoice, read_settings};
 pub use types::{
     Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems,
-    NewPlaylist, PlayState, Playback, PlaylistChange, PlaylistId, PlaylistPage, PlaylistSummary,
-    Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary, UserId, UserPage,
-    UserSummary,
+    NewPlaylist, OutputDevice, PlayState, Playback, PlaylistChange, PlaylistId, PlaylistPage,
+    PlaylistSummary, Problem, QueueSnapshot, Repeat, SearchKind, TrackId, TrackPage, TrackSummary,
+    UserId, UserPage, UserSummary,
 };
 
 /// What the UI asks for.
@@ -159,6 +159,8 @@ pub enum Command {
     SetSettings(Settings),
     /// How big the artwork cache is: answers with [`Event::CacheSize`].
     MeasureCache,
+    /// Which audio devices exist: answers with [`Event::OutputDevices`].
+    ListOutputDevices,
     /// Delete the cached covers that are not on screen this session. Answers
     /// with [`Event::CacheCleared`] (or `Problem::CacheNotCleared`) and then
     /// [`Event::CacheSize`].
@@ -244,6 +246,9 @@ pub enum Event {
     Jam(Option<JamState>),
     /// The settings in effect, after [`Command::SetSettings`].
     Settings(Settings),
+    /// The system's output devices, without the default entry; the chosen
+    /// one is [`Settings::output_device`].
+    OutputDevices(Vec<OutputDevice>),
     /// Bytes the artwork cache takes.
     CacheSize(u64),
     /// The cache was cleared of everything not in use.
@@ -307,7 +312,7 @@ impl std::fmt::Debug for CoreConfig {
 /// Starts the core with the real SoundCloud client and the default audio device.
 pub fn start(config: CoreConfig) -> Result<CoreHandle, StartError> {
     let api = sc_api::ScClient::new(sc_api::ClientConfig::default())?;
-    let audio = sc_audio::Player::spawn()?.into_channels();
+    let audio = sc_audio::Player::spawn(config.settings.output_device.clone())?.into_channels();
     Ok(spawn(api, audio, config))
 }
 

@@ -220,6 +220,8 @@ pub struct Models {
     pub settings: sc_core::Settings,
     /// Bytes the artwork cache takes, once measured.
     pub cache_size: Option<u64>,
+    /// The output devices, `None` while the core lists them.
+    pub output_devices: Option<Vec<sc_core::OutputDevice>>,
 }
 
 impl Models {
@@ -243,6 +245,7 @@ impl Models {
             home_genre: Genre::All,
             settings: sc_core::Settings::default(),
             cache_size: None,
+            output_devices: None,
         }
     }
 

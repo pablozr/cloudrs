@@ -104,10 +104,55 @@ pub(crate) fn is_present(id: &str) -> bool {
         .is_some_and(|id| cpal::default_host().device_by_id(&id).is_some())
 }
 
-/// Opens the default output device. The ring buffer holds about half a second.
-pub fn open() -> Result<Output> {
+/// An output device the person can choose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputDevice {
+    /// The cpal id, stable across runs (`host:id`).
+    pub id: String,
+    pub name: String,
+}
+
+/// The system's output devices. Slow on some systems (WASAPI opens each
+/// device): call it off the UI thread. A host error gives an empty list.
+pub fn output_devices() -> Vec<OutputDevice> {
+    let devices = match cpal::default_host().output_devices() {
+        Ok(devices) => devices,
+        Err(error) => {
+            tracing::warn!(%error, "could not list output devices");
+            return Vec::new();
+        }
+    };
+    // A device can vanish between listing and asking, so each ask may fail.
+    // `Device`'s `Display` would panic then; read the description instead.
+    devices
+        .filter_map(|device| {
+            let id = device.id().ok()?.to_string();
+            let name = device.description().ok()?.name().to_owned();
+            Some(OutputDevice { id, name })
+        })
+        .collect()
+}
+
+/// Opens the wanted output device, or the system default when `wanted` is
+/// `None`. The flag is true when the wanted device could not be opened and the
+/// default plays instead. The ring buffer holds about half a second.
+pub fn open(wanted: Option<&str>) -> Result<(Output, bool)> {
     let host = cpal::default_host();
+    if let Some(id) = wanted {
+        let chosen = cpal::DeviceId::from_str(id)
+            .ok()
+            .and_then(|id| host.device_by_id(&id));
+        match chosen.map(build) {
+            Some(Ok(output)) => return Ok((output, false)),
+            Some(Err(error)) => tracing::warn!(%error, id, "chosen output device failed"),
+            None => tracing::warn!(id, "chosen output device not found"),
+        }
+    }
     let device = host.default_output_device().ok_or(Error::NoOutputDevice)?;
+    Ok((build(device)?, wanted.is_some()))
+}
+
+fn build(device: cpal::Device) -> Result<Output> {
     let config = device
         .default_output_config()
         .map_err(|e| Error::Output(e.to_string()))?

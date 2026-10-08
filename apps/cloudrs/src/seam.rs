@@ -139,6 +139,10 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             models.cache_size = Some(*bytes);
             true
         }
+        Event::OutputDevices(devices) => {
+            models.output_devices = Some(devices.clone());
+            true
+        }
         Event::CacheCleared => false,
         Event::Settings(settings) => {
             models.settings.clone_from(settings);
@@ -611,6 +615,21 @@ mod tests {
         assert!(apply(&mut models, &Event::CacheSize(2048)));
         assert_eq!(models.cache_size, Some(2048));
         assert!(!apply(&mut models, &Event::CacheCleared));
+    }
+
+    #[test]
+    fn the_output_devices_event_updates_the_model() {
+        let mut models = Models::new();
+        assert_eq!(models.output_devices, None);
+        let device = sc_core::OutputDevice {
+            id: "wasapi:a".into(),
+            name: "Speakers".into(),
+        };
+        assert!(apply(
+            &mut models,
+            &Event::OutputDevices(vec![device.clone()])
+        ));
+        assert_eq!(models.output_devices, Some(vec![device]));
     }
 
     #[test]

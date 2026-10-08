@@ -411,6 +411,7 @@ impl Shell {
             | Event::Followed { .. }
             | Event::Jam(_)
             | Event::CacheSize(_)
+            | Event::OutputDevices(_)
             | Event::HomeShelves(_)
             | Event::NowPlayingLinks { .. } => {}
         }
@@ -522,6 +523,7 @@ impl Shell {
             Problem::PreviewOnly => (ToastKind::Info, t::preview_only()),
             Problem::CannotPlay => (ToastKind::Error, t::cannot_play()),
             Problem::OutputDeviceLost => (ToastKind::Info, t::output_lost()),
+            Problem::OutputDeviceMissing => (ToastKind::Info, t::output_missing()),
             Problem::StorageReset => (ToastKind::Warning, t::storage_reset()),
             Problem::SignInFailed => (ToastKind::Error, t::sign_in_failed()),
             Problem::SessionExpired => (ToastKind::Warning, t::session_expired()),
@@ -687,6 +689,8 @@ impl Shell {
             // A skeleton until the core answers with the size.
             self.models.cache_size = None;
             self.send(Command::MeasureCache);
+            self.models.output_devices = None;
+            self.send(Command::ListOutputDevices);
         }
         cx.notify();
     }

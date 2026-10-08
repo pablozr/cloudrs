@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("usage: play <stream url>");
         std::process::exit(2);
     };
-    let player = Player::spawn()?;
+    let player = Player::spawn(None)?;
     player.send(Command::Load(Source::from_url(url)))?;
     for event in player.events().iter() {
         match event {
@@ -32,6 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Event::DeviceLost => eprintln!(
                 "
 output device lost; paused"
+            ),
+            Event::DeviceMissing => eprintln!(
+                "
+chosen output device missing; using the default"
             ),
             Event::Error(error) => {
                 eprintln!("\nerror: {error}");

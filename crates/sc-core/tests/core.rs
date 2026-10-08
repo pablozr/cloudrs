@@ -605,7 +605,7 @@ fn a_damaged_database_is_reset_and_reported() {
     let version: i32 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 3);
+    assert_eq!(version, 4);
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -690,6 +690,62 @@ fn settings_are_echoed_and_saved() {
     h.core.send(Command::Shutdown);
     h.wait(|e| matches!(e, Event::Stopped).then_some(()));
     assert_eq!(sc_core::read_settings(&h.cache.join("data")), sent);
+}
+
+fn choose_device(h: &Harness, device: Option<&str>, theme: sc_core::ThemeChoice) {
+    h.core.send(Command::SetSettings(sc_core::Settings {
+        theme,
+        output_device: device.map(str::to_owned),
+        ..sc_core::Settings::default()
+    }));
+    h.wait(|e| matches!(e, Event::Settings(_)).then_some(()));
+}
+
+#[test]
+fn choosing_a_device_tells_the_player() {
+    let h = Harness::new("choose-device");
+    wait_for_store(&h);
+    choose_device(&h, Some("test:a"), sc_core::ThemeChoice::System);
+    let sent: Vec<_> = h.audio_commands.try_iter().collect();
+    assert!(
+        sent.iter()
+            .any(|c| matches!(c, sc_audio::Command::SetDevice(Some(id)) if id == "test:a"))
+    );
+
+    choose_device(&h, Some("test:a"), sc_core::ThemeChoice::Dark);
+    assert!(
+        !h.audio_commands
+            .try_iter()
+            .any(|c| matches!(c, sc_audio::Command::SetDevice(_)))
+    );
+}
+
+#[test]
+fn a_missing_device_falls_back_to_default() {
+    let h = Harness::new("device-missing");
+    wait_for_store(&h);
+    choose_device(&h, Some("test:a"), sc_core::ThemeChoice::System);
+    h.audio_events.send(sc_audio::Event::DeviceMissing).unwrap();
+    h.wait(|e| matches!(e, Event::Problem(Problem::OutputDeviceMissing)).then_some(()));
+    let settings = h.wait(|e| match e {
+        Event::Settings(settings) => Some(settings),
+        _ => None,
+    });
+    assert_eq!(settings.output_device, None);
+
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+    assert_eq!(
+        sc_core::read_settings(&h.cache.join("data")).output_device,
+        None
+    );
+}
+
+#[test]
+fn output_devices_are_listed() {
+    let h = Harness::new("list-devices");
+    h.core.send(Command::ListOutputDevices);
+    h.wait(|e| matches!(e, Event::OutputDevices(_)).then_some(()));
 }
 
 #[test]

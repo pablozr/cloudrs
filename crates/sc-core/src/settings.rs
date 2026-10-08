@@ -51,6 +51,8 @@ pub struct Settings {
     pub language: Language,
     /// Show the playing track on Discord (ADR 0015).
     pub discord: bool,
+    /// A cpal device id (`host:id`); `None` follows the system default (ADR 0020).
+    pub output_device: Option<String>,
 }
 
 impl Default for Settings {
@@ -59,6 +61,7 @@ impl Default for Settings {
             theme: ThemeChoice::default(),
             language: Language::default(),
             discord: true,
+            output_device: None,
         }
     }
 }
