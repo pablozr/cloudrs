@@ -40,6 +40,8 @@ pub struct Track {
     pub playback_count: Option<u64>,
     pub likes_count: Option<u64>,
     pub comment_count: Option<u64>,
+    /// `Some(false)` when the artist turned comments off.
+    pub commentable: Option<bool>,
     pub streamable: Option<bool>,
     /// `ALLOW`, `MONETIZE`, `SNIP` (preview only) or `BLOCK`.
     pub policy: Option<String>,
@@ -112,6 +114,26 @@ pub struct UserSummary {
     pub permalink_url: String,
     pub avatar_url: Option<String>,
     pub verified: Option<bool>,
+}
+
+impl UserSummary {
+    /// Avatar URL at the requested size.
+    pub fn avatar(&self, size: &str) -> Option<String> {
+        self.avatar_url.as_deref().map(|url| resize(url, size))
+    }
+}
+
+/// A comment on a track.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Comment {
+    pub id: u64,
+    pub body: String,
+    /// Position in the track, in milliseconds; `None` for a comment that is not timed.
+    #[serde(rename = "timestamp")]
+    pub timestamp_ms: Option<u64>,
+    pub created_at: Option<String>,
+    pub user: Option<UserSummary>,
 }
 
 /// A full user profile.
@@ -309,6 +331,31 @@ mod tests {
         assert_eq!(track.title, "Lights Out (Extended Mix)");
         assert_eq!(track.media.transcodings.len(), 4);
         assert_eq!(track.user.as_ref().unwrap().username, "Charlotte de Witte");
+    }
+
+    #[test]
+    fn decodes_comments() {
+        let page: Page<Comment> =
+            serde_json::from_str(include_str!("../tests/fixtures/track_comments.json")).unwrap();
+        assert_eq!(page.collection.len(), 3);
+        let timed = &page.collection[0];
+        assert_eq!(timed.timestamp_ms, Some(10_000));
+        assert_eq!(timed.body, "Drop incoming");
+        let user = timed.user.as_ref().unwrap();
+        assert_eq!(user.username, "ravefan");
+        assert_eq!(
+            user.avatar("t300x300").as_deref(),
+            Some("https://i1.sndcdn.com/avatars-000111-t300x300.jpg")
+        );
+        assert_eq!(page.collection[2].timestamp_ms, None);
+    }
+
+    #[test]
+    fn decodes_commentable() {
+        let off: Track = serde_json::from_str(r#"{"id": 1, "commentable": false}"#).unwrap();
+        assert_eq!(off.commentable, Some(false));
+        let unknown: Track = serde_json::from_str(r#"{"id": 1}"#).unwrap();
+        assert_eq!(unknown.commentable, None);
     }
 
     #[test]

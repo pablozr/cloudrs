@@ -90,6 +90,26 @@ async fn fetches_related_tracks() {
 }
 
 #[tokio::test]
+async fn fetches_track_comments() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tracks/42/comments"))
+        .and(query_param("client_id", OLD_ID))
+        .and(query_param("threaded", "0"))
+        .and(query_param("limit", "200"))
+        .and(query_param("linked_partitioning", "1"))
+        .respond_with(json(include_str!("fixtures/track_comments.json")))
+        .mount(&server)
+        .await;
+
+    let page = client(&server, Some(OLD_ID), None)
+        .comments(42, 500)
+        .await
+        .unwrap();
+    assert_eq!(page.collection.len(), 3);
+}
+
+#[tokio::test]
 async fn refreshes_a_stale_client_id_once() {
     let server = MockServer::start().await;
     mount_web_app(&server, NEW_ID).await;

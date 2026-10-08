@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sc_api::models::{
-    LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, SelectionItem,
+    Comment, LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, SelectionItem,
     SelectionItems, StreamItem, SystemPlaylist, Track, User, UserSummary, Waveform,
 };
 use sc_api::{SoundCloudApi, StreamProtocol, StreamSource};
@@ -33,6 +33,8 @@ pub struct FakeApi {
     pub fail_actions: Arc<AtomicBool>,
     /// Makes like and follow calls answer `Unauthorized` (an expired token).
     pub expired: Arc<AtomicBool>,
+    /// Makes `comments` fail (`Status(500)`).
+    pub fail_comments: Arc<AtomicBool>,
 }
 
 pub fn partial(id: u64) -> Track {
@@ -206,6 +208,34 @@ impl SoundCloudApi for FakeApi {
         })
     }
 
+    async fn comments(&self, id: u64, _limit: u32) -> sc_api::Result<Page<Comment>> {
+        self.log(format!("comments {id}"));
+        if self.fail_comments.load(Ordering::SeqCst) {
+            return Err(sc_api::Error::Status(500));
+        }
+        let comment = |id, body: &str, timestamp_ms, user| Comment {
+            id,
+            body: body.into(),
+            timestamp_ms,
+            created_at: None,
+            user: Some(UserSummary {
+                id: user,
+                username: format!("fan{user}"),
+                avatar_url: Some(format!("https://i1.sndcdn.com/avatars-{user}-large.jpg")),
+                ..UserSummary::default()
+            }),
+        };
+        Ok(Page {
+            collection: vec![
+                comment(1, " Drop! ", Some(10_000), 70),
+                comment(2, "Chills", Some(10_500), 71),
+                comment(3, "Great track", None, 70),
+            ],
+            next_href: None,
+            total_results: None,
+        })
+    }
+
     async fn next_page<T>(&self, page: &Page<T>) -> sc_api::Result<Option<Page<T>>>
     where
         T: serde::de::DeserializeOwned + Send + Sync,
@@ -243,7 +273,8 @@ impl SoundCloudApi for FakeApi {
             description: Some("About this track".into()),
             playback_count: Some(1_000),
             likes_count: Some(50),
-            comment_count: Some(4),
+            comment_count: Some(if id == 61 { 0 } else { 4 }),
+            commentable: Some(id != 60),
             created_at: Some("2026-01-02T03:04:05Z".into()),
             permalink_url: format!("https://soundcloud.com/artist/{id}"),
             ..track(id, "Any", "ALLOW")

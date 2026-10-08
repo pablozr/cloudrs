@@ -13,7 +13,7 @@ use crate::SoundCloudApi;
 use crate::client_id::{find_client_id, script_urls};
 use crate::error::{Error, Result};
 use crate::models::{
-    LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, StreamItem,
+    Comment, LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, StreamItem,
     SystemPlaylist, Track, User, Waveform,
 };
 use crate::stream::{StreamSource, pick_transcoding, protocol};
@@ -300,6 +300,15 @@ impl SoundCloudApi for ScClient {
         self.get_json(
             &format!("tracks/{id}/related"),
             &[("limit", &limit), ("linked_partitioning", "1")],
+        )
+        .await
+    }
+
+    async fn comments(&self, track: u64, limit: u32) -> Result<Page<Comment>> {
+        self.paged(
+            &format!("tracks/{track}/comments"),
+            &[("threaded", "0")],
+            limit,
         )
         .await
     }

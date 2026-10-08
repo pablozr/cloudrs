@@ -20,7 +20,7 @@ pub use stream::{StreamProtocol, StreamSource, pick_transcoding};
 use std::future::Future;
 
 use models::{
-    LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, StreamItem,
+    Comment, LibraryItem, Like, Page, Playlist, PlaylistEdit, Resource, Selection, StreamItem,
     SystemPlaylist, Track, User, Waveform,
 };
 
@@ -76,6 +76,14 @@ pub trait SoundCloudApi: Send + Sync {
 
     /// Tracks SoundCloud suggests after `id` (autoplay). `limit` is capped at 200.
     fn related(&self, id: u64, limit: u32) -> impl Future<Output = Result<Page<Track>>> + Send;
+
+    /// The first comments of a track (`/tracks/{id}/comments?threaded=0`), newest first.
+    /// `limit` is capped at 200.
+    fn comments(
+        &self,
+        track: u64,
+        limit: u32,
+    ) -> impl Future<Output = Result<Page<Comment>>> + Send;
 
     /// Fetches the page that follows `page`, if there is one.
     fn next_page<T>(&self, page: &Page<T>) -> impl Future<Output = Result<Option<Page<T>>>> + Send
