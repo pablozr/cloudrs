@@ -9,6 +9,7 @@ use std::sync::Arc;
 pub use sc_core::{ArtKey, ListId, ListItems, PlaylistId, SearchKind, TrackId, UserId};
 use sc_core::{Genre, HomeShelf, JamState, PlaylistPage, TrackPage, UserPage, UserSummary};
 
+use crate::comments::CommentsView;
 use crate::state::ArtworkMap;
 use crate::tint::Rgb;
 
@@ -164,12 +165,20 @@ pub struct Art {
     pub tracks: ArtworkMap,
     pub users: HashMap<UserId, Arc<Path>>,
     pub playlists: HashMap<PlaylistId, Arc<Path>>,
+    /// People whose avatar was asked for (commenters'), so each is asked once.
+    asked_users: HashSet<UserId>,
     /// Dominant colour by image: present once requested, `Some` once computed
     /// (`None` when the file was unreadable).
     tints: HashMap<ArtKey, Option<Rgb>>,
 }
 
 impl Art {
+    /// True only the first time an avatar that has not arrived is wanted: the
+    /// caller then asks the core for it.
+    pub fn ask_avatar(&mut self, id: UserId) -> bool {
+        !self.users.contains_key(&id) && self.asked_users.insert(id)
+    }
+
     /// Marks the image's colour as requested. True only the first time, so
     /// each image is decoded once.
     pub fn begin_tint(&mut self, key: ArtKey) -> bool {
@@ -196,6 +205,7 @@ pub struct Models {
     pub tracks: HashMap<TrackId, Page<TrackPage>>,
     pub users: HashMap<UserId, Page<UserPage>>,
     pub playlists: HashMap<PlaylistId, Page<PlaylistPage>>,
+    pub comments: HashMap<TrackId, Page<CommentsView>>,
     /// The text of the search field; empty shows the search prompt.
     pub query: String,
     pub search_kind: SearchKind,
@@ -231,6 +241,7 @@ impl Models {
             tracks: HashMap::new(),
             users: HashMap::new(),
             playlists: HashMap::new(),
+            comments: HashMap::new(),
             query: String::new(),
             search_kind: SearchKind::Tracks,
             art: Art::default(),
@@ -264,6 +275,11 @@ impl Models {
     /// A page that is not showing a header yet waits for it.
     pub fn expect_track(&mut self, id: TrackId) {
         self.tracks.entry(id).or_insert(Page::Loading).expect();
+    }
+
+    /// Comments wait for the core again after a failure; shown ones stay.
+    pub fn expect_comments(&mut self, id: TrackId) {
+        self.comments.entry(id).or_insert(Page::Loading).expect();
     }
 
     pub fn expect_user(&mut self, id: UserId) {

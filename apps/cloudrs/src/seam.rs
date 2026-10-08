@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use sc_core::{ArtKey, Command, Event, ListId, PlayState, Problem};
 
+use crate::comments::CommentsView;
 use crate::intent::UiIntent;
 use crate::models::{Models, Page, SEARCH_TABS};
 
@@ -85,8 +86,20 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             let failed_pages = *problem != Problem::SignInFailed && models.fail_loading_pages();
             stopped_signing_in || failed_pages
         }
-        // Comments arrive in the step that shows them.
-        Event::Comments { .. } | Event::CommentsFailed { .. } => false,
+        // The pins need the track's duration, which its page brought first.
+        Event::Comments { track, comments } => {
+            let duration = match models.tracks.get(track) {
+                Some(Page::Ready(page)) => page.track.duration,
+                _ => Default::default(),
+            };
+            let view = CommentsView::new(comments.clone(), duration);
+            models.comments.insert(*track, Page::Ready(view));
+            true
+        }
+        Event::CommentsFailed { track, .. } => {
+            models.comments.insert(*track, Page::Failed);
+            true
+        }
         // The player bar and the queue own these.
         Event::Problem(_) | Event::Waveform { .. } | Event::Queue(_) | Event::Stopped => false,
         Event::SignedIn(account) => {
@@ -164,6 +177,7 @@ pub fn command(intent: &UiIntent) -> Command {
         UiIntent::SetSearchKind(kind) => Command::SetSearchKind(*kind),
         UiIntent::OpenUrl(url) => Command::OpenUrl(url.clone()),
         UiIntent::OpenTrack(id) => Command::OpenTrack(*id),
+        UiIntent::LoadComments(id) => Command::LoadComments(*id),
         UiIntent::OpenUser(id) => Command::OpenUser(*id),
         UiIntent::OpenPlaylist(id) => Command::OpenPlaylist(*id),
         UiIntent::OpenHistory => Command::OpenHistory,
@@ -213,7 +227,11 @@ pub fn take(models: &mut Models, intent: &UiIntent) -> Command {
         }
         UiIntent::OpenTrack(id) => {
             models.expect_track(*id);
+            models.expect_comments(*id);
             expect_once(models, ListId::Related(*id));
+        }
+        UiIntent::LoadComments(id) => {
+            models.comments.insert(*id, Page::Loading);
         }
         UiIntent::OpenUser(id) => {
             models.expect_user(*id);
@@ -484,6 +502,90 @@ mod tests {
         assert!(apply(&mut models, &Event::Problem(Problem::NotFound)));
         assert_eq!(models.users[&UserId(1)], Page::Failed);
         assert!(!apply(&mut models, &Event::Problem(Problem::NotFound)));
+    }
+
+    fn comment(id: u64, at: Option<u64>) -> sc_core::CommentSummary {
+        sc_core::CommentSummary {
+            id,
+            user: Some(UserId(id)),
+            username: "Ana".into(),
+            body: "hi".into(),
+            at: at.map(Duration::from_secs),
+        }
+    }
+
+    fn page_of(id: u64) -> Event {
+        Event::TrackPage(TrackPage {
+            track: track(id),
+            description: None,
+            plays: None,
+            likes: None,
+            comments: None,
+            created_at: None,
+            permalink: String::new(),
+            commentable: true,
+        })
+    }
+
+    #[test]
+    fn comments_become_pins_using_the_duration_of_the_page() {
+        let mut models = Models::new();
+        apply(&mut models, &page_of(5));
+        let event = Event::Comments {
+            track: TrackId(5),
+            comments: vec![comment(1, Some(100)), comment(2, None)],
+        };
+        assert!(apply(&mut models, &event));
+        let Page::Ready(view) = &models.comments[&TrackId(5)] else {
+            panic!("the comments are ready");
+        };
+        assert_eq!(view.items.len(), 2);
+        assert_eq!(view.pins.as_ref(), [80], "100 s of 200 s is the middle bar");
+    }
+
+    #[test]
+    fn failed_comments_can_be_asked_again() {
+        let mut models = Models::new();
+        let failed = Event::CommentsFailed {
+            track: TrackId(5),
+            problem: Problem::Offline,
+        };
+        assert!(apply(&mut models, &failed));
+        assert_eq!(models.comments[&TrackId(5)], Page::Failed);
+
+        take(&mut models, &UiIntent::OpenTrack(TrackId(5)));
+        assert_eq!(models.comments[&TrackId(5)], Page::Loading);
+
+        apply(&mut models, &failed);
+        let command = take(&mut models, &UiIntent::LoadComments(TrackId(5)));
+        assert_eq!(command, Command::LoadComments(TrackId(5)));
+        assert_eq!(models.comments[&TrackId(5)], Page::Loading);
+    }
+
+    #[test]
+    fn opening_a_track_again_keeps_its_comments() {
+        let mut models = Models::new();
+        apply(&mut models, &page_of(5));
+        let event = Event::Comments {
+            track: TrackId(5),
+            comments: vec![comment(1, Some(100))],
+        };
+        apply(&mut models, &event);
+        take(&mut models, &UiIntent::OpenTrack(TrackId(5)));
+        assert!(matches!(models.comments[&TrackId(5)], Page::Ready(_)));
+    }
+
+    #[test]
+    fn an_avatar_is_asked_for_once() {
+        let mut models = Models::new();
+        assert!(models.art.ask_avatar(UserId(1)));
+        assert!(!models.art.ask_avatar(UserId(1)));
+        let art = Event::Artwork {
+            key: ArtKey::User(UserId(2)),
+            path: PathBuf::from("/cache/x.jpg"),
+        };
+        apply(&mut models, &art);
+        assert!(!models.art.ask_avatar(UserId(2)), "already here");
     }
 
     #[test]

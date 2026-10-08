@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Comments:** a track page lists its comments, and pins under its waveform show the timed
+  ones; hover a pin to read them, click it to jump there while the track plays.
 - **Audio output:** pick the output device in Settings; unplugging it pauses and moves to the
   system default, which cloudrs follows.
 - **Media keys:** play, pause, next, previous and seek from the keyboard's media keys and the

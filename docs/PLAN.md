@@ -249,7 +249,8 @@ The visual rules, tokens and motion catalog live in
 ### 7.2 Screens
 1. **Search:** 300 ms debounced input, tabs (All / Tracks / People / Playlists / Albums) and
    infinite scroll on a virtual list.
-2. **Track:** artwork, large waveform, description, comments, related tracks.
+2. **Track:** artwork, large waveform, description, comments, related tracks. Comments sit in a
+   tab beside Related, and the timed ones are pins under the waveform (ADR 0021).
 3. **Playlist / Album:** header and track list.
 4. **Profile:** header, tabs (Tracks / Playlists / Likes / Reposts) and a follow button.
 5. **Likes and Library** (signed in).
@@ -364,7 +365,7 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 - [x] Audio device selection and recovery (ADR 0020).
   - [ ] Tried by the maintainer: unplugging headphones while playing, switching the Windows
     default; macOS and Linux untried.
-- [ ] Timed comments on the waveform.
+- [x] Timed comments on the waveform (ADR 0021).
 - [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker waits
       for a second language (M5).
 

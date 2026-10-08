@@ -110,6 +110,11 @@ pub struct Shell {
     pub(crate) scrolls: HashMap<ListId, UniformListScrollHandle>,
     /// The profile tab showing (Tracks, Playlists, Likes).
     pub(crate) user_tab: usize,
+    /// The track page tab showing (Related, Comments).
+    pub(crate) track_tab: usize,
+    /// The comment pin under the pointer: its track, marker and place.
+    pub(crate) comment_hover: Option<(sc_core::TrackId, usize, gpui::Point<gpui::Pixels>)>,
+    pub(crate) comments_scroll: UniformListScrollHandle,
     /// The Library filter showing (All, Playlists, Albums).
     pub(crate) library_tab: usize,
     pub(crate) wave: Entity<TrackWave>,
@@ -239,6 +244,9 @@ impl Shell {
             nav_seq: 0,
             scrolls: HashMap::new(),
             user_tab: 0,
+            track_tab: 0,
+            comment_hover: None,
+            comments_scroll: UniformListScrollHandle::new(),
             library_tab: 0,
             wave,
             queue: QueueState::default(),
@@ -655,6 +663,7 @@ impl Shell {
     pub(crate) fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
         if self.router.push(route) {
             self.user_tab = 0;
+            self.track_tab = 0;
             self.route_changed(cx);
         }
     }
@@ -679,6 +688,8 @@ impl Shell {
     /// waveform at the track page, if that is where we are.
     pub(crate) fn route_changed(&mut self, cx: &mut Context<Self>) {
         self.nav_seq += 1;
+        self.comment_hover = None;
+        self.comments_scroll.scroll_to_item(0, ScrollStrategy::Top);
         let track = match self.router.current() {
             Route::Track(id) => Some(*id),
             _ => None,

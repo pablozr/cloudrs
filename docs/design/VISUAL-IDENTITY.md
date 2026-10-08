@@ -161,6 +161,10 @@ The OS "reduce motion" setting turns every duration down to an instant change.
   then rows (icon, label, key). The selected row has the accent border; Esc, a click outside or
   choosing a row closes it (ADR 0018).
 - **Slider:** volume.
+- **Timed comments (track page, ADR 0021):** pins in a thin lane under the large waveform, one per
+  bar (muted dots; the one under the pointer is larger and in accent). Hovering a pin opens a
+  popover with up to three comments (avatar, name, time, text) and "+N more". The Comments tab
+  lists them as rows: avatar, name and time, then the text in two lines.
 - **TrackRow:**
   - index, artwork, title/artist, duration;
   - actions appear on hover;
@@ -174,7 +178,7 @@ The OS "reduce motion" setting turns every duration down to an instant change.
   - left: artwork, title and artist (+ like);
   - centre: the transport row on top (shuffle, previous, the gradient play button, next,
     repeat, centred) and, underneath, a wide waveform with the elapsed time on its left and
-    the total on its right (timed-comment pins later);
+    the total on its right (timed-comment pins live only on the track page, ADR 0021);
   - right: volume and the queue button.
 - **Sidebar:** brand, main navigation with an accent rail on the active item, "Your playlists".
 

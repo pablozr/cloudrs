@@ -1,11 +1,12 @@
-//! A track page: header, a large waveform, the description and related tracks.
+//! A track page: header, a large waveform with the pins of its timed comments,
+//! the description, and tabs for the related tracks and the comments.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use cloudrs_ui::Theme;
-use cloudrs_ui::browse::{PageHeaderData, page_header, skeleton_header};
+use cloudrs_ui::browse::{PageHeaderData, page_header, skeleton_header, tabs};
 use cloudrs_ui::components::{ButtonKind, Icon, button, icon_button, tooltip, waveform};
 use cloudrs_ui::tokens::{self, size, space, typography};
 use gpui::prelude::*;
@@ -185,6 +186,7 @@ impl Shell {
             }
         };
 
+        let commentable = header.commentable;
         let artist = header.track.artist_id.map(|user| {
             button(
                 theme,
@@ -249,24 +251,42 @@ impl Shell {
                 .text_color(theme.colors.text_muted)
                 .child(text.clone())
         });
-        let related = self.list_view(ListId::Related(id), i18n::track::related(), theme, cx);
+        let lane = self.comment_lane_view(id, commentable, theme, cx);
+        let tabs = tabs(
+            theme,
+            "track-tabs",
+            &[i18n::track::related(), i18n::comments::tab()],
+            self.track_tab,
+            cx.processor(|this, ix: usize, _, cx| {
+                this.track_tab = ix;
+                cx.notify();
+            }),
+        );
+        let content = if self.track_tab == 0 {
+            self.list_view(ListId::Related(id), i18n::track::related(), theme, cx)
+        } else {
+            self.comments_view(id, commentable, theme, cx)
+        };
         div()
             .size_full()
             .flex()
             .flex_col()
             .pt(space::S2)
             .child(page)
-            .child(div().px(space::S5).pb(space::S4).child(self.wave.clone()))
-            .child(div().px(space::S5).children(description))
             .child(
-                theme
-                    .text(div(), typography::TITLE)
+                div()
                     .px(space::S5)
-                    .pb(space::S2)
-                    .text_color(theme.colors.text)
-                    .child(i18n::track::related()),
+                    .pb(space::S4)
+                    .flex()
+                    .flex_col()
+                    .gap(space::S1)
+                    .child(self.wave.clone())
+                    .children(lane),
             )
-            .child(div().flex_1().min_h(px(0.0)).px(space::S5).child(related))
+            .child(div().px(space::S5).children(description))
+            .child(div().px(space::S5).pb(space::S3).child(tabs))
+            .child(div().flex_1().min_h(px(0.0)).px(space::S5).child(content))
+            .children(self.comment_popover_view(theme))
             .into_any_element()
     }
 }

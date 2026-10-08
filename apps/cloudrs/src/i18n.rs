@@ -244,6 +244,24 @@ pub mod track {
     }
 }
 
+/// The comments of a track page (ADR 0021).
+pub mod comments {
+    strings! {
+        tab { en: "Comments" }
+        lane { en: "Timed comments" }
+        empty_title { en: "No comments yet" }
+        empty_hint { en: "Comments people leave on this track show up here." }
+        off_title { en: "Comments are turned off" }
+        off_hint { en: "The artist turned off comments for this track." }
+        error_title { en: "Could not load the comments" }
+    }
+    formats! {
+        more(count) { en: "+{count} more" }
+        row_label(name, time) { en: "Comment by {name} at {time}" }
+        row_label_untimed(name) { en: "Comment by {name}" }
+    }
+}
+
 pub mod user {
     strings! {
         tab_tracks { en: "Tracks" }

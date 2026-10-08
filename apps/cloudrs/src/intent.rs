@@ -14,6 +14,8 @@ pub enum UiIntent {
     /// A pasted soundcloud.com link.
     OpenUrl(String),
     OpenTrack(TrackId),
+    /// Fetch a track's comments again after an error.
+    LoadComments(TrackId),
     OpenUser(UserId),
     OpenPlaylist(PlaylistId),
     OpenHistory,
@@ -112,6 +114,7 @@ mod tests {
             UiIntent::PlayNext(TrackId(1)),
             UiIntent::LoadMore(list),
             UiIntent::OpenList(list),
+            UiIntent::LoadComments(TrackId(1)),
         ] {
             assert_eq!(intent.route(), None, "{intent:?}");
         }

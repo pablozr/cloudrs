@@ -3,6 +3,7 @@
 //! component they share is in `list`.
 
 mod account;
+mod comments;
 mod history;
 mod home;
 mod jam;
