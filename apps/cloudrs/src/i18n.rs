@@ -95,6 +95,11 @@ pub mod settings {
         theme_system { en: "System" }
         theme_dark { en: "Dark" }
         theme_light { en: "Light" }
+        output { en: "Output" }
+        output_hint { en: "Where cloudrs plays. System default follows your computer\u{2019}s choice." }
+        output_default { en: "System default" }
+        output_none { en: "No other output devices found." }
+        refresh { en: "Refresh" }
         cache { en: "Cache" }
         cache_hint { en: "Covers kept on this computer so pages open faster. Covers on screen stay." }
         clear_cache { en: "Clear cache" }

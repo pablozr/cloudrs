@@ -1,5 +1,5 @@
-//! The Settings screen (ADR 0017): theme, Discord, the artwork cache and the
-//! keyboard shortcuts. Every change goes to the core as a whole `Settings`
+//! The Settings screen (ADR 0017): theme, the audio output (ADR 0020), Discord,
+//! the artwork cache and the keyboard shortcuts. Every change goes to the core as a whole `Settings`
 //! and takes effect when the core echoes it.
 
 use cloudrs_ui::Theme;
@@ -38,6 +38,7 @@ impl Shell {
                     .child(t::title()),
             )
             .child(self.theme_setting(theme, cx))
+            .child(self.output_setting(theme, cx))
             .children(self.discord_setting(theme, cx))
             // The language picker appears with a second language (ADR 0017).
             .child(self.cache_setting(theme, cx))
@@ -65,6 +66,74 @@ impl Shell {
                 .child(choice(1, t::theme_dark(), ThemeChoice::Dark))
                 .child(choice(2, t::theme_light(), ThemeChoice::Light)),
         )
+    }
+
+    /// System default, then one pill per output device. The core lists the
+    /// devices when the screen opens; a skeleton shows until it answers.
+    fn output_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let c = theme.colors;
+        let selected = self.models.settings.output_device.as_ref();
+        let default = pill(
+            theme,
+            ("output", 0usize),
+            t::output_default(),
+            selected.is_none(),
+        )
+        .tab_index(0)
+        .aria_label(t::output_default())
+        .on_click(cx.listener(|this, _, _, _| {
+            this.change_settings(|settings| settings.output_device = None);
+        }));
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(space::S2)
+            .pt(space::S1)
+            .child(default);
+        match &self.models.output_devices {
+            None => {
+                row = row.child(
+                    div()
+                        .h(size::SKELETON_TITLE_HEIGHT)
+                        .w(size::SKELETON_ARTIST_WIDTH)
+                        .rounded(radius::S)
+                        .bg(c.surface_hover),
+                );
+            }
+            Some(devices) if devices.is_empty() => {
+                row = row.child(muted(theme, t::output_none())).child(
+                    button(theme, "output-refresh", t::refresh(), ButtonKind::Secondary)
+                        .aria_label(t::refresh())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.models.output_devices = None;
+                            this.send(Command::ListOutputDevices);
+                            cx.notify();
+                        })),
+                );
+            }
+            Some(devices) => {
+                for (ix, device) in devices.iter().enumerate() {
+                    let id = device.id.clone();
+                    row = row.child(
+                        pill(
+                            theme,
+                            ("output", ix + 1),
+                            device.name.clone(),
+                            selected == Some(&device.id),
+                        )
+                        .tab_index(0)
+                        .aria_label(device.name.clone())
+                        .on_click(cx.listener(move |this, _, _, _| {
+                            this.change_settings(|settings| {
+                                settings.output_device = Some(id.clone());
+                            });
+                        })),
+                    );
+                }
+            }
+        }
+        section(theme, t::output(), t::output_hint()).child(row)
     }
 
     /// "Show what I play on Discord", when this build can talk to Discord.

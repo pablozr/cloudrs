@@ -44,6 +44,10 @@ Settings.
     maintainer): on `DeviceLost` or `DeviceMissing` the core clears `output_device`, saves it and
     shows an info toast. After replugging, the person picks the device again. The player does not
     go back to it by itself.
+11. **The Output section in Settings** shows System default and one pill per device, as the
+    theme does. The core lists devices when the screen opens (a skeleton until it answers). An
+    empty list shows a message and a Refresh button, which also serves as the recoverable error
+    state, since a listing error gives an empty list.
 
 ## Consequences
 

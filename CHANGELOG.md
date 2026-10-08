@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Audio output:** pick the output device in Settings; unplugging it pauses and moves to the
+  system default, which cloudrs follows.
 - **Media keys:** play, pause, next, previous and seek from the keyboard's media keys and the
   system's controls (Windows media flyout, MPRIS on Linux, Now Playing on macOS), which show
   the track, artist and cover.

@@ -191,7 +191,7 @@ Encrypted transcodings (`encrypted-hls`, `ctr-encrypted-hls`, `cbc-encrypted-hls
   `Error(..)`, `NearEnd`.
 - **Commands in:** `Load(Source)`, `Play`, `Pause`, `Seek(Duration)`, `SetVolume(f32)`,
   `Preload(Source)`, `Stop`.
-- **Output device:** list and switch with cpal, and recover when the device disappears
+- **Output device (ADR 0020):** list and switch with cpal, and recover when the device disappears
   (headphones unplugged).
 - **Never allocate or lock inside the cpal callback.**
 
@@ -361,7 +361,9 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
   - [ ] Tried by the maintainer: media keys and the Windows flyout; macOS and Linux untried.
 - [x] Full keyboard shortcuts (Ctrl K and / focus search; Ctrl P opens the command palette,
       ADR 0018).
-- [ ] Audio device selection and recovery.
+- [x] Audio device selection and recovery (ADR 0020).
+  - [ ] Tried by the maintainer: unplugging headphones while playing, switching the Windows
+    default; macOS and Linux untried.
 - [ ] Timed comments on the waveform.
 - [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker waits
       for a second language (M5).
