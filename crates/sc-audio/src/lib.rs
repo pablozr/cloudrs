@@ -21,6 +21,7 @@ mod decode;
 mod equalizer;
 mod error;
 mod fetch;
+mod loudness;
 mod output;
 mod player;
 mod resample;

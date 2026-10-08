@@ -9,6 +9,9 @@ use crate::EQ_BANDS;
 use crate::decode::Decoder;
 use crate::equalizer::Equalizer;
 use crate::fetch::Stream;
+use crate::loudness::{
+    Meter, db_to_gain, gain_at_track_start, ramp_gain, step_toward, target_gain_db,
+};
 use crate::output::{self, Fault, Output};
 use crate::resample::Resampler;
 use crate::timeline::Timeline;
@@ -44,6 +47,9 @@ pub enum Command {
     /// The equalizer's gain in dB for each of the [`EQ_BANDS`] bands, 31 Hz to
     /// 16 kHz; `None` turns it off.
     SetEqualizer(Option<[f32; EQ_BANDS]>),
+    /// Steer every track toward a common loudness (it only turns loud tracks
+    /// down). Off at start.
+    SetNormalize(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +143,8 @@ struct Track {
     start: Duration,
     decoder: Decoder,
     resampler: Resampler,
+    /// Measures the source's loudness; `None` for a format it cannot measure.
+    meter: Option<Meter>,
     finished_decoding: bool,
 }
 
@@ -165,6 +173,11 @@ struct Engine {
     /// The equalizer's gains; `None` (or all zero) means no equalizer.
     eq_gains: Option<[f32; EQ_BANDS]>,
     eq: Option<Equalizer>,
+    normalize: bool,
+    /// The normalization gain in dB; it carries across tracks.
+    gain_db: f32,
+    /// The linear gain the last sample went out with, so a change ramps.
+    stage_gain: f32,
 }
 
 impl Engine {
@@ -186,6 +199,9 @@ impl Engine {
             timeline: Timeline::default(),
             eq_gains: None,
             eq: None,
+            normalize: false,
+            gain_db: 0.0,
+            stage_gain: 1.0,
         }
     }
 
@@ -238,6 +254,7 @@ impl Engine {
             Command::Load(source) => {
                 self.drop_preload();
                 self.clear();
+                self.gain_db = gain_at_track_start(self.gain_db);
                 self.set_state(PlaybackState::Loading);
                 match open_track(&source, &self.output) {
                     Ok(track) => {
@@ -250,6 +267,7 @@ impl Engine {
             Command::Prepare { source, at } => {
                 self.drop_preload();
                 self.clear();
+                self.gain_db = gain_at_track_start(self.gain_db);
                 self.set_state(PlaybackState::Loading);
                 let (rate, channels) = (self.output.sample_rate, self.output.channels);
                 match Stream::open(&source).and_then(|stream| track_at(stream, at, rate, channels))
@@ -306,6 +324,7 @@ impl Engine {
                 self.eq_gains = gains;
                 self.rebuild_eq();
             }
+            Command::SetNormalize(on) => self.normalize = on,
         }
     }
 
@@ -527,6 +546,18 @@ impl Engine {
                     continue;
                 }
                 let (rate, channels) = (track.decoder.sample_rate(), track.decoder.channels());
+                if track
+                    .meter
+                    .as_ref()
+                    .is_none_or(|m| !m.matches(rate, channels))
+                {
+                    track.meter = Meter::new(rate, channels);
+                }
+                if self.normalize
+                    && let Some(meter) = &mut track.meter
+                {
+                    meter.add(&self.decoded);
+                }
                 if !track.resampler.matches(rate, channels) {
                     track.resampler = Resampler::new(
                         rate,
@@ -536,9 +567,8 @@ impl Engine {
                     );
                 }
                 track.resampler.process(&self.decoded, &mut self.pending);
-                if let Some(eq) = &mut self.eq {
-                    eq.process(&mut self.pending);
-                }
+                let lufs = track.meter.as_ref().and_then(Meter::lufs);
+                self.run_stages(lufs);
             }
             let room = self.output.producer.slots();
             if room == 0 {
@@ -569,6 +599,29 @@ impl Engine {
         Ok(())
     }
 
+    /// Runs the processing chain over `pending`: the normalization gain, then
+    /// the equalizer. `lufs` is the loudness measured so far for the track.
+    fn run_stages(&mut self, lufs: Option<f64>) {
+        let channels = self.output.channels;
+        let frames = self.pending.len() / channels.max(1);
+        if frames == 0 {
+            return;
+        }
+        let target = if self.normalize {
+            lufs.map_or(self.gain_db, |l| target_gain_db(l, false))
+        } else {
+            0.0
+        };
+        let seconds = frames as f32 / self.output.sample_rate as f32;
+        self.gain_db = step_toward(self.gain_db, target, seconds);
+        let gain = db_to_gain(self.gain_db);
+        ramp_gain(&mut self.pending, channels, self.stage_gain, gain);
+        self.stage_gain = gain;
+        if let Some(eq) = &mut self.eq {
+            eq.process(&mut self.pending);
+        }
+    }
+
     /// Makes the preloaded track the current one, carrying the resampler over
     /// when the format is the same so the join is continuous.
     fn hand_over(&mut self) -> bool {
@@ -580,6 +633,7 @@ impl Engine {
         };
         self.timeline
             .begin_handover(old.start, self.output.channels);
+        self.gain_db = gain_at_track_start(self.gain_db);
         if old
             .resampler
             .matches(next.decoder.sample_rate(), next.decoder.channels())
@@ -628,8 +682,15 @@ fn open_track(source: &Source, output: &Output) -> Result<Track> {
     track_at(stream, Duration::ZERO, output.sample_rate, output.channels)
 }
 
+/// Rebuilds the track at `at`, keeping what the meter has heard.
 fn seek_track(track: Track, at: Duration, output: &Output) -> Result<Track> {
-    track_at(track.stream, at, output.sample_rate, output.channels)
+    let mut sought = track_at(track.stream, at, output.sample_rate, output.channels)?;
+    if let Some(meter) = track.meter
+        && meter.matches(sought.decoder.sample_rate(), sought.decoder.channels())
+    {
+        sought.meter = Some(meter);
+    }
+    Ok(sought)
 }
 
 fn track_at(stream: Stream, at: Duration, out_rate: u32, out_channels: usize) -> Result<Track> {
@@ -645,6 +706,7 @@ fn track_at(stream: Stream, at: Duration, out_rate: u32, out_channels: usize) ->
     Ok(Track {
         stream,
         start: at,
+        meter: Meter::new(decoder.sample_rate(), decoder.channels()),
         decoder,
         resampler,
         finished_decoding: false,

@@ -3,6 +3,8 @@
 
 use std::f64::consts::{PI, SQRT_2};
 
+use crate::loudness::db_to_gain;
+
 /// Bands in the equalizer, from 31 Hz to 16 kHz.
 pub const EQ_BANDS: usize = 10;
 
@@ -14,10 +16,6 @@ const FREQUENCIES: [f64; EQ_BANDS] = [
 const MAX_FRACTION: f64 = 0.45;
 /// Below this magnitude a filter state is flushed to zero (denormals).
 const TINY: f32 = 1e-20;
-
-pub(crate) fn db_to_gain(db: f32) -> f32 {
-    10.0_f32.powf(db / 20.0)
-}
 
 /// Normalized biquad coefficients (a0 = 1).
 #[derive(Debug, Clone, Copy)]

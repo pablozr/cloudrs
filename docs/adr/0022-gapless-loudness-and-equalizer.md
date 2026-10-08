@@ -129,3 +129,43 @@ Unit tests on synthetic sines: +6 dB at 1 kHz comes out at the preamp's level, a
 frequency gets only the preamp, flat gains are bit-identical, nothing turns to NaN from 22.05 to
 96 kHz, and the top band is skipped at 32 kHz. Nobody listened to it, and the engine was not run
 on a device. The preset tables (in `sc-core`) are proposals, to be tuned by ear.
+
+## Loudness normalization
+
+### Decisions
+
+1. **Measured, not read.** SoundCloud gives no ReplayGain or loudness field, so the engine
+   measures. The new dependency `ebur128` 0.1.10 (MIT, approved) computes the integrated loudness
+   (EBU R128, histogram mode, so memory stays flat on long tracks).
+2. **Progressive, before the resample.** Each track has a `Meter` fed with the decoded samples
+   at the source's rate and channels while it is decoded. It answers nothing until 3 s have been
+   measured; after that the integrated loudness so far is the estimate. A seek keeps the meter;
+   a change of source format creates a new one.
+3. **Attenuate only, toward -14 LUFS.** The target gain is `-14 - loudness`, limited to between
+   -12 dB and 0 dB. Quiet tracks are left alone (a raise up to +12 dB exists only with the volume
+   boost, see below).
+4. **Slow.** The applied gain moves toward the target by at most 2 dB per second, and inside each
+   chunk it ramps linearly per frame, so it never steps. During the 3 s warm-up the previous
+   gain is kept.
+5. **The gain carries across tracks, except a positive one.** A cut stays until the next track is
+   measured (a loud track after a loud track needs no wait); a boost earned on a quiet track is
+   dropped at the start of the next one (`gain_at_track_start`), because that track has not been
+   measured and may be loud.
+6. **On the engine thread, before the equalizer.** The gain stage runs on the converted samples,
+   then the equalizer. The callback is untouched.
+7. **Off at start.** The engine starts neutral (normalization off); the core sends the setting
+   right after the player is spawned.
+
+### Accepted limits
+
+- The first 3 s of a loud track are not yet turned down, and turning it down takes about 2 dB per
+  second afterwards (up to 6 s for -12 dB).
+- The estimate is of the audio heard so far, so a track that gets louder late is corrected
+  late.
+- Turning normalization on or off is heard up to 0.5 s later (the ring buffer).
+
+### Validation
+
+Unit tests on synthetic signals: the target gain, the 2 dB per second limit, the ramp ending
+exactly at its target, no inherited boost, a -20 dBFS sine measuring about -23 LUFS after 5 s and
+nothing after 1 s. Nobody listened to it, and the engine was not run on a device.
