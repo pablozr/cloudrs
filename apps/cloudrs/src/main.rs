@@ -36,6 +36,9 @@ fn main() {
         sc_platform::sign_in::run_window(&title);
     }
     let oauth_token = sc_platform::keychain::load_token();
+    // Read before the window opens, so the first frame has the right theme (ADR 0017).
+    let data_dir = app_dir(dirs::data_dir(), "data");
+    let settings = sc_core::read_settings(&data_dir);
 
     application()
         .with_assets(cloudrs_ui::assets::Assets)
@@ -47,9 +50,10 @@ fn main() {
 
             let config = CoreConfig {
                 cache_dir: app_dir(dirs::cache_dir(), "cache"),
-                data_dir: app_dir(dirs::data_dir(), "data"),
+                data_dir,
                 oauth_token,
                 jam_network: sc_core::JamNetwork::Internet,
+                settings,
             };
             let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
             let opened = cx.open_window(

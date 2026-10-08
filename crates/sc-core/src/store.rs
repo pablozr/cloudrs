@@ -7,12 +7,13 @@ use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::settings::{Language, Settings, ThemeChoice};
 use crate::types::{Repeat, TrackId, TrackSummary};
 
 /// Name of the database file inside the data folder.
 pub const FILE_NAME: &str = "cloudrs.db";
 /// Bumped with every schema change; `migrate` upgrades older files.
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 /// How long a query waits when another instance has the file locked.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -147,6 +148,18 @@ fn migrate(conn: &Connection) -> Result<(), OpenError> {
         )
         .map_err(classify)?;
     }
+    if version < 3 {
+        // One row, like `session`: the theme as a code, the language as its tag.
+        tx.execute_batch(
+            "CREATE TABLE settings (
+                 id INTEGER PRIMARY KEY CHECK (id = 1),
+                 theme INTEGER NOT NULL,
+                 language TEXT NOT NULL,
+                 discord INTEGER NOT NULL
+             );",
+        )
+        .map_err(classify)?;
+    }
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(classify)?;
     tx.commit().map_err(classify)
@@ -166,6 +179,51 @@ fn repeat_from_int(value: i64) -> Repeat {
         2 => Repeat::All,
         _ => Repeat::Off,
     }
+}
+
+fn theme_to_int(theme: ThemeChoice) -> i64 {
+    match theme {
+        ThemeChoice::System => 0,
+        ThemeChoice::Dark => 1,
+        ThemeChoice::Light => 2,
+    }
+}
+
+fn theme_from_int(value: i64) -> ThemeChoice {
+    match value {
+        1 => ThemeChoice::Dark,
+        2 => ThemeChoice::Light,
+        _ => ThemeChoice::System,
+    }
+}
+
+/// Replaces the saved settings.
+pub fn save_settings(conn: &Connection, settings: &Settings) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (id, theme, language, discord) VALUES (1, ?1, ?2, ?3)",
+        params![
+            theme_to_int(settings.theme),
+            settings.language.tag(),
+            settings.discord
+        ],
+    )?;
+    Ok(())
+}
+
+/// The saved settings, if any were ever saved.
+pub fn load_settings(conn: &Connection) -> rusqlite::Result<Option<Settings>> {
+    conn.query_row(
+        "SELECT theme, language, discord FROM settings WHERE id = 1",
+        [],
+        |row| {
+            Ok(Settings {
+                theme: theme_from_int(row.get(0)?),
+                language: Language::from_tag(&row.get::<_, String>(1)?),
+                discord: row.get(2)?,
+            })
+        },
+    )
+    .optional()
 }
 
 /// Replaces the saved session in one transaction.
@@ -370,6 +428,71 @@ mod tests {
         second.tracks[0].artwork_url = None;
         save_session(&mut conn, &second).unwrap();
         assert_eq!(load_session(&conn).unwrap(), Some(second));
+    }
+
+    #[test]
+    fn settings_round_trip() {
+        let conn = memory();
+        let saved = Settings {
+            theme: ThemeChoice::Light,
+            language: Language::English,
+            discord: false,
+        };
+        save_settings(&conn, &saved).unwrap();
+        assert_eq!(load_settings(&conn).unwrap(), Some(saved.clone()));
+        let dark = Settings {
+            theme: ThemeChoice::Dark,
+            ..saved
+        };
+        save_settings(&conn, &dark).unwrap();
+        assert_eq!(load_settings(&conn).unwrap(), Some(dark));
+    }
+
+    #[test]
+    fn an_empty_database_has_no_settings() {
+        assert_eq!(load_settings(&memory()).unwrap(), None);
+    }
+
+    #[test]
+    fn unknown_theme_codes_read_as_system() {
+        let conn = memory();
+        conn.execute(
+            "INSERT INTO settings (id, theme, language, discord) VALUES (1, 77, 'xx', 1)",
+            [],
+        )
+        .unwrap();
+        let loaded = load_settings(&conn).unwrap().unwrap();
+        assert_eq!(loaded.theme, ThemeChoice::System);
+        assert_eq!(loaded.language, Language::English);
+    }
+
+    #[test]
+    fn a_version_two_database_gains_the_settings_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE session (id INTEGER);
+             CREATE TABLE queue_items (position INTEGER);
+             CREATE TABLE history (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 track_id INTEGER NOT NULL,
+                 title TEXT NOT NULL,
+                 artist TEXT NOT NULL,
+                 played_at INTEGER NOT NULL,
+                 duration_ms INTEGER NOT NULL DEFAULT 0,
+                 preview_only INTEGER NOT NULL DEFAULT 0,
+                 artwork_url TEXT
+             );
+             PRAGMA user_version = 2;",
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+        assert_eq!(load_settings(&conn).unwrap(), None);
+        let saved = Settings {
+            theme: ThemeChoice::Dark,
+            ..Settings::default()
+        };
+        save_settings(&conn, &saved).unwrap();
+        assert_eq!(load_settings(&conn).unwrap(), Some(saved));
     }
 
     #[test]

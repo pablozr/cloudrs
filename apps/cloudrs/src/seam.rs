@@ -135,6 +135,7 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             models.home_shelves.clone_from(shelves);
             true
         }
+        Event::Settings(_) => false,
         Event::Jam(state) => {
             models.jam.clone_from(state);
             true

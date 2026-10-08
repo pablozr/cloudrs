@@ -18,6 +18,8 @@ const VOLUME_SAVE_DELAY: Duration = Duration::from_secs(1);
 pub(super) struct Store {
     pub(super) conn: rusqlite::Connection,
     pub(super) last_seq: u64,
+    /// The same guard for the settings row.
+    pub(super) settings_seq: u64,
 }
 
 pub(super) type SharedStore = Arc<Mutex<Store>>;
@@ -43,7 +45,11 @@ pub(super) fn open_store(dir: &std::path::Path) -> Option<OpenedStore> {
         .ok()
         .flatten();
     Some((
-        Arc::new(Mutex::new(Store { conn, last_seq: 0 })),
+        Arc::new(Mutex::new(Store {
+            conn,
+            last_seq: 0,
+            settings_seq: 0,
+        })),
         session,
         reset,
     ))
@@ -87,6 +93,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 tracing::warn!(%error, "could not save the session on exit");
             }
         }
+        self.save_settings_now();
         self.emit(Event::Stopped);
         self.stopped = true;
     }
@@ -186,6 +193,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         };
         self.store = Some(store);
+        if self.settings_changed {
+            self.save_settings();
+        }
         if reset {
             self.emit(Event::Problem(Problem::StorageReset));
         }

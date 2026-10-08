@@ -23,7 +23,7 @@ use crate::store::SessionTrack;
 use crate::types::{
     Account, ArtKey, ListId, PlayState, Playback, PlaylistId, Problem, SearchKind, TrackId, UserId,
 };
-use crate::{Command, CoreConfig, Event, artwork};
+use crate::{Command, CoreConfig, Event, Settings, artwork};
 use session::{OpenedStore, SharedStore, open_store};
 
 mod account;
@@ -33,6 +33,7 @@ mod paging;
 mod playback;
 mod playlists;
 mod session;
+mod settings;
 
 /// How long the search waits for more typing.
 const SEARCH_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -257,6 +258,9 @@ async fn run<A: SoundCloudApi + 'static>(
         jam: None,
         jam_gen: 0,
         jam_network: config.jam_network,
+        settings: config.settings,
+        settings_seq: 0,
+        settings_changed: false,
     };
     if let Some(token) = config.oauth_token {
         core.sign_in(token);
@@ -343,6 +347,10 @@ struct Core<A> {
     /// Bumped on every Jam: answers for an older one are dropped.
     jam_gen: u64,
     jam_network: crate::JamNetwork,
+    settings: Settings,
+    settings_seq: u64,
+    /// The person changed a setting this run, so the database needs it.
+    settings_changed: bool,
 }
 
 impl<A: SoundCloudApi + 'static> Core<A> {
@@ -582,6 +590,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             | Command::SetJamGuestsControl(_)
             | Command::RemoveFromJam(_) => {}
             Command::SetVolume(volume) => self.set_volume(volume),
+            Command::SetSettings(settings) => self.set_settings(settings),
         }
     }
 

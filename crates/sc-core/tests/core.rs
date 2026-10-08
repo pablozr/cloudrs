@@ -605,7 +605,7 @@ fn a_damaged_database_is_reset_and_reported() {
     let version: i32 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -625,6 +625,36 @@ fn shutdown_saves_the_session_before_replying() {
         .query_row("SELECT volume FROM session", [], |row| row.get(0))
         .unwrap();
     assert!((volume - 0.4).abs() < 1e-6);
+}
+
+#[test]
+fn settings_are_echoed_and_saved() {
+    let h = Harness::new("settings");
+    wait_for_store(&h);
+    let sent = sc_core::Settings {
+        theme: sc_core::ThemeChoice::Light,
+        discord: false,
+        ..sc_core::Settings::default()
+    };
+    h.core.send(Command::SetSettings(sent.clone()));
+    let echoed = h.wait(|e| match e {
+        Event::Settings(settings) => Some(settings),
+        _ => None,
+    });
+    assert_eq!(echoed, sent);
+
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+    assert_eq!(sc_core::read_settings(&h.cache.join("data")), sent);
+}
+
+#[test]
+fn a_new_folder_reads_default_settings() {
+    let h = Harness::new("default-settings");
+    assert_eq!(
+        sc_core::read_settings(&h.cache.join("elsewhere")),
+        sc_core::Settings::default()
+    );
 }
 
 fn users(items: ListItems) -> Option<Vec<sc_core::UserSummary>> {

@@ -360,6 +360,7 @@ impl Shell {
             | Event::Liked { .. }
             | Event::Followed { .. }
             | Event::Jam(_)
+            | Event::Settings(_)
             | Event::HomeShelves(_)
             | Event::NowPlayingLinks { .. } => {}
         }

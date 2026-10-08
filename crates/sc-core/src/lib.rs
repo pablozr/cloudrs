@@ -10,6 +10,7 @@ mod core;
 mod listen;
 mod lists;
 mod queue;
+mod settings;
 mod store;
 mod types;
 mod waveform;
@@ -17,6 +18,7 @@ mod waveform;
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub use settings::{Language, Settings, ThemeChoice, read_settings};
 pub use types::{
     Account, ArtKey, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId, ListItems,
     NewPlaylist, PlayState, Playback, PlaylistChange, PlaylistId, PlaylistPage, PlaylistSummary,
@@ -152,6 +154,9 @@ pub enum Command {
     SetJamGuestsControl(bool),
     /// Host: remove a person (`JamPerson::id`) from the Jam.
     RemoveFromJam(u32),
+    /// Save the settings (ADR 0017). The core answers with [`Event::Settings`]
+    /// carrying what is now in effect.
+    SetSettings(Settings),
 }
 
 /// Whether the text is a Jam link, to send it as [`Command::JoinJam`].
@@ -231,6 +236,8 @@ pub enum Event {
     },
     /// The Jam changed (people, link, permissions); `None` once it is over.
     Jam(Option<JamState>),
+    /// The settings in effect, after [`Command::SetSettings`].
+    Settings(Settings),
     /// Something the person should know about (playing, pasted links, audio).
     Problem(Problem),
 }
@@ -265,6 +272,8 @@ pub struct CoreConfig {
     /// How Jam peers reach each other: the internet for the app, this
     /// machine only for tests.
     pub jam_network: JamNetwork,
+    /// As read by [`read_settings`] at start.
+    pub settings: Settings,
 }
 
 pub use sc_session::Network as JamNetwork;
@@ -276,6 +285,7 @@ impl std::fmt::Debug for CoreConfig {
             .field("cache_dir", &self.cache_dir)
             .field("data_dir", &self.data_dir)
             .field("jam_network", &self.jam_network)
+            .field("settings", &self.settings)
             .field(
                 "oauth_token",
                 &self.oauth_token.as_ref().map(|_| "<hidden>"),

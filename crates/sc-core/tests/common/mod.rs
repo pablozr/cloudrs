@@ -471,6 +471,7 @@ pub fn config(root: &std::path::Path, token: Option<&str>) -> CoreConfig {
         data_dir: root.join("data"),
         oauth_token: token.map(str::to_owned),
         jam_network: sc_core::JamNetwork::Local,
+        settings: sc_core::Settings::default(),
     }
 }
 
