@@ -30,12 +30,13 @@ use crate::nav::{Route, Router, Section};
 use crate::player_bar::{PlayerAction, PlayerBar};
 use crate::screens::{TrackWave, WaveAction};
 use crate::seam;
-use crate::state::{QueueState, is_soundcloud_url};
+use crate::state::QueueState;
 use crate::tint::{self, Rgb};
 
 pub(crate) mod playlist_ui;
 pub(crate) mod presence;
 pub(crate) mod queue_panel;
+pub(crate) mod shortcuts;
 
 actions!(shell, [FocusSearch, GoBack, GoForward]);
 
@@ -64,6 +65,7 @@ pub fn bind_keys(cx: &mut App) {
         // "/" must stay typeable inside the field.
         KeyBinding::new("/", FocusSearch, Some("Shell && !SearchField")),
     ]);
+    shortcuts::bind_keys(cx);
 }
 
 /// The page tint and the one it is fading from. `seq` changes with every
@@ -577,13 +579,7 @@ impl Shell {
     fn on_search(&mut self, text: &str, cx: &mut Context<Self>) {
         self.show_search(cx);
         let text = text.trim();
-        let intent = if sc_core::is_jam_link(text) {
-            UiIntent::JoinJam(text.to_owned())
-        } else if is_soundcloud_url(text) {
-            UiIntent::OpenUrl(text.to_owned())
-        } else {
-            UiIntent::Search(text.to_owned())
-        };
+        let intent = UiIntent::from_link(text).unwrap_or_else(|| UiIntent::Search(text.to_owned()));
         self.dispatch(intent, cx);
     }
 
@@ -1063,7 +1059,8 @@ impl Render for Shell {
         let playlist_menu = self.playlist_menu_view(&theme, cx);
         let dialog = self.dialog_view(&theme, cx);
         let header = self.header(&theme, window, cx).into_any_element();
-        root.on_action(cx.listener(Self::on_go_back))
+        shortcuts::shortcut_actions(root, cx)
+            .on_action(cx.listener(Self::on_go_back))
             .on_action(cx.listener(Self::on_go_forward))
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Back),

@@ -48,6 +48,19 @@ pub enum UiIntent {
 }
 
 impl UiIntent {
+    /// What pasted text asks for when it is a Jam link or a soundcloud.com
+    /// link; any other text is not a link.
+    pub fn from_link(text: &str) -> Option<Self> {
+        let text = text.trim();
+        if sc_core::is_jam_link(text) {
+            Some(Self::JoinJam(text.to_owned()))
+        } else if crate::state::is_soundcloud_url(text) {
+            Some(Self::OpenUrl(text.to_owned()))
+        } else {
+            None
+        }
+    }
+
     /// The screen this intent leads to, if it opens one.
     pub fn route(&self) -> Option<Route> {
         match self {
@@ -102,5 +115,20 @@ mod tests {
         ] {
             assert_eq!(intent.route(), None, "{intent:?}");
         }
+    }
+
+    #[test]
+    fn pasted_links_become_intents() {
+        assert_eq!(
+            UiIntent::from_link(" https://soundcloud.com/a/b "),
+            Some(UiIntent::OpenUrl("https://soundcloud.com/a/b".into()))
+        );
+        let jam = format!("cloudrs:jam/endpoint{}", "a".repeat(60));
+        assert_eq!(
+            UiIntent::from_link(&jam),
+            Some(UiIntent::JoinJam(jam.clone()))
+        );
+        assert_eq!(UiIntent::from_link("lofi beats"), None);
+        assert_eq!(UiIntent::from_link("https://example.com/x"), None);
     }
 }

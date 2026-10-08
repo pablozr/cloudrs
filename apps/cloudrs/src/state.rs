@@ -135,6 +135,22 @@ pub fn seek_target(fraction: f32, duration: Duration) -> Duration {
     duration.mul_f32(fraction.clamp(0.0, 1.0))
 }
 
+/// How far the arrow keys seek.
+pub const SEEK_STEP: Duration = Duration::from_secs(5);
+
+/// Where an arrow key seeks to from `position`, or `None` while the duration
+/// is not known.
+pub fn nudge_target(position: Duration, duration: Duration, forward: bool) -> Option<Duration> {
+    if duration.is_zero() {
+        return None;
+    }
+    Some(if forward {
+        (position + SEEK_STEP).min(duration)
+    } else {
+        position.saturating_sub(SEEK_STEP)
+    })
+}
+
 /// `03:45`, or `1:02:05` for a long mix.
 pub fn format_time(time: Duration) -> String {
     let seconds = time.as_secs();
@@ -208,6 +224,16 @@ mod tests {
             duration: Duration::from_secs(duration),
             volume: 0.5,
         })
+    }
+
+    #[test]
+    fn nudging_moves_five_seconds_inside_the_track() {
+        let secs = Duration::from_secs;
+        assert_eq!(nudge_target(secs(50), secs(200), true), Some(secs(55)));
+        assert_eq!(nudge_target(secs(50), secs(200), false), Some(secs(45)));
+        assert_eq!(nudge_target(secs(3), secs(200), false), Some(secs(0)));
+        assert_eq!(nudge_target(secs(198), secs(200), true), Some(secs(200)));
+        assert_eq!(nudge_target(secs(10), secs(0), true), None);
     }
 
     #[test]

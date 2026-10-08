@@ -13,7 +13,7 @@ use gpui::{Context, EventEmitter, ObjectFit, Window, div, img, px};
 use sc_core::{Event, Repeat};
 
 use crate::i18n::player as t;
-use crate::state::{ArtworkMap, PlayerState, format_time, next_repeat, seek_target};
+use crate::state::{ArtworkMap, PlayerState, format_time, next_repeat, nudge_target, seek_target};
 
 /// What the person asked of the player.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -50,6 +50,16 @@ impl PlayerBar {
             hover: None,
             queue_open: false,
         }
+    }
+
+    /// Where the arrow keys seek to; `None` with nothing playing.
+    pub fn nudge(&self, forward: bool) -> Option<Duration> {
+        self.state.track.as_ref()?;
+        nudge_target(
+            self.state.playback.position,
+            self.state.playback.duration,
+            forward,
+        )
     }
 
     pub fn set_queue_open(&mut self, open: bool, cx: &mut Context<Self>) {

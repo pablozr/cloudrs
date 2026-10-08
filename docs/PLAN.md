@@ -274,6 +274,8 @@ The visual rules, tokens and motion catalog live in
 | `Ctrl+K` / `/` | search |
 | `Ctrl+V` anywhere | resolve a pasted SoundCloud URL and play it |
 
+Outside text fields Space always plays/pauses, even over a focused control (Enter activates it); the arrows and Ctrl+V act outside text fields only; `secondary` = Cmd on macOS.
+
 ---
 
 ## 8. `sc-platform` — OS integration
@@ -355,7 +357,7 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 
 ### M4 — Desktop integration
 - [ ] MPRIS / Now Playing / SMTC.
-- [ ] Full keyboard shortcuts.
+- [x] Full keyboard shortcuts (Ctrl K still focuses search; the command palette awaits a decision).
 - [ ] Audio device selection and recovery.
 - [ ] Timed comments on the waveform.
 - [ ] Settings + light/dark themes + language picker.

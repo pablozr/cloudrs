@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Keyboard:** Space plays or pauses, ← → seek 5 s, Shift ← → go to the previous or next
+  track, Ctrl L likes the playing track, and Ctrl V opens a copied SoundCloud or Jam link.
+  Space and the arrows leave text fields alone.
+
 ## 0.1.0-beta.1 · 2026-10-07
 
 The first public build.
