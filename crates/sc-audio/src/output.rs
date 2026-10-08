@@ -242,6 +242,15 @@ mod tests {
     }
 
     #[test]
+    fn the_callback_volume_never_exceeds_one() {
+        let shared = Shared::new();
+        shared.set_volume(1.5);
+        assert_eq!(shared.volume(), 1.0);
+        shared.set_volume(-1.0);
+        assert_eq!(shared.volume(), 0.0);
+    }
+
+    #[test]
     fn the_worst_fault_wins_and_is_taken_once() {
         let shared = Shared::new();
         shared.report(Fault::Invalidated);

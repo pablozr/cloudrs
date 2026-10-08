@@ -169,3 +169,50 @@ on a device. The preset tables (in `sc-core`) are proposals, to be tuned by ear.
 Unit tests on synthetic signals: the target gain, the 2 dB per second limit, the ramp ending
 exactly at its target, no inherited boost, a -20 dBFS sine measuring about -23 LUFS after 5 s and
 nothing after 1 s. Nobody listened to it, and the engine was not run on a device.
+
+## Volume boost and limiter
+
+### Decisions
+
+1. **Up to 200%, opt in.** With the boost on, `SetVolume` takes 0.0 to 2.0; without it the
+   volume stops at 1.0. `SetVolumeBoost(bool)` turns the boost on and off. The engine splits the
+   volume itself: the part up to 1.0 goes to the callback (`Shared::set_volume` still clamps to
+   0..1, so the callback can never amplify), the rest is a gain applied on the engine thread.
+2. **The chain order.** Normalization gain times boost, then the equalizer, then the limiter,
+   then the ring buffer, then the callback, which multiplies by a volume of at most 1.
+3. **A look-ahead limiter, not a soft-clip.** A soft-clip bends every peak the boost creates and
+   distorts them. The limiter (`limiter.rs`) delays the audio by 5 ms and lowers the gain
+   smoothly before each peak so that no sample goes above -1 dBFS, then releases over about
+   150 ms. The two channels share one gain (linked), so the stereo image does not move.
+   Quiet passages get exactly unity gain.
+4. **Only while the boost is on.** The limiter is in the chain, and costs its 5 ms and its CPU,
+   only with the boost on. Turning the boost off drains the frames it holds into the stream, so
+   nothing is lost. At the end of the last track the held frames are written before `Ended`.
+   There is no drain or reset at a gapless handover: the state simply continues.
+5. **A raise needs the boost.** With the boost on, normalization may also turn quiet tracks up,
+   to at most +12 dB toward -14 LUFS. Without the boost it only turns loud tracks down. A positive
+   gain is not inherited by the next track, and turning the boost off drops it at once instead
+   of at 2 dB per second.
+6. **Allocation.** The limiter allocates everything when it is built, on the engine thread. The
+   callback is untouched.
+
+### Accepted limits
+
+- **Latency.** A change of volume above 100% is heard up to 0.5 s later (the ring buffer);
+  the limiter adds 5 ms.
+- **Pumping.** On loud, dense material (EDM) a boost of 150 to 200% makes the limiter work all
+  the time and can be audible as pumping or as a duller, flatter sound.
+- **The ceiling is per sample, not true-peak.** A reconstructed signal between samples (or a lossy
+  codec downstream) can still exceed it slightly.
+- **The first 5 ms** after the boost is turned on are held back and come out later; at a gapless
+  handover the join moves by the same 5 ms.
+- **Hearing.** A 200% volume can be loud enough to hurt. Settings says so next to the switch.
+
+### Validation
+
+Unit tests on synthetic signals at 48 kHz, fed in odd chunk sizes: a sine at four times full scale
+stays under the ceiling, quiet signals pass unchanged with the same sample count, the gain returns
+to exactly unity after a peak (the test runs 3 s after the peak: the release is exponential, so
+1.5 s is not enough to get within 1e-6), both channels get the same gain, and a reset drops what
+was held. Also the volume split, and that the callback's volume cannot go above 1. Nobody listened
+to it, and the engine was not run on a device.

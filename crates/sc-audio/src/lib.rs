@@ -3,7 +3,7 @@
 //! ```text
 //! [fetch thread]   HLS segments (or one progressive file), read ahead ~30 s
 //!       │ bytes
-//! [engine thread]  symphonia demux + decode → f32, resample, channel map
+//! [engine thread]  symphonia demux + decode → f32, resample, gain, EQ, limiter
 //!       │ samples (lock-free ring buffer)
 //! [cpal callback]  volume, pause, position → sound card
 //! ```
@@ -21,6 +21,7 @@ mod decode;
 mod equalizer;
 mod error;
 mod fetch;
+mod limiter;
 mod loudness;
 mod output;
 mod player;

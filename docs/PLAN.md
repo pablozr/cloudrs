@@ -193,7 +193,8 @@ Encrypted transcodings (`encrypted-hls`, `ctr-encrypted-hls`, `cbc-encrypted-hls
 - **Events out:** `Position(Duration)` at about 10 Hz, `Buffering(bool)`, `TrackEnded`
   (`State(Ended)`), `NextStarted` (the preloaded source began), `Error(..)`.
 - **Commands in:** `Load(Source)`, `Play`, `Pause`, `Seek(Duration)`, `SetVolume(f32)`,
-  `Preload(Source)`, `CancelPreload`, `Stop`.
+  `Preload(Source)`, `CancelPreload`, `SetVolumeBoost(bool)`, `SetNormalize(bool)`,
+  `SetEqualizer(..)`, `Stop`.
 - **Output device (ADR 0020):** list and switch with cpal, and recover when the device disappears
   (headphones unplugged).
 - **Never allocate or lock inside the cpal callback.**

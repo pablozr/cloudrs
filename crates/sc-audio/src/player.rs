@@ -9,6 +9,7 @@ use crate::EQ_BANDS;
 use crate::decode::Decoder;
 use crate::equalizer::Equalizer;
 use crate::fetch::Stream;
+use crate::limiter::Limiter;
 use crate::loudness::{
     Meter, db_to_gain, gain_at_track_start, ramp_gain, step_toward, target_gain_db,
 };
@@ -33,8 +34,11 @@ pub enum Command {
     Pause,
     /// Jump to this position in the current source.
     Seek(Duration),
-    /// 0.0 to 1.0.
+    /// 0.0 to 1.0; up to 2.0 while the volume boost is on.
     SetVolume(f32),
+    /// Allow the volume above 100% (up to 200%), with a limiter after the
+    /// equalizer, and let normalization raise quiet tracks. Off at start.
+    SetVolumeBoost(bool),
     /// Play on this device (a cpal id from [`crate::output_devices`]); `None`
     /// follows the system default. Keeps the playback state and position.
     SetDevice(Option<String>),
@@ -146,6 +150,8 @@ struct Track {
     /// Measures the source's loudness; `None` for a format it cannot measure.
     meter: Option<Meter>,
     finished_decoding: bool,
+    /// What the processing chain still held at the end has been written out.
+    tail_flushed: bool,
 }
 
 struct Engine {
@@ -178,6 +184,13 @@ struct Engine {
     gain_db: f32,
     /// The linear gain the last sample went out with, so a change ramps.
     stage_gain: f32,
+    /// The volume asked for, 0.0 to 2.0 with the boost.
+    volume: f32,
+    boost_on: bool,
+    /// The part of the volume above 100%, applied here, before the limiter.
+    boost: f32,
+    /// In the chain only while the boost is on.
+    limiter: Option<Limiter>,
 }
 
 impl Engine {
@@ -202,6 +215,10 @@ impl Engine {
             normalize: false,
             gain_db: 0.0,
             stage_gain: 1.0,
+            volume: 1.0,
+            boost_on: false,
+            boost: 1.0,
+            limiter: None,
         }
     }
 
@@ -302,7 +319,11 @@ impl Engine {
                     }
                 }
             }
-            Command::SetVolume(volume) => self.output.shared.set_volume(volume),
+            Command::SetVolume(volume) => {
+                self.volume = volume;
+                self.apply_volume();
+            }
+            Command::SetVolumeBoost(on) => self.set_boost(on),
             Command::SetDevice(device) => {
                 if device != self.wanted {
                     self.wanted = device;
@@ -326,6 +347,37 @@ impl Engine {
             }
             Command::SetNormalize(on) => self.normalize = on,
         }
+    }
+
+    /// Splits the volume between the callback (at most 1) and the engine.
+    fn apply_volume(&mut self) {
+        let (callback, engine) = split_volume(self.volume, self.boost_on);
+        self.output.shared.set_volume(callback);
+        self.boost = engine;
+    }
+
+    fn set_boost(&mut self, on: bool) {
+        if on == self.boost_on {
+            return;
+        }
+        self.boost_on = on;
+        if on {
+            self.rebuild_limiter();
+        } else {
+            // The frames the limiter holds still belong to the song.
+            if let (Some(mut limiter), Some(_)) = (self.limiter.take(), &self.track) {
+                limiter.drain(&mut self.pending);
+            }
+            // A raise only exists with the boost: drop it now, not at 2 dB/s.
+            self.gain_db = self.gain_db.min(0.0);
+        }
+        self.apply_volume();
+    }
+
+    fn rebuild_limiter(&mut self) {
+        self.limiter = self
+            .boost_on
+            .then(|| Limiter::new(self.output.sample_rate, self.output.channels));
     }
 
     /// Builds the equalizer for the output's format from `eq_gains`.
@@ -477,6 +529,7 @@ impl Engine {
         self.pending_at = 0;
         self.output = new;
         self.rebuild_eq();
+        self.rebuild_limiter();
         self.timeline.reset();
         if let Some(mut next) = self.next.take() {
             next.resampler = self.resampler_for(&next.decoder);
@@ -506,6 +559,9 @@ impl Engine {
         if let Some(eq) = &mut self.eq {
             eq.reset();
         }
+        if let Some(limiter) = &mut self.limiter {
+            limiter.reset();
+        }
         let shared = &self.output.shared;
         shared.flush.store(true, Ordering::Release);
         // The callback clears the flag on its next run (a few ms).
@@ -534,7 +590,7 @@ impl Engine {
             };
             if self.pending_at >= self.pending.len() {
                 if track.finished_decoding {
-                    if self.hand_over() {
+                    if self.hand_over() || self.flush_tail() {
                         continue;
                     }
                     break;
@@ -599,8 +655,8 @@ impl Engine {
         Ok(())
     }
 
-    /// Runs the processing chain over `pending`: the normalization gain, then
-    /// the equalizer. `lufs` is the loudness measured so far for the track.
+    /// Runs the processing chain over `pending`: the normalization gain and
+    /// the boost, then the equalizer, then the limiter. `lufs` is the loudness measured so far for the track.
     fn run_stages(&mut self, lufs: Option<f64>) {
         let channels = self.output.channels;
         let frames = self.pending.len() / channels.max(1);
@@ -608,18 +664,40 @@ impl Engine {
             return;
         }
         let target = if self.normalize {
-            lufs.map_or(self.gain_db, |l| target_gain_db(l, false))
+            lufs.map_or(self.gain_db, |l| target_gain_db(l, self.boost_on))
         } else {
             0.0
         };
         let seconds = frames as f32 / self.output.sample_rate as f32;
         self.gain_db = step_toward(self.gain_db, target, seconds);
-        let gain = db_to_gain(self.gain_db);
+        let gain = db_to_gain(self.gain_db) * self.boost;
         ramp_gain(&mut self.pending, channels, self.stage_gain, gain);
         self.stage_gain = gain;
         if let Some(eq) = &mut self.eq {
             eq.process(&mut self.pending);
         }
+        if let Some(limiter) = &mut self.limiter {
+            limiter.process(&mut self.pending);
+        }
+    }
+
+    /// At the end of the last track, with nothing after it: puts what the
+    /// limiter still holds into `pending` so it is played before `Ended`.
+    /// True when there is something new to write.
+    fn flush_tail(&mut self) -> bool {
+        let Some(track) = self.track.as_mut() else {
+            return false;
+        };
+        if track.tail_flushed {
+            return false;
+        }
+        track.tail_flushed = true;
+        self.pending.clear();
+        self.pending_at = 0;
+        if let Some(limiter) = &mut self.limiter {
+            limiter.drain(&mut self.pending);
+        }
+        true
     }
 
     /// Makes the preloaded track the current one, carrying the resampler over
@@ -677,6 +755,15 @@ fn plan_recovery(fault: Fault, old_present: bool, playing: bool) -> Recovery {
     }
 }
 
+/// Splits a volume into the part the callback applies (at most 1) and the part
+/// the engine applies before the limiter. Without the boost the volume stops
+/// at 100%.
+fn split_volume(volume: f32, boost: bool) -> (f32, f32) {
+    let volume = if volume.is_nan() { 1.0 } else { volume };
+    let volume = volume.clamp(0.0, if boost { 2.0 } else { 1.0 });
+    (volume.min(1.0), volume.max(1.0))
+}
+
 fn open_track(source: &Source, output: &Output) -> Result<Track> {
     let stream = Stream::open(source)?;
     track_at(stream, Duration::ZERO, output.sample_rate, output.channels)
@@ -710,12 +797,23 @@ fn track_at(stream: Stream, at: Duration, out_rate: u32, out_channels: usize) ->
         decoder,
         resampler,
         finished_decoding: false,
+        tail_flushed: false,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_volume_is_split_between_the_callback_and_the_engine() {
+        assert_eq!(split_volume(0.5, false), (0.5, 1.0));
+        assert_eq!(split_volume(1.5, true), (1.0, 1.5));
+        assert_eq!(split_volume(1.5, false), (1.0, 1.0));
+        assert_eq!(split_volume(2.5, true), (1.0, 2.0));
+        assert_eq!(split_volume(-1.0, true), (0.0, 1.0));
+        assert_eq!(split_volume(f32::NAN, true), (1.0, 1.0));
+    }
 
     #[test]
     fn a_lost_device_pauses_and_tells() {
