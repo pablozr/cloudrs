@@ -525,6 +525,53 @@ pub fn waveform(
     )
 }
 
+/// Horizontal centre of the pin of bar `pin`, among `bars` bars sharing `width` from `left`.
+fn pin_center(pin: u16, bars: usize, left: f32, width: f32) -> f32 {
+    left + width / bars.max(1) as f32 * (f32::from(pin) + 0.5)
+}
+
+/// The strip of timed-comment pins under a waveform of `bars` bars: one dot
+/// per bar in `pins`, the `active` one larger and in accent. `on_hover` follows
+/// the pointer (its fraction, `None` on leave) and `on_pick` gets the fraction
+/// of a click. The caller sets the `aria_label`.
+pub fn comment_lane(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    bars: usize,
+    pins: Arc<[u16]>,
+    active: Option<u16>,
+    on_hover: impl Fn(Option<f32>, &mut Window, &mut App) + 'static,
+    on_pick: impl Fn(f32, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let (rest, lit) = (theme.colors.text_subtle, theme.colors.accent);
+    scrubber(
+        id,
+        theme.colors.accent,
+        false,
+        Some(Rc::new(on_hover)),
+        move |bounds, window| {
+            let (left, width) = (bounds.origin.x.into(), bounds.size.width.into());
+            let middle = bounds.origin.y + bounds.size.height / 2.0;
+            for pin in pins.iter() {
+                let (side, color) = if Some(*pin) == active {
+                    (size::COMMENT_PIN_ACTIVE, lit)
+                } else {
+                    (size::COMMENT_PIN, rest)
+                };
+                let x = px(pin_center(*pin, bars, left, width));
+                let dot = Bounds::from_corners(
+                    point(x - side / 2.0, middle - side / 2.0),
+                    point(x + side / 2.0, middle + side / 2.0),
+                );
+                window.paint_quad(fill(dot, color).corner_radii(side / 2.0));
+            }
+        },
+        on_pick,
+    )
+    .h(size::COMMENT_LANE)
+    .w_full()
+}
+
 /// A horizontal slider (`value` 0..=1) with click and drag. Fills its parent's
 /// width at [`size::SLIDER_HEIGHT`]; the caller adds the `aria_label`.
 pub fn slider(
@@ -945,6 +992,12 @@ pub(crate) fn shimmer_opacity(t: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pins_sit_in_the_middle_of_their_bar() {
+        assert_eq!(pin_center(0, 160, 100.0, 1600.0), 105.0);
+        assert_eq!(pin_center(159, 160, 100.0, 1600.0), 1695.0);
+    }
 
     #[test]
     fn fraction_is_relative_to_the_strip() {

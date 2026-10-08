@@ -300,6 +300,15 @@ pub mod size {
     pub const DIALOG_WIDTH: Pixels = px(520.0);
     /// The cover picked for a new playlist.
     pub const COVER_PICKER: Pixels = px(120.0);
+    /// The strip of comment pins under the large waveform.
+    pub const COMMENT_LANE: Pixels = px(16.0);
+    /// A comment pin, and the one under the pointer or at the playhead.
+    pub const COMMENT_PIN: Pixels = px(6.0);
+    pub const COMMENT_PIN_ACTIVE: Pixels = px(10.0);
+    /// A row of the comment list; the list measures it once.
+    pub const COMMENT_ROW_HEIGHT: Pixels = px(64.0);
+    /// The popover that opens over a comment pin.
+    pub const COMMENT_POPOVER_WIDTH: Pixels = px(320.0);
     /// Avatars of the people in a Jam: in the title bar pill, and on its screen.
     pub const AVATAR_S: Pixels = px(24.0);
     pub const AVATAR_M: Pixels = px(40.0);

@@ -621,6 +621,135 @@ pub fn avatar(theme: &Theme, side: Pixels, name: &str, image: Option<Arc<Path>>)
         })
 }
 
+/// What a comment shows; borrowed like a row's.
+pub struct CommentRowData<'a> {
+    pub name: &'a str,
+    /// Already formatted (1:32); `None` for a comment that is not timed.
+    pub time: Option<&'a str>,
+    pub body: &'a str,
+    pub avatar: Option<Arc<Path>>,
+}
+
+/// The name and the time of a comment, on one line.
+fn comment_header(theme: &Theme, name: &str, time: Option<&str>) -> Div {
+    let c = theme.colors;
+    div()
+        .flex()
+        .items_center()
+        .gap(space::S2)
+        .child(
+            theme
+                .text(div(), typography::BODY)
+                .min_w(px(0.0))
+                .truncate()
+                .text_color(c.text)
+                .child(name.to_owned()),
+        )
+        .when_some(time, |line, time| {
+            line.child(
+                theme
+                    .text(div(), typography::MONO)
+                    .flex_none()
+                    .text_color(c.text_muted)
+                    .child(time.to_owned()),
+            )
+        })
+}
+
+/// A row of the comment list: avatar, name and time, then the text. Callers
+/// add `on_click` (timed comments only) and the `aria_label`.
+pub fn comment_row(theme: &Theme, id: impl Into<ElementId>, row: CommentRowData) -> Stateful<Div> {
+    let c = theme.colors;
+    let timed = row.time.is_some();
+    div()
+        .id(id)
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(space::S3)
+        .h(size::COMMENT_ROW_HEIGHT)
+        .px(space::S3)
+        .rounded(radius::M)
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .tab_index(0)
+        .focus_visible(move |s| s.border_color(c.accent))
+        .hover(move |s| s.bg(c.surface_hover))
+        .when(timed, |row| row.cursor_pointer())
+        .child(avatar(theme, size::ROW_COVER, row.name, row.avatar))
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .flex()
+                .flex_col()
+                .child(comment_header(theme, row.name, row.time))
+                .child(
+                    theme
+                        .text(div(), typography::BODY_MUTED)
+                        .line_clamp(2)
+                        .text_color(c.text_muted)
+                        .child(row.body.to_owned()),
+                ),
+        )
+}
+
+/// The popover over a comment pin: a few comments, then `more` ("+2 more").
+/// Callers place it (`anchored`).
+pub fn comment_popover(
+    theme: &Theme,
+    id: impl Into<ElementId>,
+    entries: Vec<CommentRowData>,
+    more: Option<String>,
+) -> impl IntoElement {
+    let c = theme.colors;
+    motion::pop_in(
+        "comment-popover-in",
+        div()
+            .id(id)
+            .occlude()
+            .w(size::COMMENT_POPOVER_WIDTH)
+            .flex()
+            .flex_col()
+            .gap(space::S3)
+            .p(space::S3)
+            .rounded(radius::L)
+            .border_1()
+            .border_color(c.line_strong)
+            .bg(c.surface_raised)
+            .shadow(tokens::floating_shadow())
+            .children(entries.into_iter().map(|entry| {
+                div()
+                    .flex()
+                    .gap(space::S3)
+                    .child(avatar(theme, size::AVATAR_S, entry.name, entry.avatar))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .flex()
+                            .flex_col()
+                            .child(comment_header(theme, entry.name, entry.time))
+                            .child(
+                                theme
+                                    .text(div(), typography::BODY_MUTED)
+                                    .line_clamp(3)
+                                    .text_color(c.text_muted)
+                                    .child(entry.body.to_owned()),
+                            ),
+                    )
+            }))
+            .when_some(more, |panel, more| {
+                panel.child(
+                    theme
+                        .text(div(), typography::LABEL)
+                        .text_color(c.text_muted)
+                        .child(more),
+                )
+            }),
+    )
+}
+
 /// Overlapping avatars, each ringed in the background colour so they read
 /// apart; the first one marked with a crown when it is the host's.
 pub fn avatar_stack(
