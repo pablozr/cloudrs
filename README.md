@@ -82,7 +82,7 @@ Signed Windows builds are on the way; see the [code signing policy](#code-signin
   Service). It is never written anywhere else.
 
 **Look and feel**
-- Dark and light themes, and a title bar of its own with the cloudrs logo.
+- Dark and light themes that follow the system and are remembered, and a title bar of its own with the cloudrs logo.
 - Each page takes on the color of its artwork.
 - Keyboard: `Ctrl K` (or `/`) jumps to search. Space plays or pauses, ← → seek 5 s, Shift ← → previous/next,
   Ctrl L likes, Ctrl V opens a copied SoundCloud or Jam link. Every control has visible focus and a label

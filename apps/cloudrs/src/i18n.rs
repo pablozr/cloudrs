@@ -4,15 +4,43 @@
 //! `strings!` and `formats!` require a translation for every [`Language`], so
 //! adding a language makes the compiler list every missing string.
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
 /// Interface languages. English is the default and, for now, the only one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Language {
-    English,
+/// The enum lives in `sc-core` because it is a saved setting (ADR 0017).
+pub use sc_core::Language;
+
+/// Index into `Language::ALL` of the language in use.
+static CURRENT: AtomicU8 = AtomicU8::new(0);
+
+/// Sets the language in use, from the saved settings.
+pub fn set(language: Language) {
+    let index = Language::ALL
+        .iter()
+        .position(|l| *l == language)
+        .unwrap_or_default();
+    CURRENT.store(index as u8, Ordering::Relaxed);
 }
 
-/// The language in use. Becomes a saved setting with the language picker (M4).
+/// The language in use.
 pub fn current() -> Language {
-    Language::English
+    Language::ALL
+        .get(usize::from(CURRENT.load(Ordering::Relaxed)))
+        .copied()
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_then_current() {
+        for language in Language::ALL {
+            set(language);
+            assert_eq!(current(), language);
+        }
+    }
 }
 
 macro_rules! strings {

@@ -21,8 +21,11 @@ use gpui::{
     MouseButton, NavigationDirection, Role, ScrollStrategy, SharedString, Stateful, Task,
     UniformListScrollHandle, Window, WindowControlArea, actions, div, img, px,
 };
-use sc_core::{ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, StartError};
+use sc_core::{
+    ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, Settings, StartError, ThemeChoice,
+};
 
+use crate::appearance;
 use crate::i18n;
 use crate::intent::UiIntent;
 use crate::models::{ListId, Models};
@@ -205,6 +208,16 @@ impl Shell {
         });
 
         let discord = presence::DiscordPresence::new(&config.data_dir);
+        cx.observe_window_appearance(window, |this, window, cx| {
+            if this.models.settings.theme == ThemeChoice::System {
+                let mode = appearance::theme_mode(ThemeChoice::System, window.appearance());
+                cx.set_global(mode);
+                window.refresh();
+            }
+        })
+        .detach();
+        let mut models = Models::new();
+        models.settings.clone_from(&config.settings);
         let mut shell = Self {
             core: start_core(&config),
             config,
@@ -213,7 +226,7 @@ impl Shell {
             search,
             token_field,
             player,
-            models: Models::new(),
+            models,
             router: Router::new(),
             nav_seq: 0,
             scrolls: HashMap::new(),
@@ -276,6 +289,14 @@ impl Shell {
         }
     }
 
+    /// Asks the core to save the settings with this edit. What changes on
+    /// screen follows the `Event::Settings` answer.
+    pub(crate) fn change_settings(&self, edit: impl FnOnce(&mut Settings)) {
+        let mut settings = self.models.settings.clone();
+        edit(&mut settings);
+        self.send(Command::SetSettings(settings));
+    }
+
     /// Starts reading the core's events, if the core is running.
     fn start_pump(&mut self, cx: &mut Context<Self>) {
         self.pump = None;
@@ -322,6 +343,10 @@ impl Shell {
                 self.player
                     .update(cx, |bar, cx| bar.apply(&event, artwork, cx));
             }
+            Event::Settings(settings) => {
+                appearance::apply(settings, cx);
+                cx.refresh_windows();
+            }
             Event::Problem(problem) => self.show_problem(problem, cx),
             Event::Stopped => self.stopped = true,
             Event::PlaylistSaved { playlist, change } => {
@@ -360,7 +385,6 @@ impl Shell {
             | Event::Liked { .. }
             | Event::Followed { .. }
             | Event::Jam(_)
-            | Event::Settings(_)
             | Event::HomeShelves(_)
             | Event::NowPlayingLinks { .. } => {}
         }
@@ -870,18 +894,20 @@ impl Shell {
             ThemeMode::Dark => (Icon::Sun, i18n::app::switch_to_light()),
             ThemeMode::Light => (Icon::Moon, i18n::app::switch_to_dark()),
         };
+        let next = theme.mode.toggled();
         let theme_button = icon_button(theme, "theme-toggle", toggle_icon, false)
             .aria_label(toggle_label)
             .tooltip(tooltip(toggle_label))
-            .on_click(|_, window, cx| {
-                let next = cx
-                    .try_global::<ThemeMode>()
-                    .copied()
-                    .unwrap_or_default()
-                    .toggled();
-                cx.set_global(next);
-                window.refresh();
-            });
+            .on_click(cx.listener(move |this, _, _, _| {
+                // An explicit choice, even when the setting is System; Settings
+                // and the command palette go back to following the system.
+                this.change_settings(|settings| {
+                    settings.theme = match next {
+                        ThemeMode::Dark => ThemeChoice::Dark,
+                        ThemeMode::Light => ThemeChoice::Light,
+                    };
+                });
+            }));
         let dim = |enabled: bool| {
             if enabled {
                 1.0

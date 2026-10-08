@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Themes:** follows the system’s light or dark mode; the title bar toggle picks one and it is
+  remembered.
 - **Keyboard:** Space plays or pauses, ← → seek 5 s, Shift ← → go to the previous or next
   track, Ctrl L likes the playing track, and Ctrl V opens a copied SoundCloud or Jam link.
   Space and the arrows leave text fields alone.

@@ -3,6 +3,7 @@
 // A release build is a GUI app on Windows: no console window next to it.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod appearance;
 mod i18n;
 mod intent;
 mod models;
@@ -44,7 +45,7 @@ fn main() {
         .with_assets(cloudrs_ui::assets::Assets)
         .run(move |cx: &mut App| {
             cloudrs_ui::fonts::register(cx);
-            cx.set_global(cloudrs_ui::ThemeMode::default());
+            appearance::apply(&settings, cx);
             cloudrs_ui::search_field::bind_keys(cx);
             shell::bind_keys(cx);
 
@@ -53,7 +54,7 @@ fn main() {
                 data_dir,
                 oauth_token,
                 jam_network: sc_core::JamNetwork::Internet,
-                settings,
+                settings: settings.clone(),
             };
             let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
             let opened = cx.open_window(

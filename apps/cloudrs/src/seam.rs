@@ -135,7 +135,10 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             models.home_shelves.clone_from(shelves);
             true
         }
-        Event::Settings(_) => false,
+        Event::Settings(settings) => {
+            models.settings.clone_from(settings);
+            true
+        }
         Event::Jam(state) => {
             models.jam.clone_from(state);
             true
@@ -594,5 +597,17 @@ mod tests {
         models.query = "house".into();
         take(&mut models, &UiIntent::SetSearchKind(SearchKind::Albums));
         assert!(view(&models, albums).loading);
+    }
+
+    #[test]
+    fn the_settings_event_updates_the_model() {
+        let mut models = Models::new();
+        let settings = sc_core::Settings {
+            theme: sc_core::ThemeChoice::Light,
+            discord: false,
+            ..sc_core::Settings::default()
+        };
+        assert!(apply(&mut models, &Event::Settings(settings.clone())));
+        assert_eq!(models.settings, settings);
     }
 }

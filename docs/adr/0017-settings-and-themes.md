@@ -31,6 +31,17 @@ file (`discord-off`) in the data folder. `sc-core` already owns the SQLite file 
    language, Discord) only from that event, along a single path. The write happens off the
    actor loop with a sequence number, like the session, and `Shutdown` writes it last.
    `CoreConfig::settings` hands the core what the app read.
+5. **The theme follows the system by default.** `ThemeChoice::System` maps the operating
+   system's appearance to dark or light (`appearance::theme_mode`), read with
+   `App::window_appearance` before the window opens and kept live with
+   `observe_window_appearance`, which only acts while the choice is System. The title bar
+   toggle writes the explicit choice opposite to the mode shown now (showing dark, it writes
+   light), even when the setting was System. Going back to System is done in Settings or the
+   command palette.
+6. **Language plumbing.** `Language` lives in `sc-core`, because it is a saved setting, and
+   `apps/cloudrs/src/i18n.rs` re-exports it. `i18n::set` stores the language in an atomic that
+   `current()` reads, so the `strings!` macros are unchanged. The picker stays hidden until a
+   second language exists (M5).
 
 ## Consequences
 

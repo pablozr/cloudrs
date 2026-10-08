@@ -41,8 +41,9 @@ hold raw colors, sizes or durations.
 
 ## Color
 
-Neutrals lean slightly warm (brown), not blue-grey, so the orange feels at home. Dark is the
-default theme, and light is complete.
+Neutrals lean slightly warm (brown), not blue-grey, so the orange feels at home. The theme
+follows the system by default (ADR 0017); dark and light are both complete and can be
+picked in Settings.
 
 ### Accent
 

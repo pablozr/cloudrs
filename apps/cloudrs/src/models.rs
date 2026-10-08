@@ -216,6 +216,8 @@ pub struct Models {
     /// SoundCloud's own home rows, and the genre picked for Trending.
     pub home_shelves: Vec<HomeShelf>,
     pub home_genre: Genre,
+    /// The settings in effect, as the core last said.
+    pub settings: sc_core::Settings,
 }
 
 impl Models {
@@ -237,6 +239,7 @@ impl Models {
             jam: None,
             home_shelves: Vec::new(),
             home_genre: Genre::All,
+            settings: sc_core::Settings::default(),
         }
     }
 
