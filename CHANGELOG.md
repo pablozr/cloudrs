@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Media keys:** play, pause, next, previous and seek from the keyboard's media keys and the
+  system's controls (Windows media flyout, MPRIS on Linux, Now Playing on macOS), which show
+  the track, artist and cover.
 - **Command palette:** Ctrl P jumps to any screen or runs an action.
 - **Settings:** theme, Discord, cache size and clearing, and the keyboard shortcuts in one place.
   The gear in the title bar opens it.

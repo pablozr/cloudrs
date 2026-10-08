@@ -1,6 +1,6 @@
 [package]
 name = "sc-platform"
-description = "cloudrs OS integration: keychain and the SoundCloud sign-in window"
+description = "cloudrs OS integration: keychain, sign-in window, Discord and media controls"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,6 +11,8 @@ publish = false
 discord-rich-presence = "1"
 flume = "0.11"
 keyring = "4"
+# OS media controls: SMTC, MPRIS, Now Playing (ADR 0019). Pinned to master for current windows/zbus; zbus, so Linux needs no libdbus.
+souvlaki = { git = "https://github.com/Sinono3/souvlaki", rev = "93ff3d16700348f32fe174e985c828eff0587e3b", default-features = false, features = ["use_zbus"] }
 tao = "0.37"
 tracing = "0.1"
 wry = "0.57"

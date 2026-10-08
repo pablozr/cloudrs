@@ -280,9 +280,9 @@ Outside text fields Space always plays/pauses, even over a focused control (Ente
 ---
 
 ## 8. `sc-platform` — OS integration
-- **Media keys and Now Playing:** `souvlaki` (MPRIS / macOS / SMTC).
+- **Media keys and Now Playing:** `souvlaki` with zbus (MPRIS / macOS / SMTC), [ADR 0019](./adr/0019-os-media-controls.md).
 - **Tokens:** `keyring`.
-- **Track-change notifications:** `notify-rust` (Linux/Windows), optional.
+- **Track-change notifications:** `notify-rust` (Linux/Windows), optional; deferred (ADR 0019).
 - **Discord Rich Presence:** `discord-rich-presence`, on by default and switchable (ADR 0015).
 - **Tray icon:** `tray-icon` (M5).
 
@@ -357,7 +357,8 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 - [ ] Screenshots of the account screens in both themes.
 
 ### M4 — Desktop integration
-- [ ] MPRIS / Now Playing / SMTC.
+- [x] MPRIS / Now Playing / SMTC ([ADR 0019](./adr/0019-os-media-controls.md)).
+  - [ ] Tried by the maintainer: media keys and the Windows flyout; macOS and Linux untried.
 - [x] Full keyboard shortcuts (Ctrl K and / focus search; Ctrl P opens the command palette,
       ADR 0018).
 - [ ] Audio device selection and recovery.

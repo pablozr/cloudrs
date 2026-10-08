@@ -1168,6 +1168,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "image",
+ "raw-window-handle",
  "sc-core",
  "sc-platform",
  "time",
@@ -6405,6 +6406,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
+name = "pollster"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc6355899e1c9462875b6757c79f3caa011a1fdae12bbb1a2e72dd1f234f8336"
+
+[[package]]
 name = "polycool"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7428,6 +7435,7 @@ dependencies = [
  "discord-rich-presence",
  "flume 0.11.1",
  "keyring",
+ "souvlaki",
  "tao",
  "tracing",
  "wry",
@@ -7993,6 +8001,24 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
+]
+
+[[package]]
+name = "souvlaki"
+version = "0.8.3"
+source = "git+https://github.com/Sinono3/souvlaki?rev=93ff3d16700348f32fe174e985c828eff0587e3b#93ff3d16700348f32fe174e985c828eff0587e3b"
+dependencies = [
+ "base64 0.22.1",
+ "block",
+ "core-graphics 0.25.0",
+ "dispatch",
+ "objc",
+ "pollster 1.0.1",
+ "thiserror 2.0.21",
+ "windows 0.62.2",
+ "zbus",
+ "zbus_macros",
+ "zvariant",
 ]
 
 [[package]]

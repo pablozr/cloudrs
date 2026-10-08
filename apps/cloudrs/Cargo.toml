@@ -20,6 +20,10 @@ time = { version = "0.3", features = ["local-offset"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[target.'cfg(windows)'.dependencies]
+# The main window's HWND for the media controls (ADR 0019); the same version GPUI uses.
+raw-window-handle = "0.6"
+
 [build-dependencies]
 embed-resource = "3.0.12"
 

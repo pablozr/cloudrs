@@ -36,6 +36,7 @@ use crate::seam;
 use crate::state::QueueState;
 use crate::tint::{self, Rgb};
 
+pub(crate) mod media;
 pub(crate) mod palette;
 pub(crate) mod playlist_ui;
 pub(crate) mod presence;
@@ -128,6 +129,8 @@ pub struct Shell {
     pub(crate) pending_undo: Option<Command>,
     /// What plays, shown on Discord.
     pub(crate) discord: presence::DiscordPresence,
+    /// What plays, on the OS media controls and keys.
+    pub(crate) media: media::SystemMedia,
     /// The command palette while it is open.
     palette: Option<palette::PaletteState>,
     /// Its search field.
@@ -212,6 +215,7 @@ impl Shell {
         });
 
         let discord = presence::DiscordPresence::new(config.settings.discord);
+        let media = media::SystemMedia::start(window, cx);
         cx.observe_window_appearance(window, |this, window, cx| {
             if this.models.settings.theme == ThemeChoice::System {
                 let mode = appearance::theme_mode(ThemeChoice::System, window.appearance());
@@ -247,6 +251,7 @@ impl Shell {
             form,
             pending_undo: None,
             discord,
+            media,
             palette: None,
             palette_field,
             toast: None,
@@ -335,6 +340,7 @@ impl Shell {
         // Models first: the player reads the artwork they collect.
         let changed = seam::apply(&mut self.models, &event);
         self.discord_event(&event);
+        self.media_event(&event);
         let queue_changed = self.queue.apply(&event);
         if let Event::Searching { kind, .. } = &event
             && let Some(scroll) = self.scrolls.get(&ListId::Search { kind: *kind })
