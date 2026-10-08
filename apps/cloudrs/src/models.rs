@@ -218,6 +218,8 @@ pub struct Models {
     pub home_genre: Genre,
     /// The settings in effect, as the core last said.
     pub settings: sc_core::Settings,
+    /// Bytes the artwork cache takes, once measured.
+    pub cache_size: Option<u64>,
 }
 
 impl Models {
@@ -240,6 +242,7 @@ impl Models {
             home_shelves: Vec::new(),
             home_genre: Genre::All,
             settings: sc_core::Settings::default(),
+            cache_size: None,
         }
     }
 

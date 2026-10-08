@@ -86,6 +86,13 @@ pub mod app {
     }
 }
 
+/// The Settings screen.
+pub mod settings {
+    strings! {
+        cache_cleared { en: "Cache cleared" }
+    }
+}
+
 pub mod search {
     strings! {
         placeholder { en: "Search tracks or paste a SoundCloud link" }
@@ -256,6 +263,7 @@ pub mod startup {
 
 pub mod problem {
     strings! {
+        cache_not_cleared { en: "Couldn\u{2019}t clear the cache. Try again." }
         offline { en: "Can\u{2019}t reach SoundCloud. Check your connection." }
         rate_limited { en: "SoundCloud asked us to slow down. Try again in a moment." }
         not_found { en: "That track or link doesn\u{2019}t exist or is private." }

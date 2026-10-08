@@ -1,5 +1,6 @@
 //! The artwork cache: one file per artwork URL in the cache folder.
 
+use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
@@ -31,9 +32,71 @@ pub fn store(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(partial, path)
 }
 
+/// Bytes the cached covers take. A missing folder is empty.
+pub fn disk_usage(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|meta| meta.is_file())
+        .map(|meta| meta.len())
+        .sum()
+}
+
+/// Removes every cached file not in `keep`. Returns the bytes left and whether
+/// everything else was removed (failures are logged).
+pub fn clear_except(dir: &Path, keep: &HashSet<PathBuf>) -> (u64, bool) {
+    let mut complete = true;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if !path.is_file() || keep.contains(&path) {
+                continue;
+            }
+            if let Err(error) = std::fs::remove_file(&path) {
+                tracing::warn!(%error, ?path, "could not remove cached artwork");
+                complete = false;
+            }
+        }
+    }
+    (disk_usage(dir), complete)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("cloudrs-art-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn disk_usage_sums_the_files_and_a_missing_folder_is_empty() {
+        let dir = temp_dir("usage");
+        std::fs::write(dir.join("a.jpg"), [0u8; 10]).unwrap();
+        std::fs::write(dir.join("b.jpg"), [0u8; 5]).unwrap();
+        assert_eq!(disk_usage(&dir), 15);
+        assert_eq!(disk_usage(&dir.join("nowhere")), 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn clearing_keeps_only_the_files_in_use() {
+        let dir = temp_dir("clear");
+        std::fs::write(dir.join("keep.jpg"), [0u8; 10]).unwrap();
+        std::fs::write(dir.join("drop.jpg"), [0u8; 5]).unwrap();
+        let keep = HashSet::from([dir.join("keep.jpg")]);
+        assert_eq!(clear_except(&dir, &keep), (10, true));
+        assert!(dir.join("keep.jpg").exists());
+        assert!(!dir.join("drop.jpg").exists());
+        assert_eq!(clear_except(&dir.join("nowhere"), &keep), (0, true));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn same_url_same_file() {

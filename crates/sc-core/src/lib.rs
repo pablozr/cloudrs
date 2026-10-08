@@ -157,6 +157,12 @@ pub enum Command {
     /// Save the settings (ADR 0017). The core answers with [`Event::Settings`]
     /// carrying what is now in effect.
     SetSettings(Settings),
+    /// How big the artwork cache is: answers with [`Event::CacheSize`].
+    MeasureCache,
+    /// Delete the cached covers that are not on screen this session. Answers
+    /// with [`Event::CacheCleared`] (or `Problem::CacheNotCleared`) and then
+    /// [`Event::CacheSize`].
+    ClearCache,
 }
 
 /// Whether the text is a Jam link, to send it as [`Command::JoinJam`].
@@ -238,6 +244,10 @@ pub enum Event {
     Jam(Option<JamState>),
     /// The settings in effect, after [`Command::SetSettings`].
     Settings(Settings),
+    /// Bytes the artwork cache takes.
+    CacheSize(u64),
+    /// The cache was cleared of everything not in use.
+    CacheCleared,
     /// Something the person should know about (playing, pasted links, audio).
     Problem(Problem),
 }

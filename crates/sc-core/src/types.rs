@@ -306,6 +306,8 @@ pub enum Problem {
     JamUnreachable,
     /// The text is not a Jam link.
     JamBadLink,
+    /// Some cached covers could not be deleted.
+    CacheNotCleared,
     /// The host ended the Jam (or it was lost).
     JamEnded,
     /// The host removed this person from the Jam.

@@ -628,6 +628,50 @@ fn shutdown_saves_the_session_before_replying() {
 }
 
 #[test]
+fn measures_the_cache() {
+    let h = Harness::new("measure");
+    h.search();
+    h.wait(|e| match e {
+        Event::Artwork {
+            key: ArtKey::Track(TrackId(1)),
+            ..
+        } => Some(()),
+        _ => None,
+    });
+    h.core.send(Command::MeasureCache);
+    let bytes = h.wait(|e| match e {
+        Event::CacheSize(bytes) => Some(bytes),
+        _ => None,
+    });
+    assert!(bytes > 0);
+}
+
+#[test]
+fn clearing_the_cache_keeps_covers_in_use() {
+    let h = Harness::new("clear");
+    h.search();
+    let served = h.wait(|e| match e {
+        Event::Artwork {
+            key: ArtKey::Track(TrackId(1)),
+            path,
+        } => Some(path),
+        _ => None,
+    });
+    let stray = h.cache.join("artwork/stray.jpg");
+    std::fs::write(&stray, b"old").unwrap();
+
+    h.core.send(Command::ClearCache);
+    h.wait(|e| matches!(e, Event::CacheCleared).then_some(()));
+    let remaining = h.wait(|e| match e {
+        Event::CacheSize(bytes) => Some(bytes),
+        _ => None,
+    });
+    assert!(!stray.exists());
+    assert!(served.exists());
+    assert!(remaining > 0);
+}
+
+#[test]
 fn settings_are_echoed_and_saved() {
     let h = Harness::new("settings");
     wait_for_store(&h);

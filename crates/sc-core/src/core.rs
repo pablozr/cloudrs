@@ -163,6 +163,13 @@ enum Input {
         following: bool,
         result: sc_api::Result<()>,
     },
+    /// The artwork folder was measured.
+    CacheMeasured(u64),
+    /// The artwork folder was cleared of what is not in use.
+    CacheCleared {
+        remaining: u64,
+        complete: bool,
+    },
 }
 
 pub(crate) fn run_on_thread<A: SoundCloudApi + 'static>(
@@ -471,6 +478,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 following,
                 result,
             } => self.follow_done(user, following, result),
+            Input::CacheMeasured(bytes) => self.emit(Event::CacheSize(bytes)),
+            Input::CacheCleared {
+                remaining,
+                complete,
+            } => self.cache_cleared(remaining, complete),
         }
     }
 
@@ -591,6 +603,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             | Command::RemoveFromJam(_) => {}
             Command::SetVolume(volume) => self.set_volume(volume),
             Command::SetSettings(settings) => self.set_settings(settings),
+            Command::MeasureCache => self.measure_cache(),
+            Command::ClearCache => self.clear_cache(),
         }
     }
 

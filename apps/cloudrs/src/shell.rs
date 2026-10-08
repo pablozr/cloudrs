@@ -348,6 +348,9 @@ impl Shell {
                 self.discord.set_enabled(settings.discord);
                 cx.refresh_windows();
             }
+            Event::CacheCleared => {
+                self.show_toast(ToastKind::Info, i18n::settings::cache_cleared(), cx);
+            }
             Event::Problem(problem) => self.show_problem(problem, cx),
             Event::Stopped => self.stopped = true,
             Event::PlaylistSaved { playlist, change } => {
@@ -386,6 +389,7 @@ impl Shell {
             | Event::Liked { .. }
             | Event::Followed { .. }
             | Event::Jam(_)
+            | Event::CacheSize(_)
             | Event::HomeShelves(_)
             | Event::NowPlayingLinks { .. } => {}
         }
@@ -503,6 +507,7 @@ impl Shell {
             Problem::PlaylistCoverNotSaved => {
                 (ToastKind::Warning, i18n::playlists::cover_not_saved())
             }
+            Problem::CacheNotCleared => (ToastKind::Error, t::cache_not_cleared()),
             Problem::JamUnreachable => (ToastKind::Error, t::jam_unreachable()),
             Problem::JamBadLink => (ToastKind::Error, t::jam_bad_link()),
             Problem::JamEnded => (ToastKind::Info, t::jam_ended()),

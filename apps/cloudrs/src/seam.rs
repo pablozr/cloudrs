@@ -135,6 +135,11 @@ pub fn apply(models: &mut Models, event: &Event) -> bool {
             models.home_shelves.clone_from(shelves);
             true
         }
+        Event::CacheSize(bytes) => {
+            models.cache_size = Some(*bytes);
+            true
+        }
+        Event::CacheCleared => false,
         Event::Settings(settings) => {
             models.settings.clone_from(settings);
             true
@@ -597,6 +602,15 @@ mod tests {
         models.query = "house".into();
         take(&mut models, &UiIntent::SetSearchKind(SearchKind::Albums));
         assert!(view(&models, albums).loading);
+    }
+
+    #[test]
+    fn the_cache_size_event_updates_the_model() {
+        let mut models = Models::new();
+        assert_eq!(models.cache_size, None);
+        assert!(apply(&mut models, &Event::CacheSize(2048)));
+        assert_eq!(models.cache_size, Some(2048));
+        assert!(!apply(&mut models, &Event::CacheCleared));
     }
 
     #[test]

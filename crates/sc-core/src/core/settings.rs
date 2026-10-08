@@ -1,13 +1,14 @@
 //! The person's settings (ADR 0017): kept in memory, echoed to the UI and
 //! saved off the actor loop.
 
+use std::collections::HashSet;
 use std::sync::PoisonError;
 
 use sc_api::SoundCloudApi;
 
-use super::Core;
-use crate::store;
-use crate::{Event, Settings};
+use super::{Core, Input};
+use crate::types::{ArtKey, Problem};
+use crate::{Event, Settings, artwork, store};
 
 impl<A: SoundCloudApi + 'static> Core<A> {
     /// Keeps and saves the settings, then tells the UI what is now in effect.
@@ -54,5 +55,48 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if let Err(error) = store::save_settings(&store.conn, &self.settings) {
             tracing::warn!(%error, "could not save the settings on exit");
         }
+    }
+
+    /// Measures the artwork cache off the actor loop.
+    pub(super) fn measure_cache(&self) {
+        let (dir, inputs) = (self.artwork_dir.clone(), self.inputs.clone());
+        tokio::task::spawn_blocking(move || {
+            let _ = inputs.send(Input::CacheMeasured(artwork::disk_usage(&dir)));
+        });
+    }
+
+    /// Deletes the covers this session is not showing, so nothing on screen
+    /// points at a file that is gone.
+    pub(super) fn clear_cache(&self) {
+        let in_use: HashSet<_> = self
+            .artwork_requested
+            .iter()
+            .filter_map(|key| match key {
+                ArtKey::Track(id) => self.artwork_url(*id),
+                ArtKey::User(_) | ArtKey::Playlist(_) => self.other_art.get(key).cloned(),
+            })
+            .flat_map(|url| {
+                let path = artwork::path_for(&self.artwork_dir, &url);
+                // A download in flight writes the partial file first.
+                [path.with_extension("part"), path]
+            })
+            .collect();
+        let (dir, inputs) = (self.artwork_dir.clone(), self.inputs.clone());
+        tokio::task::spawn_blocking(move || {
+            let (remaining, complete) = artwork::clear_except(&dir, &in_use);
+            let _ = inputs.send(Input::CacheCleared {
+                remaining,
+                complete,
+            });
+        });
+    }
+
+    pub(super) fn cache_cleared(&self, remaining: u64, complete: bool) {
+        if complete {
+            self.emit(Event::CacheCleared);
+        } else {
+            self.emit(Event::Problem(Problem::CacheNotCleared));
+        }
+        self.emit(Event::CacheSize(remaining));
     }
 }
