@@ -5,6 +5,9 @@ use std::path::Path;
 
 use crate::store;
 
+/// Where builds before ADR 0017 kept "Discord off": a file that exists when off.
+const LEGACY_DISCORD_OFF: &str = "discord-off";
+
 /// Which theme the person wants. `System` follows the operating system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeChoice {
@@ -68,7 +71,21 @@ pub fn read_settings(data_dir: &Path) -> Settings {
     let read = || -> Result<Option<Settings>, String> {
         std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
         let conn = store::open(&data_dir.join(store::FILE_NAME)).map_err(|e| e.to_string())?;
-        store::load_settings(&conn).map_err(|e| e.to_string())
+        let mut saved = store::load_settings(&conn).map_err(|e| e.to_string())?;
+        // The old flag file wins once: move it into the database, then drop it.
+        let legacy = data_dir.join(LEGACY_DISCORD_OFF);
+        if legacy.exists() {
+            let migrated = Settings {
+                discord: false,
+                ..saved.clone().unwrap_or_default()
+            };
+            store::save_settings(&conn, &migrated).map_err(|e| e.to_string())?;
+            if let Err(error) = std::fs::remove_file(&legacy) {
+                tracing::warn!(%error, "could not remove the old Discord flag");
+            }
+            saved = Some(migrated);
+        }
+        Ok(saved)
     };
     match read() {
         Ok(saved) => saved.unwrap_or_default(),
@@ -89,6 +106,19 @@ mod tests {
             assert_eq!(Language::from_tag(language.tag()), language);
         }
         assert_eq!(Language::from_tag("xx"), Language::English);
+    }
+
+    #[test]
+    fn the_discord_off_file_migrates_once() {
+        let dir = std::env::temp_dir().join(format!("cloudrs-settings-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(LEGACY_DISCORD_OFF), b"").unwrap();
+
+        assert!(!read_settings(&dir).discord);
+        assert!(!dir.join(LEGACY_DISCORD_OFF).exists());
+        assert!(!read_settings(&dir).discord, "kept in the database");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

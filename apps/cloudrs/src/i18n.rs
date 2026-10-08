@@ -459,7 +459,7 @@ pub mod playlists {
     }
 }
 
-/// What Discord shows (ADR 0015), and the Account screen's switch.
+/// What Discord shows (ADR 0015), and its on/off switch.
 pub mod discord {
     strings! {
         listen_on_soundcloud { en: "Listen on SoundCloud" }

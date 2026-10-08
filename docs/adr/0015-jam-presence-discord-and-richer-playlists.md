@@ -1,6 +1,6 @@
 # ADR 0015: Who's in the Jam, Discord Rich Presence, and richer new playlists
 
-Status: accepted · 2026-10-07 (options chosen by the maintainer)
+Status: accepted · 2026-10-07 (options chosen by the maintainer); the Discord choice is superseded in part by ADR 0017 §7 (a saved setting, no flag file)
 
 ## Context
 

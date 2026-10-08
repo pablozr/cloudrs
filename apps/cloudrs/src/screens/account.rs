@@ -171,14 +171,13 @@ impl Shell {
             return None;
         }
         let c = theme.colors;
-        let on = !self.discord.off;
+        let on = self.models.settings.discord;
         let choice = |ix: usize, label: &'static str, selected: bool| {
             cloudrs_ui::components::pill(theme, ("discord", ix), label, selected)
                 .tab_index(0)
                 .aria_label(label)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.discord.set_off(ix == 1);
-                    cx.notify();
+                .on_click(cx.listener(move |this, _, _, _| {
+                    this.change_settings(|settings| settings.discord = ix == 0);
                 }))
         };
         Some(

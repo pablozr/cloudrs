@@ -207,7 +207,7 @@ impl Shell {
                 .unwrap_or(true)
         });
 
-        let discord = presence::DiscordPresence::new(&config.data_dir);
+        let discord = presence::DiscordPresence::new(config.settings.discord);
         cx.observe_window_appearance(window, |this, window, cx| {
             if this.models.settings.theme == ThemeChoice::System {
                 let mode = appearance::theme_mode(ThemeChoice::System, window.appearance());
@@ -345,6 +345,7 @@ impl Shell {
             }
             Event::Settings(settings) => {
                 appearance::apply(settings, cx);
+                self.discord.set_enabled(settings.discord);
                 cx.refresh_windows();
             }
             Event::Problem(problem) => self.show_problem(problem, cx),

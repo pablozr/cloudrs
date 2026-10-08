@@ -42,6 +42,11 @@ file (`discord-off`) in the data folder. `sc-core` already owns the SQLite file 
    `apps/cloudrs/src/i18n.rs` re-exports it. `i18n::set` stores the language in an atomic that
    `current()` reads, so the `strings!` macros are unchanged. The picker stays hidden until a
    second language exists (M5).
+7. **Discord is a setting.** `Settings::discord` replaces the `discord-off` flag file. The
+   first `read_settings` that finds the file saves `discord = false`, deletes the file and
+   keeps the value in the database; later reads never look at it again. The presence follows
+   `Event::Settings` (`DiscordPresence::set_enabled`) and no longer touches the disk. The
+   switch moves to Settings with commit 5; until then it stays on the Account screen.
 
 ## Consequences
 

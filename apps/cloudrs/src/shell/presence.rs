@@ -3,7 +3,6 @@
 //! see changed: the track, play or pause, a seek, the Jam. Playback ticks
 //! never reach Discord.
 
-use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use sc_core::{Event, JamState, PlayState, TrackId, TrackSummary};
@@ -22,10 +21,8 @@ const DOWNLOAD_URL: &str = "https://github.com/pablozr/cloudrs";
 #[derive(Default)]
 pub(crate) struct DiscordPresence {
     client: Option<Presence>,
-    /// The person turned it off on the Account screen.
-    pub(crate) off: bool,
-    /// Where that choice is kept between runs (a file that exists when off).
-    off_flag: PathBuf,
+    /// The person has it on in Settings.
+    pub(crate) enabled: bool,
     now: Option<TrackSummary>,
     links: Option<(TrackId, Option<String>, Option<String>)>,
     playing: bool,
@@ -35,12 +32,10 @@ pub(crate) struct DiscordPresence {
 }
 
 impl DiscordPresence {
-    pub(crate) fn new(data_dir: &std::path::Path) -> Self {
-        let off_flag = data_dir.join("discord-off");
+    pub(crate) fn new(enabled: bool) -> Self {
         Self {
             client: Presence::start(),
-            off: off_flag.exists(),
-            off_flag,
+            enabled,
             ..Self::default()
         }
     }
@@ -92,7 +87,7 @@ impl DiscordPresence {
         let Some(client) = &self.client else {
             return;
         };
-        let next = if self.off { None } else { self.listening() };
+        let next = if self.enabled { self.listening() } else { None };
         let same = match (&self.sent, &next) {
             (None, None) => true,
             (Some(sent), Some(next)) => {
@@ -121,17 +116,9 @@ impl DiscordPresence {
         }
     }
 
-    /// Turns showing on Discord on or off, and remembers it.
-    pub(crate) fn set_off(&mut self, off: bool) {
-        self.off = off;
-        let kept = if off {
-            std::fs::write(&self.off_flag, b"")
-        } else {
-            std::fs::remove_file(&self.off_flag).or(Ok(()))
-        };
-        if let Err(error) = kept {
-            tracing::warn!(%error, "could not remember the Discord choice");
-        }
+    /// Turns showing on Discord on or off. The choice is a saved setting.
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
         self.sync();
     }
 }
