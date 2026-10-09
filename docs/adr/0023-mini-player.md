@@ -40,7 +40,9 @@ behaves on each OS.
 
 - No new dependency. New: `apps/cloudrs/src/mini_player.rs` (the window), `shell/mini.rs` (the
   Shell's side), `Icon::MiniPlayer` (Lucide `picture-in-picture-2`, ISC) and four size tokens.
-- Each playback tick (about 10 Hz) re-renders the small mini view, as it does the PlayerBar.
+- The mini view re-renders only when what it draws changes (track, cover, play state, or the
+  progress line by a whole pixel), about twice a second for a 3-minute track; the PlayerBar still
+  follows every tick.
 - The 360 px width leaves about 110 px for the title and artist next to the transport and the
   window buttons: long titles truncate.
 - Not verified by running it: the GUI was not run. The maintainer should try it (PLAN M5).

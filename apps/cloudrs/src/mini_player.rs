@@ -3,6 +3,9 @@
 //! the same events as the player bar and turns its [`MiniAction`]s into
 //! commands, so there is still one event pump.
 
+use std::path::Path;
+use std::sync::Arc;
+
 use cloudrs_ui::Theme;
 use cloudrs_ui::components::{Icon, icon_button, play_button, tooltip};
 use cloudrs_ui::tokens::{self, radius, size, space, typography};
@@ -12,7 +15,7 @@ use gpui::{
     TitlebarOptions, Window, WindowBounds, WindowControlArea, WindowDecorations, WindowHandle,
     WindowKind, WindowOptions, div, img, point, px, relative,
 };
-use sc_core::Event;
+use sc_core::{Event, TrackId};
 
 use crate::i18n::{mini as t, player};
 use crate::shell::shortcuts::{
@@ -103,6 +106,24 @@ pub fn initial_bounds(display: Bounds<Pixels>) -> Bounds<Pixels> {
     )
 }
 
+/// What the mini player draws; it redraws only when this changes.
+#[derive(Debug, PartialEq)]
+struct Shown {
+    track: Option<TrackId>,
+    artwork: Option<Arc<Path>>,
+    playing: bool,
+    progress_px: u32,
+}
+
+fn shown(state: &PlayerState) -> Shown {
+    Shown {
+        track: state.track.as_ref().map(|track| track.id),
+        artwork: state.artwork.clone(),
+        playing: state.playing(),
+        progress_px: (state.progress() * f32::from(size::MINI_PLAYER_WIDTH)).round() as u32,
+    }
+}
+
 impl MiniPlayer {
     fn new(state: PlayerState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let this = cx.weak_entity();
@@ -115,10 +136,14 @@ impl MiniPlayer {
         Self { state, focus }
     }
 
-    /// Follows the same events as the player bar.
+    /// Follows the same events as the player bar, but re-renders only when
+    /// what it draws changes.
     pub fn apply(&mut self, event: &Event, artwork: &ArtworkMap, cx: &mut Context<Self>) {
+        let before = shown(&self.state);
         self.state.apply(event, artwork);
-        cx.notify();
+        if shown(&self.state) != before {
+            cx.notify();
+        }
     }
 
     /// Closes the window and tells the shell.
@@ -281,7 +306,39 @@ impl Render for MiniPlayer {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use sc_core::{PlayState, Playback, QueueSnapshot, Repeat, TrackSummary};
+
     use super::*;
+
+    fn track(id: u64) -> TrackSummary {
+        TrackSummary {
+            id: TrackId(id),
+            title: format!("Track {id}"),
+            artist: "Artist".into(),
+            duration: Duration::from_secs(200),
+            artist_id: None,
+            preview_only: false,
+        }
+    }
+
+    fn playback(state: PlayState, position: f32) -> Event {
+        Event::Playback(Playback {
+            state,
+            position: Duration::from_secs_f32(position),
+            duration: Duration::from_secs(200),
+            volume: 0.5,
+        })
+    }
+
+    fn state_playing_at(position: f32) -> PlayerState {
+        let mut state = PlayerState::new();
+        let artwork = ArtworkMap::new();
+        state.apply(&Event::NowPlaying(track(1)), &artwork);
+        state.apply(&playback(PlayState::Playing, position), &artwork);
+        state
+    }
 
     fn display() -> Bounds<Pixels> {
         Bounds::new(
@@ -311,5 +368,42 @@ mod tests {
             WindowKind::Normal
         };
         assert_eq!(window_kind(), expected);
+    }
+
+    #[test]
+    fn a_tick_inside_the_same_pixel_changes_nothing() {
+        let mut state = state_playing_at(100.0);
+        let before = shown(&state);
+        state.apply(&playback(PlayState::Playing, 100.1), &ArtworkMap::new());
+        assert_eq!(shown(&state), before);
+    }
+
+    #[test]
+    fn what_the_mini_draws_counts_as_a_change() {
+        let artwork = ArtworkMap::new();
+        let mut state = state_playing_at(100.0);
+
+        let before = shown(&state);
+        state.apply(&playback(PlayState::Playing, 106.0), &artwork);
+        assert_ne!(shown(&state), before, "the progress line moved");
+
+        let before = shown(&state);
+        state.apply(&playback(PlayState::Paused, 106.0), &artwork);
+        assert_ne!(shown(&state), before, "play became pause");
+
+        let before = shown(&state);
+        state.apply(&Event::NowPlaying(track(2)), &artwork);
+        assert_ne!(shown(&state), before, "another track");
+
+        let before = shown(&state);
+        state.apply(
+            &Event::Queue(QueueSnapshot {
+                shuffle: true,
+                repeat: Repeat::Off,
+                ..QueueSnapshot::default()
+            }),
+            &artwork,
+        );
+        assert_eq!(shown(&state), before, "shuffle is not drawn");
     }
 }
