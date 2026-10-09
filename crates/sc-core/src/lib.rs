@@ -307,8 +307,8 @@ pub struct CoreConfig {
     /// machine only for tests.
     pub jam_network: JamNetwork,
     /// As the app read them at start ([`read_settings`]). When the store opens,
-    /// the core takes the saved ones instead, unless a `SetSettings` came first
-    /// (ADR 0017).
+    /// the core takes the saved ones instead, keeping any field a `SetSettings`
+    /// changed before that (ADR 0017).
     pub settings: Settings,
 }
 

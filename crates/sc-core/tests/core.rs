@@ -766,6 +766,33 @@ fn the_saved_settings_win_over_a_failed_early_read() {
 }
 
 #[test]
+fn a_change_before_the_store_opens_keeps_the_rest_of_what_is_saved() {
+    let h = Harness::new("adopt-merge");
+    save_settings_and_stop(&h, saved_sound());
+
+    // Hold the database so the next core cannot open it until the change is in.
+    let lock = rusqlite::Connection::open(h.cache.join("data/cloudrs.db")).unwrap();
+    lock.execute_batch("BEGIN EXCLUSIVE").unwrap();
+    let (core, _audio, _events) = start_with(&h, sc_core::Settings::default());
+    let changed = sc_core::Settings {
+        auto_update: false,
+        ..sc_core::Settings::default()
+    };
+    core.send(Command::SetSettings(changed.clone()));
+    assert_eq!(next_settings(&core), changed);
+    lock.execute_batch("COMMIT").unwrap();
+    drop(lock);
+
+    let merged = sc_core::Settings {
+        auto_update: false,
+        ..saved_sound()
+    };
+    assert_eq!(next_settings(&core), merged);
+    stop(&core);
+    assert_eq!(sc_core::read_settings(&h.cache.join("data")), merged);
+}
+
+#[test]
 fn adopted_settings_come_before_the_restored_session() {
     // Boost on and a session at 150%, read back by a core that started with
     // the defaults (boost off): the saved boost must be adopted before the

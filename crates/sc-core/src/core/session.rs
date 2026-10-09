@@ -205,8 +205,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.request_artwork(ArtKey::Track(id));
     }
 
-    /// The database opened (or not): keep it, take the saved settings unless
-    /// something changed first, and restore the saved session.
+    /// The database opened (or not): keep it, take the saved settings (except
+    /// what changed since the app read them), and restore the saved session.
     pub(super) fn store_ready(&mut self, opened: Option<OpenedStore>) {
         let Some(OpenedStore {
             store,
@@ -218,11 +218,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         };
         self.store = Some(store);
+        // Before `restore`, which clamps the volume with the boost setting.
+        self.adopt_saved_settings(settings);
+        // A change made before the store opened is saved now, merged above.
         if self.settings_changed {
             self.save_settings();
         }
-        // Before `restore`, which clamps the volume with the boost setting.
-        self.adopt_saved_settings(settings);
         if reset {
             self.emit(Event::Problem(Problem::StorageReset));
         }

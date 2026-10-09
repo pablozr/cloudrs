@@ -281,6 +281,7 @@ async fn run<A: SoundCloudApi + 'static>(
         jam: None,
         jam_gen: 0,
         jam_network: config.jam_network,
+        settings_read: config.settings.clone(),
         settings: config.settings,
         settings_seq: 0,
         settings_changed: false,
@@ -373,6 +374,9 @@ struct Core<A> {
     jam_gen: u64,
     jam_network: crate::JamNetwork,
     settings: Settings,
+    /// The settings the app read at start, before any change this run; what
+    /// differs from them in `settings` is what the person changed.
+    settings_read: Settings,
     settings_seq: u64,
     /// The person changed a setting this run, so the database needs it.
     settings_changed: bool,

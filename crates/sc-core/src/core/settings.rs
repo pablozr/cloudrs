@@ -10,18 +10,70 @@ use super::{Core, Input};
 use crate::types::{ArtKey, Problem};
 use crate::{Event, Settings, artwork, store};
 
-/// The saved settings to take as the truth when the store opens: none when
-/// something changed in memory first (that wins and is saved), or when they
-/// match what the app read.
+/// The settings to put in effect when the store opens: the saved ones, with
+/// every field the person changed since the app read them (`read` → `current`)
+/// kept from memory. `None` when that is what is already in effect.
 fn settings_to_adopt(
     saved: Option<Settings>,
+    read: &Settings,
     current: &Settings,
-    changed: bool,
 ) -> Option<Settings> {
-    if changed {
-        return None;
-    }
-    saved.filter(|saved| saved != current)
+    let saved = saved?;
+    // Field by field, so a change made before the store opened keeps the rest
+    // of what is saved. Destructured so a new field cannot be forgotten here.
+    let Settings {
+        theme,
+        language,
+        discord,
+        output_device,
+        normalize,
+        equalizer,
+        volume_boost,
+        auto_update,
+    } = current.clone();
+    let merged = Settings {
+        theme: if theme != read.theme {
+            theme
+        } else {
+            saved.theme
+        },
+        language: if language != read.language {
+            language
+        } else {
+            saved.language
+        },
+        discord: if discord != read.discord {
+            discord
+        } else {
+            saved.discord
+        },
+        output_device: if output_device != read.output_device {
+            output_device
+        } else {
+            saved.output_device
+        },
+        normalize: if normalize != read.normalize {
+            normalize
+        } else {
+            saved.normalize
+        },
+        equalizer: if equalizer != read.equalizer {
+            equalizer
+        } else {
+            saved.equalizer
+        },
+        volume_boost: if volume_boost != read.volume_boost {
+            volume_boost
+        } else {
+            saved.volume_boost
+        },
+        auto_update: if auto_update != read.auto_update {
+            auto_update
+        } else {
+            saved.auto_update
+        },
+    };
+    (merged != *current).then_some(merged)
 }
 
 impl<A: SoundCloudApi + 'static> Core<A> {
@@ -58,11 +110,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     }
 
     /// The app's early read can fail (a locked database) and fall back to the
-    /// defaults; once the store opens, what is saved wins, unless the person
-    /// already changed something (ADR 0017).
+    /// defaults; once the store opens, what is saved wins, except the fields
+    /// the person changed since (ADR 0017). Saving is left to the caller.
     pub(super) fn adopt_saved_settings(&mut self, saved: Option<Settings>) {
-        if let Some(saved) = settings_to_adopt(saved, &self.settings, self.settings_changed) {
-            self.apply_settings(saved);
+        if let Some(next) = settings_to_adopt(saved, &self.settings_read, &self.settings) {
+            self.apply_settings(next);
             self.emit(Event::Settings(self.settings.clone()));
         }
     }
@@ -173,21 +225,32 @@ mod tests {
     use crate::ThemeChoice;
 
     #[test]
-    fn the_saved_settings_win_unless_changed_first() {
-        let current = Settings::default();
+    fn the_saved_settings_win_except_what_changed_since() {
+        let read = Settings::default();
         let saved = Settings {
             theme: ThemeChoice::Dark,
+            discord: false,
             ..Settings::default()
         };
+        // Nothing changed: the saved ones, whole.
         assert_eq!(
-            settings_to_adopt(Some(saved.clone()), &current, false),
+            settings_to_adopt(Some(saved.clone()), &read, &read),
             Some(saved.clone())
         );
-        assert_eq!(settings_to_adopt(Some(saved), &current, true), None);
+        // The theme changed before the store opened: it stays, the rest is saved.
+        let changed = Settings {
+            theme: ThemeChoice::Light,
+            ..read.clone()
+        };
         assert_eq!(
-            settings_to_adopt(Some(current.clone()), &current, false),
-            None
+            settings_to_adopt(Some(saved.clone()), &read, &changed),
+            Some(Settings {
+                theme: ThemeChoice::Light,
+                ..saved.clone()
+            })
         );
-        assert_eq!(settings_to_adopt(None, &current, false), None);
+        // Already in effect, or nothing saved: nothing to do.
+        assert_eq!(settings_to_adopt(Some(read.clone()), &read, &read), None);
+        assert_eq!(settings_to_adopt(None, &read, &changed), None);
     }
 }
