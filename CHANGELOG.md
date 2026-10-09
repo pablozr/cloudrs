@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0-beta.2 · 2026-10-09
+
 - **Brazilian Portuguese:** pick the language in Settings (it changes at once); a first run follows
   your system's language. Track titles and comments stay as posted.
 - **Tray icon:** cloudrs sits in the notification area; click it to show the window, or use its

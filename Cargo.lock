@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "architecture"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "toml 0.9.12+spec-1.1.0",
 ]
@@ -1193,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "cloudrs"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "cloudrs-ui",
  "dirs 6.0.0",
@@ -1212,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "cloudrs-ui"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "gpui",
  "tracing",
@@ -7512,7 +7512,7 @@ dependencies = [
 
 [[package]]
 name = "sc-api"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "regex",
  "reqwest",
@@ -7527,7 +7527,7 @@ dependencies = [
 
 [[package]]
 name = "sc-audio"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "cpal",
  "ebur128",
@@ -7544,7 +7544,7 @@ dependencies = [
 
 [[package]]
 name = "sc-core"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "flume 0.11.1",
  "rusqlite",
@@ -7559,7 +7559,7 @@ dependencies = [
 
 [[package]]
 name = "sc-platform"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "base64 0.22.1",
  "discord-rich-presence",
@@ -7582,7 +7582,7 @@ dependencies = [
 
 [[package]]
 name = "sc-session"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 dependencies = [
  "flume 0.11.1",
  "iroh",
