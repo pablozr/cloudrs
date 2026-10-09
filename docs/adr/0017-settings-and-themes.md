@@ -66,7 +66,9 @@ file (`discord-off`) in the data folder. `sc-core` already owns the SQLite file 
 The core reads `load_settings` together with the session. If nothing changed in memory and
 the saved settings differ from `CoreConfig::settings`, it adopts them: only the changed audio
 commands and `Event::Settings`, with no save. If a `SetSettings` (or a device fallback) came
-first, memory wins and is saved as before. An empty or reset database keeps what the app read.
+first, memory wins and is saved as before; since a change carries the whole `Settings`, one
+made in that window (a few seconds at most, only when the early read failed) keeps the
+fallback for the other fields. An empty or reset database keeps what the app read.
 An adopted device that is gone goes through the ADR 0020 fallback once (`DeviceMissing`, back
 to the default, saving only `output_device = None`), with no loop, since the fallback does not
 resend `SetDevice`.

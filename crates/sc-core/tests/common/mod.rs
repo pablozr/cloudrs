@@ -506,6 +506,21 @@ pub fn config(root: &std::path::Path, token: Option<&str>) -> CoreConfig {
     }
 }
 
+/// Waits up to ten seconds for the first event of `core` matching `pick`.
+pub fn wait_on<T>(core: &CoreHandle, mut pick: impl FnMut(Event) -> Option<T>) -> T {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        let event = core
+            .events()
+            .recv_timeout(left)
+            .expect("expected event did not arrive");
+        if let Some(found) = pick(event) {
+            return found;
+        }
+    }
+}
+
 pub struct Harness {
     pub core: CoreHandle,
     pub api: FakeApi,
@@ -544,19 +559,8 @@ impl Harness {
     }
 
     /// Waits for the first event matching `pick`.
-    pub fn wait<T>(&self, mut pick: impl FnMut(Event) -> Option<T>) -> T {
-        let deadline = std::time::Instant::now() + Duration::from_secs(10);
-        loop {
-            let left = deadline.saturating_duration_since(std::time::Instant::now());
-            let event = self
-                .core
-                .events()
-                .recv_timeout(left)
-                .expect("expected event did not arrive");
-            if let Some(found) = pick(event) {
-                return found;
-            }
-        }
+    pub fn wait<T>(&self, pick: impl FnMut(Event) -> Option<T>) -> T {
+        wait_on(&self.core, pick)
     }
 
     pub fn search(&self) -> Vec<sc_core::TrackSummary> {

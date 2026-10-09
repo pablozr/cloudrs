@@ -361,9 +361,7 @@ fn wait_for_store(h: &Harness) {
 
 /// Starts a second core on the same folders, as a restart would.
 fn restart(h: &Harness) -> (CoreHandle, flume::Receiver<sc_audio::Command>) {
-    let (audio_tx, audio_commands) = flume::unbounded();
-    let (_audio_events, audio_rx) = flume::unbounded();
-    let core = sc_core::spawn(h.api.clone(), (audio_tx, audio_rx), config(&h.cache, None));
+    let (core, audio_commands, _audio_events) = start_with(h, sc_core::Settings::default());
     (core, audio_commands)
 }
 
@@ -695,10 +693,15 @@ fn settings_are_echoed_and_saved() {
 /// Saves `settings` through a first run of the core and stops it.
 fn save_settings_and_stop(h: &Harness, settings: sc_core::Settings) {
     wait_for_store(h);
-    h.core.send(Command::SetSettings(settings));
-    h.wait(|e| matches!(e, Event::Settings(_)).then_some(()));
+    set_settings(h, settings);
     h.core.send(Command::Shutdown);
     h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+}
+
+/// Stops a core started with [`start_with`] and waits until it has saved.
+fn stop(core: &CoreHandle) {
+    core.send(Command::Shutdown);
+    wait_on(core, |e| matches!(e, Event::Stopped).then_some(()));
 }
 
 /// Starts a second core that read `settings` early, keeping the audio event sender.
@@ -731,13 +734,10 @@ fn saved_sound() -> sc_core::Settings {
 }
 
 fn next_settings(core: &CoreHandle) -> sc_core::Settings {
-    loop {
-        match core.events().recv_timeout(Duration::from_secs(10)) {
-            Ok(Event::Settings(settings)) => return settings,
-            Ok(_) => {}
-            Err(_) => panic!("no Event::Settings"),
-        }
-    }
+    wait_on(core, |e| match e {
+        Event::Settings(settings) => Some(settings),
+        _ => None,
+    })
 }
 
 #[test]
@@ -761,20 +761,44 @@ fn the_saved_settings_win_over_a_failed_early_read() {
         sc_audio::Command::SetDevice(_) | sc_audio::Command::SetNormalize(_)
     )));
 
-    core.send(Command::Shutdown);
-    while !matches!(
-        core.events().recv_timeout(Duration::from_secs(10)),
-        Ok(Event::Stopped)
-    ) {}
+    stop(&core);
     assert_eq!(sc_core::read_settings(&h.cache.join("data")), saved_sound());
+}
+
+#[test]
+fn adopted_settings_come_before_the_restored_session() {
+    // Boost on and a session at 150%, read back by a core that started with
+    // the defaults (boost off): the saved boost must be adopted before the
+    // session restores, or the volume would be cut to 100%.
+    let h = Harness::new("adopt-before-restore");
+    wait_for_store(&h);
+    h.search();
+    set_settings(&h, saved_sound());
+    h.core.send(Command::SetVolume(1.5));
+    h.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(1),
+    });
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.audio_events
+        .send(sc_audio::Event::State(sc_audio::PlaybackState::Paused))
+        .unwrap();
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+
+    let (core, _audio, _events) = start_with(&h, sc_core::Settings::default());
+    let volume = wait_on(&core, |e| match e {
+        Event::Playback(p) if p.state == PlayState::Paused => Some(p.volume),
+        _ => None,
+    });
+    assert_eq!(volume, 1.5);
 }
 
 #[test]
 fn matching_settings_change_nothing_when_the_store_opens() {
     let h = Harness::new("adopt-matching");
     wait_for_store(&h);
-    h.core.send(Command::SetSettings(saved_sound()));
-    h.wait(|e| matches!(e, Event::Settings(_)).then_some(()));
+    set_settings(&h, saved_sound());
     h.search();
     h.core.send(Command::Play {
         list: TRACKS,
@@ -785,14 +809,11 @@ fn matching_settings_change_nothing_when_the_store_opens() {
     h.wait(|e| matches!(e, Event::Stopped).then_some(()));
 
     let (core, audio, _events) = start_with(&h, saved_sound());
-    loop {
-        match core.events().recv_timeout(Duration::from_secs(10)) {
-            Ok(Event::Queue(_)) => break,
-            Ok(Event::Settings(_)) => panic!("matching settings were echoed"),
-            Ok(_) => {}
-            Err(_) => panic!("the session was not restored"),
-        }
-    }
+    wait_on(&core, |e| match e {
+        Event::Queue(_) => Some(()),
+        Event::Settings(_) => panic!("matching settings were echoed"),
+        _ => None,
+    });
     assert!(!audio.try_iter().any(|c| matches!(
         c,
         sc_audio::Command::SetEqualizer(_)
@@ -824,13 +845,9 @@ fn an_adopted_device_that_is_gone_falls_back_once() {
     );
 
     events.send(sc_audio::Event::DeviceMissing).unwrap();
-    loop {
-        match core.events().recv_timeout(Duration::from_secs(10)) {
-            Ok(Event::Problem(Problem::OutputDeviceMissing)) => break,
-            Ok(_) => {}
-            Err(_) => panic!("no OutputDeviceMissing"),
-        }
-    }
+    wait_on(&core, |e| {
+        matches!(e, Event::Problem(Problem::OutputDeviceMissing)).then_some(())
+    });
     assert_eq!(next_settings(&core).output_device, None);
     assert!(
         !audio
@@ -838,11 +855,7 @@ fn an_adopted_device_that_is_gone_falls_back_once() {
             .any(|c| matches!(c, sc_audio::Command::SetDevice(_)))
     );
 
-    core.send(Command::Shutdown);
-    while !matches!(
-        core.events().recv_timeout(Duration::from_secs(10)),
-        Ok(Event::Stopped)
-    ) {}
+    stop(&core);
     let read = sc_core::read_settings(&h.cache.join("data"));
     assert_eq!(read.output_device, None);
     assert_eq!(read.theme, sc_core::ThemeChoice::Dark);
@@ -1028,8 +1041,8 @@ fn a_boosted_volume_comes_back_at_100_percent_without_boost() {
         .unwrap();
 
     // Shutdown writes synchronously. The boost is then turned off in the
-    // database, as if it had been turned off elsewhere, and the restarted core
-    // (which read the boost off) keeps it off.
+    // database, as if it had been turned off elsewhere; the restarted core
+    // adopts the saved settings, boost off, and so brings the volume back.
     h.core.send(Command::Shutdown);
     h.wait(|e| matches!(e, Event::Stopped).then_some(()));
     rusqlite::Connection::open(h.cache.join("data/cloudrs.db"))
