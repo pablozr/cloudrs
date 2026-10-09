@@ -1,6 +1,6 @@
 [package]
 name = "sc-platform"
-description = "cloudrs OS integration: keychain, sign-in window, Discord, media controls and updates"
+description = "cloudrs OS integration: keychain, sign-in window, Discord, media controls, tray icon and updates"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -25,6 +25,8 @@ serde_json = "1"
 # OS media controls: SMTC, MPRIS, Now Playing (ADR 0019). Pinned to master for current windows/zbus; zbus, so Linux needs no libdbus.
 souvlaki = { git = "https://github.com/Sinono3/souvlaki", rev = "93ff3d16700348f32fe174e985c828eff0587e3b", default-features = false, features = ["use_zbus"] }
 tao = "0.37"
+# The tray icon and its menu (ADR 0024). ksni on Linux: StatusNotifierItem over D-Bus on its own thread, so no GTK main loop.
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 tracing = "0.1"
 # Check that update URLs are https (ADR 0026).
 url = "2"
