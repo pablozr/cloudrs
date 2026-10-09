@@ -1,8 +1,11 @@
 name: Release
 
 # Builds the installers when a version tag is pushed (v0.1.0-beta.1...), or by
-# hand from the Actions tab. The files are attached to the run as artifacts;
-# publishing a GitHub Release with them is a separate, manual step.
+# hand from the Actions tab. The files are attached to the run as artifacts.
+# On a tag, the last job also drafts the GitHub Release with the installers
+# and latest.json (ADR 0026); publishing the draft is a manual step.
+# The update packages are signed with the minisign key in UPDATE_SIGNING_KEY;
+# without that secret the build still runs, but no latest.json is made.
 on:
   push:
     tags: ["v*"]
@@ -23,7 +26,7 @@ jobs:
           - os: ubuntu-22.04
             formats: deb,appimage
           - os: macos-latest
-            formats: dmg
+            formats: app,dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +43,39 @@ jobs:
         run: cargo install cargo-packager --locked --version 0.11.8
       - name: Build the installers
         working-directory: apps/cloudrs
-        run: cargo packager --release --formats ${{ matrix.formats }}
+        shell: bash
+        env:
+          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
+        run: |
+          # With a key, cargo-packager signs every output as <file>.sig (ADR 0026).
+          if [ -n "$UPDATE_KEY" ]; then
+            export CARGO_PACKAGER_SIGN_PRIVATE_KEY="$UPDATE_KEY"
+            export CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD="$UPDATE_KEY_PASSWORD"
+          fi
+          cargo packager --release --formats ${{ matrix.formats }}
+      # The signature names the file it signs (ADR 0026), so the macOS archive
+      # gets its final name, with the version and the architecture, before it is signed.
+      - name: Name and sign the macOS update archive
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$UPDATE_KEY" ]; then
+            echo "::warning::UPDATE_SIGNING_KEY is not set; the macOS update archive is not signed"
+            exit 0
+          fi
+          export CARGO_PACKAGER_SIGN_PRIVATE_KEY="$UPDATE_KEY"
+          export CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD="$UPDATE_KEY_PASSWORD"
+          VERSION=$(cargo pkgid -p cloudrs | sed -E 's/.*[#@]//')
+          ARCH=$(uname -m | sed 's/arm64/aarch64/')
+          SRC=$(ls target/packages/*.app.tar.gz | head -n 1)
+          DST="target/packages/cloudrs_${VERSION}_${ARCH}.app.tar.gz"
+          mv "$SRC" "$DST"
+          rm -f "$SRC.sig"
+          cargo packager signer sign "$DST"
       - uses: actions/upload-artifact@v4
         with:
           name: cloudrs-${{ matrix.os }}
@@ -49,6 +84,8 @@ jobs:
             target/packages/*.deb
             target/packages/*.AppImage
             target/packages/*.dmg
+            target/packages/*.sig
+            target/packages/*.app.tar.gz
           if-no-files-found: error
       # Code signing (ADR 0016): off until the SignPath Foundation accepts the
       # project and the SIGNPATH_* variables and secret are set on the repository.
@@ -73,10 +110,61 @@ jobs:
           # Each request waits for a manual approval on SignPath.
           wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: target/signed
+      # SignPath changes the file, so the update signature is made after it.
+      - name: Sign the update file
+        if: steps.unsigned.outcome == 'success'
+        shell: bash
+        env:
+          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$UPDATE_KEY" ]; then
+            echo "::warning::UPDATE_SIGNING_KEY is not set; the signed installer has no update signature"
+            exit 0
+          fi
+          export CARGO_PACKAGER_SIGN_PRIVATE_KEY="$UPDATE_KEY"
+          export CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD="$UPDATE_KEY_PASSWORD"
+          for f in target/signed/*.exe; do
+            cargo packager signer sign "$f"
+          done
       - name: Upload the signed installer
         if: steps.unsigned.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: cloudrs-windows-signed
-          path: target/signed/*.exe
+          path: |
+            target/signed/*.exe
+            target/signed/*.sig
           if-no-files-found: error
+
+  # A draft GitHub Release with the installers and latest.json (ADR 0026).
+  release:
+    name: draft the release
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Write latest.json and the release notes
+        run: bash .github/scripts/release-manifest.sh "$GITHUB_REF_NAME" dist
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mapfile -t files < release-files.txt
+          if [ -f latest.json ]; then
+            files+=(latest.json)
+          fi
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --clobber "${files[@]}"
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "cloudrs $VERSION" --notes-file notes.md "${files[@]}"
+          fi
