@@ -10,31 +10,61 @@ use super::{Core, Input};
 use crate::types::{ArtKey, Problem};
 use crate::{Event, Settings, artwork, store};
 
+/// The saved settings to take as the truth when the store opens: none when
+/// something changed in memory first (that wins and is saved), or when they
+/// match what the app read.
+fn settings_to_adopt(
+    saved: Option<Settings>,
+    current: &Settings,
+    changed: bool,
+) -> Option<Settings> {
+    if changed {
+        return None;
+    }
+    saved.filter(|saved| saved != current)
+}
+
 impl<A: SoundCloudApi + 'static> Core<A> {
     /// Keeps and saves the settings, then tells the UI what is now in effect.
     pub(super) fn set_settings(&mut self, settings: Settings) {
         if settings != self.settings {
-            let old = std::mem::replace(&mut self.settings, settings.clone());
-            if settings.output_device != old.output_device {
-                self.to_audio(sc_audio::Command::SetDevice(settings.output_device));
-            }
-            if settings.normalize != old.normalize {
-                self.to_audio(sc_audio::Command::SetNormalize(settings.normalize));
-            }
-            if settings.equalizer != old.equalizer {
-                self.to_audio(sc_audio::Command::SetEqualizer(settings.equalizer.gains()));
-            }
-            if settings.volume_boost != old.volume_boost {
-                self.to_audio(sc_audio::Command::SetVolumeBoost(settings.volume_boost));
-                // Above 100% only exists with the boost.
-                if !settings.volume_boost && self.playback.volume > 1.0 {
-                    self.set_volume(1.0);
-                }
-            }
+            self.apply_settings(settings);
             self.settings_changed = true;
             self.save_settings();
         }
         self.emit(Event::Settings(self.settings.clone()));
+    }
+
+    /// Puts the settings in effect: the audio gets only what differs. Neither
+    /// saves nor tells the UI.
+    fn apply_settings(&mut self, settings: Settings) {
+        let old = std::mem::replace(&mut self.settings, settings.clone());
+        if settings.output_device != old.output_device {
+            self.to_audio(sc_audio::Command::SetDevice(settings.output_device));
+        }
+        if settings.normalize != old.normalize {
+            self.to_audio(sc_audio::Command::SetNormalize(settings.normalize));
+        }
+        if settings.equalizer != old.equalizer {
+            self.to_audio(sc_audio::Command::SetEqualizer(settings.equalizer.gains()));
+        }
+        if settings.volume_boost != old.volume_boost {
+            self.to_audio(sc_audio::Command::SetVolumeBoost(settings.volume_boost));
+            // Above 100% only exists with the boost.
+            if !settings.volume_boost && self.playback.volume > 1.0 {
+                self.set_volume(1.0);
+            }
+        }
+    }
+
+    /// The app's early read can fail (a locked database) and fall back to the
+    /// defaults; once the store opens, what is saved wins, unless the person
+    /// already changed something (ADR 0017).
+    pub(super) fn adopt_saved_settings(&mut self, saved: Option<Settings>) {
+        if let Some(saved) = settings_to_adopt(saved, &self.settings, self.settings_changed) {
+            self.apply_settings(saved);
+            self.emit(Event::Settings(self.settings.clone()));
+        }
     }
 
     /// Writes the settings off the actor loop. Newer writes win. Without a
@@ -134,5 +164,30 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             self.emit(Event::Problem(Problem::CacheNotCleared));
         }
         self.emit(Event::CacheSize(remaining));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ThemeChoice;
+
+    #[test]
+    fn the_saved_settings_win_unless_changed_first() {
+        let current = Settings::default();
+        let saved = Settings {
+            theme: ThemeChoice::Dark,
+            ..Settings::default()
+        };
+        assert_eq!(
+            settings_to_adopt(Some(saved.clone()), &current, false),
+            Some(saved.clone())
+        );
+        assert_eq!(settings_to_adopt(Some(saved), &current, true), None);
+        assert_eq!(
+            settings_to_adopt(Some(current.clone()), &current, false),
+            None
+        );
+        assert_eq!(settings_to_adopt(None, &current, false), None);
     }
 }

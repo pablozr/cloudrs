@@ -24,7 +24,8 @@ file (`discord-off`) in the data folder. `sc-core` already owns the SQLite file 
    database on the calling thread and returns the settings, or the defaults when there are
    none or the file cannot be read (a damaged or newer file is left to the core, which resets
    it and reports `Problem::StorageReset`). It costs one SQLite open, about 1-3 ms against
-   the 300 ms start-up target, and means the first frame already has the right theme.
+   the 300 ms start-up target, and means the first frame already has the right theme. If that
+   read fails, the core adopts what is saved once it opens the store (see Refinements).
 4. **One command, one event.** `Command::SetSettings(Settings)` carries the whole struct; the
    UI is the only writer and sends the changed snapshot. The core always answers
    `Event::Settings(Settings)` with what is in effect, and the UI applies effects (theme,
@@ -60,8 +61,19 @@ file (`discord-off`) in the data folder. `sc-core` already owns the SQLite file 
    - **Keyboard shortcuts:** the list of keys, taken from `shell/shortcuts.rs`, in key-cap style;
    - the language picker is not drawn until a second language exists.
 
+## Refinements: the saved settings win once the store opens
+
+The core reads `load_settings` together with the session. If nothing changed in memory and
+the saved settings differ from `CoreConfig::settings`, it adopts them: only the changed audio
+commands and `Event::Settings`, with no save. If a `SetSettings` (or a device fallback) came
+first, memory wins and is saved as before. An empty or reset database keeps what the app read.
+An adopted device that is gone goes through the ADR 0020 fallback once (`DeviceMissing`, back
+to the default, saving only `output_device = None`), with no loop, since the fallback does not
+resend `SetDevice`.
+
 ## Consequences
 
 - A new setting is a field, a column and a line in the UI; the command and event do not change.
 - Every change rewrites the single row, which is tiny and rare.
-- Settings made before the database opened are written as soon as it does.
+- Settings made before the database opened are written as soon as it does; otherwise the saved
+  ones replace what the app read.

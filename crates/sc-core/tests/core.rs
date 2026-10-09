@@ -692,6 +692,162 @@ fn settings_are_echoed_and_saved() {
     assert_eq!(sc_core::read_settings(&h.cache.join("data")), sent);
 }
 
+/// Saves `settings` through a first run of the core and stops it.
+fn save_settings_and_stop(h: &Harness, settings: sc_core::Settings) {
+    wait_for_store(h);
+    h.core.send(Command::SetSettings(settings));
+    h.wait(|e| matches!(e, Event::Settings(_)).then_some(()));
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+}
+
+/// Starts a second core that read `settings` early, keeping the audio event sender.
+fn start_with(
+    h: &Harness,
+    settings: sc_core::Settings,
+) -> (
+    CoreHandle,
+    flume::Receiver<sc_audio::Command>,
+    flume::Sender<sc_audio::Event>,
+) {
+    let (audio_tx, audio_commands) = flume::unbounded();
+    let (audio_events, audio_rx) = flume::unbounded();
+    let config = sc_core::CoreConfig {
+        settings,
+        ..config(&h.cache, None)
+    };
+    let core = sc_core::spawn(h.api.clone(), (audio_tx, audio_rx), config);
+    (core, audio_commands, audio_events)
+}
+
+fn saved_sound() -> sc_core::Settings {
+    sc_core::Settings {
+        theme: sc_core::ThemeChoice::Dark,
+        discord: false,
+        equalizer: sc_core::EqPreset::Bass,
+        volume_boost: true,
+        ..sc_core::Settings::default()
+    }
+}
+
+fn next_settings(core: &CoreHandle) -> sc_core::Settings {
+    loop {
+        match core.events().recv_timeout(Duration::from_secs(10)) {
+            Ok(Event::Settings(settings)) => return settings,
+            Ok(_) => {}
+            Err(_) => panic!("no Event::Settings"),
+        }
+    }
+}
+
+#[test]
+fn the_saved_settings_win_over_a_failed_early_read() {
+    let h = Harness::new("adopt-saved");
+    save_settings_and_stop(&h, saved_sound());
+
+    let (core, audio, _events) = start_with(&h, sc_core::Settings::default());
+    assert_eq!(next_settings(&core), saved_sound());
+    let commands: Vec<_> = audio.try_iter().collect();
+    assert!(commands.iter().any(
+        |c| matches!(c, sc_audio::Command::SetEqualizer(g) if *g == sc_core::EqPreset::Bass.gains())
+    ));
+    assert!(
+        commands
+            .iter()
+            .any(|c| matches!(c, sc_audio::Command::SetVolumeBoost(true)))
+    );
+    assert!(!commands.iter().any(|c| matches!(
+        c,
+        sc_audio::Command::SetDevice(_) | sc_audio::Command::SetNormalize(_)
+    )));
+
+    core.send(Command::Shutdown);
+    while !matches!(
+        core.events().recv_timeout(Duration::from_secs(10)),
+        Ok(Event::Stopped)
+    ) {}
+    assert_eq!(sc_core::read_settings(&h.cache.join("data")), saved_sound());
+}
+
+#[test]
+fn matching_settings_change_nothing_when_the_store_opens() {
+    let h = Harness::new("adopt-matching");
+    wait_for_store(&h);
+    h.core.send(Command::SetSettings(saved_sound()));
+    h.wait(|e| matches!(e, Event::Settings(_)).then_some(()));
+    h.search();
+    h.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(1),
+    });
+    h.wait(|e| matches!(e, Event::NowPlaying(_)).then_some(()));
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+
+    let (core, audio, _events) = start_with(&h, saved_sound());
+    loop {
+        match core.events().recv_timeout(Duration::from_secs(10)) {
+            Ok(Event::Queue(_)) => break,
+            Ok(Event::Settings(_)) => panic!("matching settings were echoed"),
+            Ok(_) => {}
+            Err(_) => panic!("the session was not restored"),
+        }
+    }
+    assert!(!audio.try_iter().any(|c| matches!(
+        c,
+        sc_audio::Command::SetEqualizer(_)
+            | sc_audio::Command::SetVolumeBoost(_)
+            | sc_audio::Command::SetDevice(_)
+            | sc_audio::Command::SetNormalize(_)
+    )));
+}
+
+#[test]
+fn an_adopted_device_that_is_gone_falls_back_once() {
+    let h = Harness::new("adopt-device");
+    let saved = sc_core::Settings {
+        theme: sc_core::ThemeChoice::Dark,
+        output_device: Some("test:gone".into()),
+        ..sc_core::Settings::default()
+    };
+    save_settings_and_stop(&h, saved);
+
+    let (core, audio, events) = start_with(&h, sc_core::Settings::default());
+    assert_eq!(
+        next_settings(&core).output_device.as_deref(),
+        Some("test:gone")
+    );
+    assert!(
+        audio
+            .try_iter()
+            .any(|c| matches!(c, sc_audio::Command::SetDevice(Some(d)) if d == "test:gone"))
+    );
+
+    events.send(sc_audio::Event::DeviceMissing).unwrap();
+    loop {
+        match core.events().recv_timeout(Duration::from_secs(10)) {
+            Ok(Event::Problem(Problem::OutputDeviceMissing)) => break,
+            Ok(_) => {}
+            Err(_) => panic!("no OutputDeviceMissing"),
+        }
+    }
+    assert_eq!(next_settings(&core).output_device, None);
+    assert!(
+        !audio
+            .try_iter()
+            .any(|c| matches!(c, sc_audio::Command::SetDevice(_)))
+    );
+
+    core.send(Command::Shutdown);
+    while !matches!(
+        core.events().recv_timeout(Duration::from_secs(10)),
+        Ok(Event::Stopped)
+    ) {}
+    let read = sc_core::read_settings(&h.cache.join("data"));
+    assert_eq!(read.output_device, None);
+    assert_eq!(read.theme, sc_core::ThemeChoice::Dark);
+}
+
 fn choose_device(h: &Harness, device: Option<&str>, theme: sc_core::ThemeChoice) {
     h.core.send(Command::SetSettings(sc_core::Settings {
         theme,
@@ -871,22 +1027,23 @@ fn a_boosted_volume_comes_back_at_100_percent_without_boost() {
         .send(sc_audio::Event::State(sc_audio::PlaybackState::Paused))
         .unwrap();
 
-    // The write happens off the actor loop: restart until the latest has landed.
-    // The restarted core has the boost off.
+    // Shutdown writes synchronously. The boost is then turned off in the
+    // database, as if it had been turned off elsewhere, and the restarted core
+    // (which read the boost off) keeps it off.
+    h.core.send(Command::Shutdown);
+    h.wait(|e| matches!(e, Event::Stopped).then_some(()));
+    rusqlite::Connection::open(h.cache.join("data/cloudrs.db"))
+        .unwrap()
+        .execute("UPDATE settings SET volume_boost = 0", [])
+        .unwrap();
     let mut restored = None;
-    for _ in 0..30 {
-        let (core, audio) = restart(&h);
-        while let Ok(event) = core.events().recv_timeout(Duration::from_millis(300)) {
-            if let Event::Playback(p) = event
-                && p.state == PlayState::Paused
-            {
-                if p.position == Duration::from_secs(42) {
-                    restored = Some((p.volume, audio));
-                }
-                break;
-            }
-        }
-        if restored.is_some() {
+    let (core, audio) = restart(&h);
+    while let Ok(event) = core.events().recv_timeout(Duration::from_secs(5)) {
+        if let Event::Playback(p) = event
+            && p.state == PlayState::Paused
+        {
+            assert_eq!(p.position, Duration::from_secs(42));
+            restored = Some((p.volume, audio));
             break;
         }
     }

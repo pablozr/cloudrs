@@ -306,7 +306,9 @@ pub struct CoreConfig {
     /// How Jam peers reach each other: the internet for the app, this
     /// machine only for tests.
     pub jam_network: JamNetwork,
-    /// As read by [`read_settings`] at start.
+    /// As the app read them at start ([`read_settings`]). When the store opens,
+    /// the core takes the saved ones instead, unless a `SetSettings` came first
+    /// (ADR 0017).
     pub settings: Settings,
 }
 

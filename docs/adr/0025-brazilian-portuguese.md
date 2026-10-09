@@ -21,8 +21,8 @@ language is Brazilian Portuguese.
    `pt*` locale mapping to `PtBr` and anything else to English. A saved choice always wins. When
    the database cannot be read (`Err`: locked by another instance past the busy timeout, damaged,
    or newer), the app starts with the defaults (English), as before this ADR, not the system
-   language. If the read failed and the core later opens the store, the next settings change
-   saves the whole in-memory `Settings` over the saved ones (true since ADR 0017). `sys-locale`
+   language. If the read failed, the core adopts the saved settings when it opens the store, so a
+   later change no longer overwrites them (ADR 0017). `sys-locale`
    is already in the lock through `cosmic-text`, so no crate is added. Only the pure mapping
    (`language_for_locale`) is unit-tested, not the call into the OS.
 9. **Numbers follow the language.** `i18n::number::compact` gives "1,2 mil", "12 mil", "3,4 mi" in

@@ -8,7 +8,7 @@ use sc_api::SoundCloudApi;
 use super::{Core, Input};
 use crate::store::{self, Session, SessionTrack};
 use crate::types::{ArtKey, PlayState, Problem, TrackSummary};
-use crate::{Event, artwork, max_volume};
+use crate::{Event, Settings, artwork, max_volume};
 
 /// How long after the last volume change the session is saved.
 const VOLUME_SAVE_DELAY: Duration = Duration::from_secs(1);
@@ -24,10 +24,15 @@ pub(super) struct Store {
 
 pub(super) type SharedStore = Arc<Mutex<Store>>;
 
-/// An open store, the session it held, and whether a damaged file was reset.
-pub(super) type OpenedStore = (SharedStore, Option<Session>, bool);
+/// An open store, the session and settings it held, and whether a damaged file was reset.
+pub(super) struct OpenedStore {
+    pub(super) store: SharedStore,
+    pub(super) session: Option<Session>,
+    pub(super) settings: Option<Settings>,
+    pub(super) reset: bool,
+}
 
-/// Opens the database and loads the saved session. Runs on a blocking thread.
+/// Opens the database and loads the saved session and settings. Runs on a blocking thread.
 pub(super) fn open_store(dir: &std::path::Path) -> Option<OpenedStore> {
     if let Err(error) = std::fs::create_dir_all(dir) {
         tracing::warn!(%error, "no session database; continuing without saving");
@@ -44,15 +49,20 @@ pub(super) fn open_store(dir: &std::path::Path) -> Option<OpenedStore> {
         .inspect_err(|error| tracing::warn!(%error, "could not read the saved session"))
         .ok()
         .flatten();
-    Some((
-        Arc::new(Mutex::new(Store {
+    let settings = store::load_settings(&conn)
+        .inspect_err(|error| tracing::warn!(%error, "could not read the saved settings"))
+        .ok()
+        .flatten();
+    Some(OpenedStore {
+        store: Arc::new(Mutex::new(Store {
             conn,
             last_seq: 0,
             settings_seq: 0,
         })),
         session,
+        settings,
         reset,
-    ))
+    })
 }
 
 impl<A: SoundCloudApi + 'static> Core<A> {
@@ -195,15 +205,24 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.request_artwork(ArtKey::Track(id));
     }
 
-    /// The database opened (or not): keep it and restore the saved session.
+    /// The database opened (or not): keep it, take the saved settings unless
+    /// something changed first, and restore the saved session.
     pub(super) fn store_ready(&mut self, opened: Option<OpenedStore>) {
-        let Some((store, session, reset)) = opened else {
+        let Some(OpenedStore {
+            store,
+            session,
+            settings,
+            reset,
+        }) = opened
+        else {
             return;
         };
         self.store = Some(store);
         if self.settings_changed {
             self.save_settings();
         }
+        // Before `restore`, which clamps the volume with the boost setting.
+        self.adopt_saved_settings(settings);
         if reset {
             self.emit(Event::Problem(Problem::StorageReset));
         }
