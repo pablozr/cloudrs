@@ -23,8 +23,6 @@ pub(crate) struct SystemTray {
     tray: Option<Tray>,
     /// Reads what was chosen; dropping it stops it.
     _actions: Option<Task<()>>,
-    /// What the menu's toggle says now.
-    playing: bool,
 }
 
 impl SystemTray {
@@ -64,13 +62,8 @@ impl SystemTray {
         };
         match event {
             Event::NowPlaying(_) => tray.set_active(true),
-            Event::Playback(playback) => {
-                let playing = playback.state == PlayState::Playing;
-                if playing != self.playing {
-                    self.playing = playing;
-                    tray.set_playing(playing);
-                }
-            }
+            // `set_playing` only reaches the OS when play or pause flips.
+            Event::Playback(playback) => tray.set_playing(playback.state == PlayState::Playing),
             _ => {}
         }
     }
@@ -94,25 +87,10 @@ impl Shell {
                     cx.quit();
                 }
             }
-            TrayAction::TogglePlay | TrayAction::Previous | TrayAction::Next => {
-                if let Some(command) = command_for(action, self.models.current.is_some()) {
-                    self.send(command);
-                }
-            }
+            TrayAction::TogglePlay => self.send_playback(Command::TogglePlay),
+            TrayAction::Previous => self.send_playback(Command::Previous),
+            TrayAction::Next => self.send_playback(Command::Next),
         }
-    }
-}
-
-/// The command a menu item sends; playback needs a track, like the keys do.
-fn command_for(action: TrayAction, has_track: bool) -> Option<Command> {
-    if !has_track {
-        return None;
-    }
-    match action {
-        TrayAction::TogglePlay => Some(Command::TogglePlay),
-        TrayAction::Previous => Some(Command::Previous),
-        TrayAction::Next => Some(Command::Next),
-        TrayAction::Show | TrayAction::Quit => None,
     }
 }
 
@@ -156,25 +134,6 @@ fn decode_icon() -> Option<TrayImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn playback_items_need_a_track() {
-        for action in [
-            TrayAction::TogglePlay,
-            TrayAction::Previous,
-            TrayAction::Next,
-        ] {
-            assert_eq!(command_for(action, false), None, "{action:?}");
-            assert!(command_for(action, true).is_some(), "{action:?}");
-        }
-    }
-
-    #[test]
-    fn show_and_quit_are_not_commands() {
-        for action in [TrayAction::Show, TrayAction::Quit] {
-            assert_eq!(command_for(action, true), None, "{action:?}");
-        }
-    }
 
     #[test]
     fn the_icon_decodes_to_a_square_of_rgba() {

@@ -59,20 +59,21 @@ impl Shell {
     }
 
     fn on_mini_action(&mut self, action: MiniAction, cx: &mut Context<Self>) {
-        let has_track = self.models.current.is_some();
         match action {
-            MiniAction::TogglePlay if has_track => self.send(Command::TogglePlay),
-            MiniAction::Previous if has_track => self.send(Command::Previous),
-            MiniAction::Next if has_track => self.send(Command::Next),
-            MiniAction::TogglePlay | MiniAction::Previous | MiniAction::Next => {}
+            MiniAction::TogglePlay => self.send_playback(Command::TogglePlay),
+            MiniAction::Previous => self.send_playback(Command::Previous),
+            MiniAction::Next => self.send_playback(Command::Next),
             MiniAction::ShowMain => self.show_main_window(cx),
-            MiniAction::Closed => {
-                // The window is already going away.
-                self.mini = None;
-                self.mini_sub = None;
-                self.sync_mini_button(cx);
-            }
+            // The window is already going away.
+            MiniAction::Closed => self.forget_mini(cx),
         }
+    }
+
+    /// Drops a mini window that is gone, and turns its button off.
+    fn forget_mini(&mut self, cx: &mut Context<Self>) {
+        self.mini = None;
+        self.mini_sub = None;
+        self.sync_mini_button(cx);
     }
 
     /// Writes the window title again, after the language changed.
@@ -93,18 +94,19 @@ impl Shell {
             .ok();
     }
 
-    /// Gives the mini player what the player bar just got. A window that is
-    /// gone is forgotten.
+    /// Gives the mini player what the player bar just got, except the
+    /// waveform, which it does not draw. A window that is gone is forgotten.
     pub(crate) fn mini_event(&mut self, event: &Event, cx: &mut Context<Self>) {
         let Some(handle) = &self.mini else {
             return;
         };
+        if matches!(event, Event::Waveform { .. }) {
+            return;
+        }
         let artwork = &self.models.art.tracks;
         let updated = handle.update(cx, |mini, _, cx| mini.apply(event, artwork, cx));
         if updated.is_err() {
-            self.mini = None;
-            self.mini_sub = None;
-            self.sync_mini_button(cx);
+            self.forget_mini(cx);
         }
     }
 }

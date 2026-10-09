@@ -91,10 +91,16 @@ pub(super) fn shortcut_actions(root: Div, cx: &mut Context<Shell>) -> Div {
 }
 
 impl Shell {
-    fn on_toggle_play(&mut self, _: &TogglePlay, _: &mut Window, _: &mut Context<Self>) {
+    /// Sends a playback command (play or pause, previous, next) only while a
+    /// track is current, for the keys, the mini player and the tray alike.
+    pub(crate) fn send_playback(&self, command: Command) {
         if self.models.current.is_some() {
-            self.send(Command::TogglePlay);
+            self.send(command);
         }
+    }
+
+    fn on_toggle_play(&mut self, _: &TogglePlay, _: &mut Window, _: &mut Context<Self>) {
+        self.send_playback(Command::TogglePlay);
     }
 
     fn on_seek_back(&mut self, _: &SeekBack, _: &mut Window, cx: &mut Context<Self>) {
@@ -112,15 +118,11 @@ impl Shell {
     }
 
     fn on_previous(&mut self, _: &PreviousTrack, _: &mut Window, _: &mut Context<Self>) {
-        if self.models.current.is_some() {
-            self.send(Command::Previous);
-        }
+        self.send_playback(Command::Previous);
     }
 
     fn on_next(&mut self, _: &NextTrack, _: &mut Window, _: &mut Context<Self>) {
-        if self.models.current.is_some() {
-            self.send(Command::Next);
-        }
+        self.send_playback(Command::Next);
     }
 
     fn on_toggle_like(&mut self, _: &ToggleLike, _: &mut Window, cx: &mut Context<Self>) {
