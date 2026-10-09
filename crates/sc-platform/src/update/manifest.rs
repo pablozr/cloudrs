@@ -9,14 +9,17 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 
 use semver::Version;
-use serde::Deserialize;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
 use url::{Host, Url};
 
 use super::Install;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Manifest {
-    pub version: String,
+    /// SemVer, with an optional leading `v`.
+    #[serde(deserialize_with = "version_from_text")]
+    pub version: Version,
     pub platforms: HashMap<String, Entry>,
 }
 
@@ -32,22 +35,19 @@ pub(crate) struct Entry {
 
 /// Reads a manifest; the version must be SemVer.
 pub(crate) fn parse(bytes: &[u8]) -> Result<Manifest, String> {
-    let manifest: Manifest = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-    parse_version(&manifest.version)?;
-    Ok(manifest)
+    serde_json::from_slice(bytes).map_err(|e| e.to_string())
 }
 
-fn parse_version(text: &str) -> Result<Version, String> {
+fn version_from_text<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Version, D::Error> {
+    let text = String::deserialize(deserializer)?;
     let text = text.trim();
-    Version::parse(text.strip_prefix('v').unwrap_or(text)).map_err(|e| e.to_string())
+    Version::parse(text.strip_prefix('v').unwrap_or(text)).map_err(D::Error::custom)
 }
 
 /// The manifest's version when it is strictly newer than `current`; an equal
 /// or older one (a rollback) gives `None`.
 pub(crate) fn newer(manifest: &Manifest, current: &Version) -> Option<Version> {
-    parse_version(&manifest.version)
-        .ok()
-        .filter(|version| version > current)
+    (manifest.version > *current).then(|| manifest.version.clone())
 }
 
 /// `https`, or `http` only to this machine (the tests' local server).

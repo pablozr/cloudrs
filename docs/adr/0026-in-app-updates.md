@@ -80,7 +80,7 @@ A static `latest.json`, compatible with the format `cargo-packager-updater` read
 | Platform | How it is detected | Install |
 |---|---|---|
 | Windows | `uninstall.exe` next to the executable (the NSIS installer writes it) | run the installer: `/P /R /NS` to relaunch, `/S /NS` to stay closed. In both modes it ends a running `cloudrs.exe`. No PowerShell, and the app does not `exit` by itself |
-| Linux AppImage | `APPIMAGE` is set and the file exists | the verified file is swapped over the AppImage, with its permissions, right after the download (a rename in the same folder); relaunch runs the new file |
+| Linux AppImage | `APPIMAGE` is set, the file exists and its folder is writable | the verified file is swapped over the AppImage, with its permissions, right after the download (a rename in the same folder); relaunch runs the new file |
 | macOS | the executable lives in `X.app/Contents/MacOS` and the folder holding `X.app` is writable | unpack the `.app.tar.gz` next to the bundle, rename the old one to `.old`, move the new one in, delete `.old`; the rename is undone on failure |
 | Anything else (`.deb`, a read-only folder) | none of the above | only a notice with a link to the release page |
 

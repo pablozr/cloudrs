@@ -28,6 +28,9 @@ jobs:
           - os: macos-latest
             formats: app,dmg
     runs-on: ${{ matrix.os }}
+    env:
+      UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+      UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -44,12 +47,11 @@ jobs:
       - name: Build the installers
         working-directory: apps/cloudrs
         shell: bash
-        env:
-          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
-          UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
         run: |
           # With a key, cargo-packager signs every output as <file>.sig (ADR 0026).
-          if [ -n "$UPDATE_KEY" ]; then
+          # Not on macOS: the signature names the file, and the update archive
+          # is signed once, under its final name, in the next step.
+          if [ -n "$UPDATE_KEY" ] && [ "$RUNNER_OS" != macOS ]; then
             export CARGO_PACKAGER_SIGN_PRIVATE_KEY="$UPDATE_KEY"
             export CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD="$UPDATE_KEY_PASSWORD"
           fi
@@ -59,9 +61,6 @@ jobs:
       - name: Name and sign the macOS update archive
         if: runner.os == 'macOS'
         shell: bash
-        env:
-          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
-          UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
         run: |
           if [ -z "$UPDATE_KEY" ]; then
             echo "::warning::UPDATE_SIGNING_KEY is not set; the macOS update archive is not signed"
@@ -74,7 +73,6 @@ jobs:
           SRC=$(ls target/packages/*.app.tar.gz | head -n 1)
           DST="target/packages/cloudrs_${VERSION}_${ARCH}.app.tar.gz"
           mv "$SRC" "$DST"
-          rm -f "$SRC.sig"
           cargo packager signer sign "$DST"
       - uses: actions/upload-artifact@v4
         with:
@@ -114,9 +112,6 @@ jobs:
       - name: Sign the update file
         if: steps.unsigned.outcome == 'success'
         shell: bash
-        env:
-          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
-          UPDATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
         run: |
           if [ -z "$UPDATE_KEY" ]; then
             echo "::warning::UPDATE_SIGNING_KEY is not set; the signed installer has no update signature"
@@ -147,8 +142,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      # Not cloudrs-windows-unsigned: only the files to publish.
       - uses: actions/download-artifact@v4
         with:
+          pattern: cloudrs-{windows-latest,windows-signed,ubuntu-22.04,macos-latest}
           path: dist
       - name: Write latest.json and the release notes
         run: bash .github/scripts/release-manifest.sh "$GITHUB_REF_NAME" dist

@@ -10,12 +10,37 @@ use super::{Install, Prepared};
 /// The NSIS installer's switches: `/P` passive, `/S` silent, `/R` relaunch
 /// the app when done, `/NS` leave the shortcuts alone. Either way it ends a
 /// running `cloudrs.exe`.
-pub(crate) fn nsis_args(relaunch: bool) -> &'static [&'static str] {
+fn nsis_args(relaunch: bool) -> &'static [&'static str] {
     if relaunch {
         &["/P", "/R", "/NS"]
     } else {
         &["/S", "/NS"]
     }
+}
+
+/// Where a package is written while it downloads, and where it ends up. An
+/// AppImage is swapped over the running file, so it is staged in its folder;
+/// the other installs keep the package in the download folder.
+pub(super) fn staging(install: &Install, download_dir: &Path, name: &str) -> (PathBuf, PathBuf) {
+    match install {
+        Install::AppImage(image) => (image.with_file_name(format!("{name}.part")), image.clone()),
+        _ => (
+            download_dir.join(format!("{name}.part")),
+            download_dir.join(name),
+        ),
+    }
+}
+
+/// Puts a verified `.part` where it belongs. For an AppImage that is over the
+/// running file, with its permissions, which is the whole install.
+pub(super) fn finish(install: &Install, part: &Path, target: &Path) -> Result<(), String> {
+    if matches!(install, Install::AppImage(_)) {
+        let permissions = std::fs::metadata(target)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        std::fs::set_permissions(part, permissions).map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(part, target).map_err(|e| e.to_string())
 }
 
 impl Prepared {
@@ -120,7 +145,9 @@ pub(super) fn detect() -> Install {
     {
         let _ = exe;
         match std::env::var_os("APPIMAGE").map(PathBuf::from) {
-            Some(path) if path.is_file() => Install::AppImage(path),
+            Some(path) if path.is_file() && path.parent().is_some_and(is_writable) => {
+                Install::AppImage(path)
+            }
             _ => Install::Manual,
         }
     }
@@ -148,7 +175,7 @@ fn app_bundle(exe: &Path) -> Option<PathBuf> {
 }
 
 /// Whether a file can be created in `dir`, tried for real.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn is_writable(dir: &Path) -> bool {
     let probe = dir.join(".cloudrs-write-test");
     let created = std::fs::OpenOptions::new()

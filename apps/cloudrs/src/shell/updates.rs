@@ -8,28 +8,18 @@ use std::time::SystemTime;
 
 use cloudrs_ui::components::ToastKind;
 use gpui::{Context, Subscription, Task};
-use sc_platform::update::{self, Config, Prepared, Progress};
+use sc_platform::update::{self, Config, Progress};
 
 use super::{Shell, ToastAction};
 use crate::i18n::update as t;
 
 /// Where the update stands, for Settings.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum UpdateState {
     Idle,
     Checking,
-    UpToDate,
-    /// A newer version this copy cannot install itself (a `.deb`).
-    Manual {
-        version: String,
-    },
-    Downloading {
-        version: String,
-        percent: u8,
-    },
-    /// Downloaded and verified; installs on restart or quit.
-    Ready(Prepared),
-    Failed,
+    /// The last thing the check reported; `Ready` waits for a restart or quit.
+    Reported(Progress),
 }
 
 pub(crate) struct Updates {
@@ -66,44 +56,21 @@ impl Updates {
     }
 }
 
-/// What a report changes: the new state, and a toast when one is called for.
-/// An automatic check only speaks up when there is something to install.
-fn settle(
-    progress: Progress,
-    manual: bool,
-) -> (
-    UpdateState,
-    Option<(ToastKind, String, Option<ToastAction>)>,
-) {
+/// The toast a report calls for, if any. An automatic check only speaks up
+/// when there is something to install.
+fn notice(progress: &Progress, manual: bool) -> Option<(ToastKind, String, Option<ToastAction>)> {
     match progress {
-        Progress::UpToDate => (
-            UpdateState::UpToDate,
-            manual.then(|| (ToastKind::Info, t::up_to_date().to_owned(), None)),
-        ),
+        Progress::UpToDate => manual.then(|| (ToastKind::Info, t::up_to_date().to_owned(), None)),
         Progress::Available { version } => {
-            let notice = manual.then(|| (ToastKind::Info, t::available(&version), None));
-            (UpdateState::Manual { version }, notice)
+            manual.then(|| (ToastKind::Info, t::available(version), None))
         }
-        Progress::Downloading { version, percent } => {
-            (UpdateState::Downloading { version, percent }, None)
-        }
-        Progress::Ready(prepared) => {
-            let notice = (
-                ToastKind::Info,
-                t::ready(&prepared.version),
-                Some(ToastAction::RestartToUpdate),
-            );
-            (UpdateState::Ready(prepared), Some(notice))
-        }
-        Progress::Failed(failure) => {
-            if !manual {
-                tracing::warn!(?failure, "the automatic update check failed");
-            }
-            (
-                UpdateState::Failed,
-                manual.then(|| (ToastKind::Error, t::failed().to_owned(), None)),
-            )
-        }
+        Progress::Downloading { .. } => None,
+        Progress::Ready(prepared) => Some((
+            ToastKind::Info,
+            t::ready(&prepared.version),
+            Some(ToastAction::RestartToUpdate),
+        )),
+        Progress::Failed => manual.then(|| (ToastKind::Error, t::failed().to_owned(), None)),
     }
 }
 
@@ -113,14 +80,16 @@ pub(crate) fn status_text(state: &UpdateState, checked_at: Option<String>) -> St
     match state {
         UpdateState::Idle => t::never_checked().to_owned(),
         UpdateState::Checking => t::checking().to_owned(),
-        UpdateState::UpToDate => match checked_at {
-            Some(time) => t::checked_at(time),
-            None => t::up_to_date().to_owned(),
+        UpdateState::Reported(progress) => match progress {
+            Progress::UpToDate => match checked_at {
+                Some(time) => t::checked_at(time),
+                None => t::up_to_date().to_owned(),
+            },
+            Progress::Available { version } => t::available(version),
+            Progress::Downloading { version, percent } => t::downloading(version, percent),
+            Progress::Ready(prepared) => t::ready(&prepared.version),
+            Progress::Failed => t::failed().to_owned(),
         },
-        UpdateState::Manual { version } => t::available(version),
-        UpdateState::Downloading { version, percent } => t::downloading(version, percent),
-        UpdateState::Ready(prepared) => t::ready(&prepared.version),
-        UpdateState::Failed => t::failed().to_owned(),
     }
 }
 
@@ -167,13 +136,11 @@ impl Shell {
                 self.updates.manual |= manual;
                 return;
             }
-            UpdateState::Downloading { .. } => return,
+            UpdateState::Reported(Progress::Downloading { .. }) => return,
             // The download waits for the restart; a new check would clear it.
-            UpdateState::Ready(prepared) => {
-                if manual {
-                    let text = t::ready(&prepared.version);
-                    let action = Some(ToastAction::RestartToUpdate);
-                    self.show_toast_action(ToastKind::Info, text, action, cx);
+            UpdateState::Reported(ready @ Progress::Ready(_)) => {
+                if manual && let Some((kind, text, action)) = notice(ready, true) {
+                    self.show_toast_action(kind, text, action, cx);
                 }
                 return;
             }
@@ -203,9 +170,9 @@ impl Shell {
     }
 
     fn on_update_progress(&mut self, progress: Progress, cx: &mut Context<Self>) {
-        let (state, notice) = settle(progress, self.updates.manual);
-        self.updates.state = state;
-        if let Some((kind, text, action)) = notice {
+        let toast = notice(&progress, self.updates.manual);
+        self.updates.state = UpdateState::Reported(progress);
+        if let Some((kind, text, action)) = toast {
             self.show_toast_action(kind, text, action, cx);
         }
         cx.notify();
@@ -227,7 +194,7 @@ impl Shell {
         if !relaunch && !self.models.settings.auto_update {
             return;
         }
-        if let UpdateState::Ready(prepared) = &self.updates.state
+        if let UpdateState::Reported(Progress::Ready(prepared)) = &self.updates.state
             && let Err(error) = prepared.apply(relaunch)
         {
             tracing::error!(%error, "could not install the update");
@@ -238,21 +205,20 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sc_platform::update::Failure;
 
     fn states() -> Vec<UpdateState> {
         vec![
             UpdateState::Idle,
             UpdateState::Checking,
-            UpdateState::UpToDate,
-            UpdateState::Manual {
+            UpdateState::Reported(Progress::UpToDate),
+            UpdateState::Reported(Progress::Available {
                 version: "1.2.3".into(),
-            },
-            UpdateState::Downloading {
+            }),
+            UpdateState::Reported(Progress::Downloading {
                 version: "1.2.3".into(),
                 percent: 40,
-            },
-            UpdateState::Failed,
+            }),
+            UpdateState::Reported(Progress::Failed),
         ]
     }
 
@@ -269,15 +235,16 @@ mod tests {
 
     #[test]
     fn the_texts_name_the_version_and_the_time() {
-        let downloading = UpdateState::Downloading {
+        let downloading = UpdateState::Reported(Progress::Downloading {
             version: "1.2.3".into(),
             percent: 40,
-        };
+        });
         assert_eq!(
             status_text(&downloading, None),
             "Downloading 1.2.3\u{2026} 40%"
         );
-        assert!(status_text(&UpdateState::UpToDate, Some("14:05".into())).contains("14:05"));
+        let up_to_date = UpdateState::Reported(Progress::UpToDate);
+        assert!(status_text(&up_to_date, Some("14:05".into())).contains("14:05"));
     }
 
     #[test]
@@ -287,10 +254,9 @@ mod tests {
             Progress::Available {
                 version: "1.2.3".into(),
             },
-            Progress::Failed(Failure::Check),
-            Progress::Failed(Failure::Download),
+            Progress::Failed,
         ] {
-            assert!(settle(progress, false).1.is_none());
+            assert!(notice(&progress, false).is_none());
         }
     }
 
@@ -301,9 +267,9 @@ mod tests {
             Progress::Available {
                 version: "1.2.3".into(),
             },
-            Progress::Failed(Failure::Check),
+            Progress::Failed,
         ] {
-            assert!(settle(progress, true).1.is_some());
+            assert!(notice(&progress, true).is_some());
         }
     }
 
@@ -313,15 +279,6 @@ mod tests {
             version: "1.2.3".into(),
             percent: 5,
         };
-        let (state, notice) = settle(progress, true);
-        assert!(matches!(state, UpdateState::Downloading { percent: 5, .. }));
-        assert!(notice.is_none());
-    }
-
-    #[test]
-    fn a_failure_in_the_background_is_not_a_toast_but_is_a_state() {
-        let (state, notice) = settle(Progress::Failed(Failure::Download), false);
-        assert_eq!(state, UpdateState::Failed);
-        assert!(notice.is_none());
+        assert!(notice(&progress, true).is_none());
     }
 }

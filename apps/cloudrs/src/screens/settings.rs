@@ -8,10 +8,11 @@ use cloudrs_ui::components::{ButtonKind, button, pill};
 use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, FontWeight, div};
-use sc_core::{Command, EqPreset, ThemeChoice};
+use sc_core::{Command, EqPreset, Settings, ThemeChoice};
+use sc_platform::update::Progress;
 
 use super::account::muted;
-use crate::i18n::{discord as d, settings as t, update as u};
+use crate::i18n::{app, discord as d, settings as t, update as u};
 use crate::shell::updates::{UpdateState, local_time, status_text};
 use crate::shell::{Shell, shortcuts};
 
@@ -75,7 +76,6 @@ impl Shell {
     /// System default, then one pill per output device. The core lists the
     /// devices when the screen opens; a skeleton shows until it answers.
     fn output_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let c = theme.colors;
         let selected = self.models.settings.output_device.as_ref();
         let default = pill(
             theme,
@@ -97,13 +97,7 @@ impl Shell {
             .child(default);
         match &self.models.output_devices {
             None => {
-                row = row.child(
-                    div()
-                        .h(size::SKELETON_TITLE_HEIGHT)
-                        .w(size::SKELETON_ARTIST_WIDTH)
-                        .rounded(radius::S)
-                        .bg(c.surface_hover),
-                );
+                row = row.child(skeleton_line(theme));
             }
             Some(devices) if devices.is_empty() => {
                 row = row.child(muted(theme, t::output_none())).child(
@@ -148,23 +142,20 @@ impl Shell {
             settings.equalizer,
             settings.volume_boost,
         );
-        let row = || div().flex().flex_wrap().gap(space::S2).pt(space::S1);
-        let on_off = |id: &'static str, label: &'static str, selected: bool, ix: usize| {
-            pill(theme, (id, ix), label, selected)
-                .tab_index(0)
-                .aria_label(label)
-        };
-        let normalize_row = row()
-            .child(
-                on_off("normalize", d::on(), normalize, 0).on_click(cx.listener(
-                    |this, _, _, _| this.change_settings(|settings| settings.normalize = true),
-                )),
-            )
-            .child(
-                on_off("normalize", d::off(), !normalize, 1).on_click(cx.listener(
-                    |this, _, _, _| this.change_settings(|settings| settings.normalize = false),
-                )),
-            );
+        let normalize_row = on_off_row(
+            theme,
+            "normalize",
+            normalize,
+            |settings, on| settings.normalize = on,
+            cx,
+        );
+        let boost_row = on_off_row(
+            theme,
+            "boost",
+            boost,
+            |settings, on| settings.volume_boost = on,
+            cx,
+        );
         let presets = EqPreset::ALL.into_iter().enumerate().map(|(ix, value)| {
             let label = preset_label(value);
             pill(theme, ("equalizer", ix), label, preset == value)
@@ -174,23 +165,19 @@ impl Shell {
                     this.change_settings(|settings| settings.equalizer = value);
                 }))
         });
-        let boost_row = row()
-            .child(
-                on_off("boost", d::on(), boost, 0).on_click(cx.listener(|this, _, _, _| {
-                    this.change_settings(|settings| settings.volume_boost = true);
-                })),
-            )
-            .child(
-                on_off("boost", d::off(), !boost, 1).on_click(cx.listener(|this, _, _, _| {
-                    this.change_settings(|settings| settings.volume_boost = false);
-                })),
-            );
         section(theme, t::sound(), t::sound_hint())
             .child(sub_title(theme, t::normalize()))
             .child(muted(theme, t::normalize_hint()))
             .child(normalize_row)
             .child(sub_title(theme, t::equalizer()))
-            .child(row().children(presets))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(space::S2)
+                    .pt(space::S1)
+                    .children(presets),
+            )
             .child(sub_title(theme, t::volume_boost()))
             .child(muted(theme, t::volume_boost_hint()))
             .child(boost_row)
@@ -201,25 +188,14 @@ impl Shell {
         if !self.discord.available() {
             return None;
         }
-        let on = self.models.settings.discord;
-        let choice = |ix: usize, label: &'static str, selected: bool| {
-            pill(theme, ("discord", ix), label, selected)
-                .tab_index(0)
-                .aria_label(label)
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.change_settings(|settings| settings.discord = ix == 0);
-                }))
-        };
-        Some(
-            section(theme, d::setting(), d::setting_hint()).child(
-                div()
-                    .flex()
-                    .gap(space::S2)
-                    .pt(space::S1)
-                    .child(choice(0, d::on(), on))
-                    .child(choice(1, d::off(), !on)),
-            ),
-        )
+        let row = on_off_row(
+            theme,
+            "discord",
+            self.models.settings.discord,
+            |settings, on| settings.discord = on,
+            cx,
+        );
+        Some(section(theme, d::setting(), d::setting_hint()).child(row))
     }
 
     /// The version, how the last check went, the button for the state, and
@@ -235,20 +211,23 @@ impl Shell {
             return section.child(muted(theme, u::unavailable()));
         }
 
-        let state = self.updates.state.clone();
-        let checked_at = self.updates.last_check.and_then(local_time);
-        let status = match &state {
-            UpdateState::Checking => div()
-                .h(size::SKELETON_TITLE_HEIGHT)
-                .w(size::SKELETON_ARTIST_WIDTH)
-                .rounded(radius::S)
-                .bg(c.surface_hover)
-                .into_any_element(),
-            _ => theme
-                .text(div(), typography::BODY)
-                .text_color(c.text)
-                .child(status_text(&state, checked_at))
-                .into_any_element(),
+        let state = &self.updates.state;
+        let status = match state {
+            UpdateState::Checking => skeleton_line(theme).into_any_element(),
+            _ => {
+                // The time zone lookup is only worth it when the line shows it.
+                let checked_at = match state {
+                    UpdateState::Reported(Progress::UpToDate) => {
+                        self.updates.last_check.and_then(local_time)
+                    }
+                    _ => None,
+                };
+                theme
+                    .text(div(), typography::BODY)
+                    .text_color(c.text)
+                    .child(status_text(state, checked_at))
+                    .into_any_element()
+            }
         };
         let check = |id: &'static str, label: &'static str, cx: &mut Context<Self>| {
             button(theme, id, label, ButtonKind::Secondary)
@@ -256,12 +235,14 @@ impl Shell {
                 .on_click(cx.listener(|this, _, _, cx| this.check_for_updates(true, cx)))
                 .into_any_element()
         };
-        let action = match &state {
-            UpdateState::Idle | UpdateState::UpToDate => {
+        let action = match state {
+            UpdateState::Idle | UpdateState::Reported(Progress::UpToDate) => {
                 Some(check("update-check", u::check_now(), cx))
             }
-            UpdateState::Failed => Some(check("update-retry", crate::i18n::app::try_again(), cx)),
-            UpdateState::Manual { .. } => Some(
+            UpdateState::Reported(Progress::Failed) => {
+                Some(check("update-retry", app::try_again(), cx))
+            }
+            UpdateState::Reported(Progress::Available { .. }) => Some(
                 button(
                     theme,
                     "update-download",
@@ -270,28 +251,26 @@ impl Shell {
                 )
                 .aria_label(u::download())
                 .on_click(cx.listener(|_, _, _, cx| {
-                    cx.open_url(sc_platform::update::RELEASES_PAGE);
+                    cx.open_url(&sc_platform::update::releases_page());
                 }))
                 .into_any_element(),
             ),
-            UpdateState::Ready(_) => Some(
+            UpdateState::Reported(Progress::Ready(_)) => Some(
                 button(theme, "update-restart", u::restart(), ButtonKind::Primary)
                     .aria_label(u::restart())
                     .on_click(cx.listener(|this, _, _, cx| this.restart_to_update(cx)))
                     .into_any_element(),
             ),
-            UpdateState::Checking | UpdateState::Downloading { .. } => None,
+            UpdateState::Checking | UpdateState::Reported(Progress::Downloading { .. }) => None,
         };
 
-        let on = self.models.settings.auto_update;
-        let choice = |ix: usize, label: &'static str, selected: bool| {
-            pill(theme, ("auto-update", ix), label, selected)
-                .tab_index(0)
-                .aria_label(label)
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.change_settings(|settings| settings.auto_update = ix == 0);
-                }))
-        };
+        let auto_update = on_off_row(
+            theme,
+            "auto-update",
+            self.models.settings.auto_update,
+            |settings, on| settings.auto_update = on,
+            cx,
+        );
         section
             .child(
                 div()
@@ -303,13 +282,7 @@ impl Shell {
                     .children(action),
             )
             .child(sub_title(theme, u::automatic()))
-            .child(
-                div()
-                    .flex()
-                    .gap(space::S2)
-                    .child(choice(0, d::on(), on))
-                    .child(choice(1, d::off(), !on)),
-            )
+            .child(auto_update)
     }
 
     /// The size of the artwork cache and "Clear cache".
@@ -321,12 +294,7 @@ impl Shell {
                 .text_color(c.text)
                 .child(t::cache_size(megabytes(bytes)))
                 .into_any_element(),
-            None => div()
-                .h(size::SKELETON_TITLE_HEIGHT)
-                .w(size::SKELETON_ARTIST_WIDTH)
-                .rounded(radius::S)
-                .bg(c.surface_hover)
-                .into_any_element(),
+            None => skeleton_line(theme).into_any_element(),
         };
         section(theme, t::cache(), t::cache_hint()).child(
             div()
@@ -350,6 +318,40 @@ impl Shell {
 }
 
 /// The name of a preset, for its pill.
+/// A one-line placeholder while a value loads.
+fn skeleton_line(theme: &Theme) -> Div {
+    div()
+        .h(size::SKELETON_TITLE_HEIGHT)
+        .w(size::SKELETON_ARTIST_WIDTH)
+        .rounded(radius::S)
+        .bg(theme.colors.surface_hover)
+}
+
+/// An On / Off pair of pills for a boolean setting; `set` writes the choice.
+fn on_off_row(
+    theme: &Theme,
+    id: &'static str,
+    current: bool,
+    set: fn(&mut Settings, bool),
+    cx: &mut Context<Shell>,
+) -> Div {
+    let choice = |ix: usize, label: &'static str, value: bool, cx: &mut Context<Shell>| {
+        pill(theme, (id, ix), label, current == value)
+            .tab_index(0)
+            .aria_label(label)
+            .on_click(cx.listener(move |this, _, _, _| {
+                this.change_settings(|settings| set(settings, value));
+            }))
+    };
+    div()
+        .flex()
+        .flex_wrap()
+        .gap(space::S2)
+        .pt(space::S1)
+        .child(choice(0, app::on(), true, cx))
+        .child(choice(1, app::off(), false, cx))
+}
+
 fn preset_label(preset: EqPreset) -> &'static str {
     match preset {
         EqPreset::Off => t::eq_off(),

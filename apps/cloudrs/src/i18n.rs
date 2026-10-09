@@ -78,6 +78,8 @@ pub mod app {
         brand_rs { en: "rs" }
         try_again { en: "Try again" }
         undo { en: "Undo" }
+        on { en: "On" }
+        off { en: "Off" }
         switch_to_light { en: "Light theme" }
         switch_to_dark { en: "Dark theme" }
         minimize { en: "Minimize" }
@@ -600,8 +602,6 @@ pub mod discord {
         paused { en: "Paused" }
         setting { en: "Show what I play on Discord" }
         setting_hint { en: "Your Discord profile shows the track, its cover and a link to it. Nothing goes through a server of ours." }
-        on { en: "On" }
-        off { en: "Off" }
     }
     formats! {
         by(artist) { en: "by {artist}" }

@@ -582,18 +582,7 @@ impl Shell {
         text: impl Into<SharedString>,
         cx: &mut Context<Self>,
     ) {
-        self.show_toast_undo(kind, text, None, cx);
-    }
-
-    /// A toast with "Undo", which sends `undo` and closes it.
-    pub(crate) fn show_toast_undo(
-        &mut self,
-        kind: ToastKind,
-        text: impl Into<SharedString>,
-        undo: Option<Command>,
-        cx: &mut Context<Self>,
-    ) {
-        self.show_toast_action(kind, text, undo.map(ToastAction::Undo), cx);
+        self.show_toast_action(kind, text, None, cx);
     }
 
     /// A toast with a button on the right.

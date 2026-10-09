@@ -19,7 +19,7 @@ use sc_core::{
     Command, ListItems, NewPlaylist, PlaylistChange, PlaylistId, PlaylistSummary, TrackId,
 };
 
-use super::Shell;
+use super::{Shell, ToastAction};
 use crate::i18n::playlists as t;
 use crate::models::ListId;
 use crate::nav::Route;
@@ -338,7 +338,7 @@ impl Shell {
         {
             self.go_back(cx);
         }
-        self.show_toast_undo(ToastKind::Info, text, undo, cx);
+        self.show_toast_action(ToastKind::Info, text, undo.map(ToastAction::Undo), cx);
     }
 }
 

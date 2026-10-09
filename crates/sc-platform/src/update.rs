@@ -17,11 +17,12 @@ use std::time::{Duration, SystemTime};
 use semver::Version;
 use url::Url;
 
-/// The small file the release workflow publishes with every release (ADR 0026).
-pub const MANIFEST_URL: &str =
-    "https://github.com/pablozr/cloudrs/releases/latest/download/latest.json";
+const REPO: &str = "https://github.com/pablozr/cloudrs";
+
 /// Where a build that cannot update itself sends the person.
-pub const RELEASES_PAGE: &str = "https://github.com/pablozr/cloudrs/releases/latest";
+pub fn releases_page() -> String {
+    format!("{REPO}/releases/latest")
+}
 
 /// The public half of the update signing key: the base64 line of
 /// `update.key.pub`, made by `cargo packager signer generate`. Empty keeps the
@@ -32,7 +33,7 @@ const PUBLIC_KEY: &str = "";
 /// first frame or the first track.
 pub const START_DELAY: Duration = Duration::from_secs(10);
 /// How long to wait between two checks.
-pub const INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// How often the app asks [`due`]; a laptop that slept catches up within it.
 pub const TICK: Duration = Duration::from_secs(60 * 60);
 
@@ -58,7 +59,8 @@ pub struct Config {
     /// The base64 line of the public key.
     pub public_key: String,
     pub user_agent: String,
-    /// Where downloads wait for the restart. Cleared at the start of a check.
+    /// Where a downloaded package waits for the restart. Cleared when a new
+    /// one is downloaded.
     pub download_dir: PathBuf,
     /// `None` detects it on the update thread; tests set it.
     pub install: Option<Install>,
@@ -73,27 +75,19 @@ impl Config {
         }
         Some(Self {
             current: Version::parse(current).ok()?,
-            manifest_url: Url::parse(MANIFEST_URL).ok()?,
+            manifest_url: Url::parse(&format!("{REPO}/releases/latest/download/latest.json"))
+                .ok()?,
             public_key: PUBLIC_KEY.to_owned(),
-            user_agent: format!("cloudrs/{current} (+https://github.com/pablozr/cloudrs)"),
+            user_agent: format!("cloudrs/{current} (+{REPO})"),
             download_dir,
             install: None,
         })
     }
 }
 
-/// Why a check ended without an update.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Failure {
-    /// The manifest could not be read.
-    Check,
-    /// The package could not be downloaded or did not pass verification.
-    Download,
-}
-
 /// What a check reports, in order; the last one is `UpToDate`, `Available`,
 /// `Ready` or `Failed`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Progress {
     UpToDate,
     /// A newer version exists but cannot be installed here.
@@ -106,11 +100,12 @@ pub enum Progress {
     },
     /// Downloaded and verified, waiting for [`Prepared::apply`].
     Ready(Prepared),
-    Failed(Failure),
+    /// The check or the download failed; the reason is logged, not shown.
+    Failed,
 }
 
 /// A downloaded update whose signature passed. Applying it checks again.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Prepared {
     pub version: String,
     file: PathBuf,
@@ -127,50 +122,36 @@ pub fn check(config: Config) -> flume::Receiver<Progress> {
     let spawned = std::thread::Builder::new()
         .name("cloudrs-update".into())
         .spawn(move || {
-            let last = run(&config, &on_thread).unwrap_or_else(Progress::Failed);
+            let last = run(&config, &on_thread).unwrap_or_else(|error| {
+                tracing::warn!(%error, "the update check failed");
+                Progress::Failed
+            });
             let _ = on_thread.send(last);
         });
     if let Err(error) = spawned {
         tracing::warn!(%error, "the update thread could not start");
-        let _ = report.send(Progress::Failed(Failure::Check));
+        let _ = report.send(Progress::Failed);
     }
     reports
 }
 
-fn run(config: &Config, report: &flume::Sender<Progress>) -> Result<Progress, Failure> {
-    let fail = |error: String| {
-        tracing::warn!(%error, "could not check for updates");
-        Failure::Check
-    };
-    // Whatever an earlier run left (a partial file, an old package) goes first.
-    match std::fs::remove_dir_all(&config.download_dir) {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-            return Err(fail(error.to_string()));
-        }
-        _ => {}
-    }
-    std::fs::create_dir_all(&config.download_dir).map_err(|e| fail(e.to_string()))?;
-
-    let manifest = download::fetch_manifest(config).map_err(fail)?;
+fn run(config: &Config, report: &flume::Sender<Progress>) -> Result<Progress, String> {
+    let client = download::client(config)?;
+    let manifest = download::fetch_manifest(&client, config)?;
     let Some(version) = manifest::newer(&manifest, &config.current) else {
         return Ok(Progress::UpToDate);
     };
     let install = config.install.clone().unwrap_or_else(install::detect);
-    let entry = platform_key().and_then(|key| manifest.platforms.get(key));
-    let available = || Progress::Available {
-        version: version.to_string(),
+    let entry = manifest
+        .platforms
+        .get(&platform_key())
+        .filter(|entry| manifest::fits(&entry.format, &install));
+    let Some(entry) = entry else {
+        return Ok(Progress::Available {
+            version: version.to_string(),
+        });
     };
-    let Some(entry) = entry.filter(|entry| manifest::fits(&entry.format, &install)) else {
-        return Ok(available());
-    };
-    match download::fetch(config, &version, entry, &install, report) {
-        Ok(Some(prepared)) => Ok(Progress::Ready(prepared)),
-        Ok(None) => Ok(available()),
-        Err(error) => {
-            tracing::error!(%error, "could not download the update");
-            Err(Failure::Download)
-        }
-    }
+    download::fetch(&client, config, &version, entry, &install, report).map(Progress::Ready)
 }
 
 /// Whether a check is due: never checked, the clock went back, or at least
@@ -179,19 +160,10 @@ pub fn due(last_check: Option<SystemTime>, now: SystemTime) -> bool {
     last_check.is_none_or(|last| now.duration_since(last).map_or(true, |age| age >= INTERVAL))
 }
 
-/// This machine's key in the manifest's `platforms`, if releases cover it.
-pub fn platform_key() -> Option<&'static str> {
-    if cfg!(all(windows, target_arch = "x86_64")) {
-        Some("windows-x86_64")
-    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some("linux-x86_64")
-    } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some("macos-aarch64")
-    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some("macos-x86_64")
-    } else {
-        None
-    }
+/// This machine's key in the manifest's `platforms`: `windows-x86_64`,
+/// `linux-x86_64`, `macos-aarch64` or `macos-x86_64`.
+pub fn platform_key() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
 #[cfg(test)]
@@ -217,14 +189,10 @@ mod tests {
     }
 
     #[test]
-    fn the_supported_targets_have_a_platform_key() {
-        if cfg!(any(
-            all(windows, target_arch = "x86_64"),
-            all(target_os = "linux", target_arch = "x86_64"),
-            target_os = "macos"
-        )) {
-            assert!(platform_key().is_some());
-        }
+    fn the_platform_key_names_the_os_and_the_architecture() {
+        let key = platform_key();
+        assert!(key.starts_with(std::env::consts::OS), "{key}");
+        assert!(key.ends_with(std::env::consts::ARCH), "{key}");
     }
 
     #[cfg(debug_assertions)]

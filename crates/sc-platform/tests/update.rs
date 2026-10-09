@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use sc_platform::update::{self, Config, Failure, Install, Progress};
+use sc_platform::update::{self, Config, Install, Progress};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -31,15 +31,16 @@ fn temp_dir() -> PathBuf {
     dir
 }
 
-/// A server with the manifest for this platform and, optionally, the package.
-async fn server(package: Option<Vec<u8>>) -> MockServer {
+/// A server with the manifest for this platform (its package in `format`)
+/// and, optionally, the package.
+async fn server(package: Option<Vec<u8>>, format: &str) -> MockServer {
     let server = MockServer::start().await;
     let manifest = serde_json::json!({
         "version": "v9.9.9",
-        "platforms": { update::platform_key().unwrap(): {
+        "platforms": { update::platform_key(): {
             "url": format!("{}/{PACKAGE}", server.uri()),
             "signature": text(&format!("{PACKAGE}.sig")),
-            "format": "nsis",
+            "format": format,
         }},
     });
     Mock::given(method("GET"))
@@ -107,7 +108,7 @@ async fn requests_for(server: &MockServer, name: &str) -> usize {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_newer_version_is_downloaded_and_verified() {
-    let server = server(Some(fixture(PACKAGE))).await;
+    let server = server(Some(fixture(PACKAGE)), "nsis").await;
     let dir = temp_dir();
     let seen = run(config(&server, "0.1.0", Install::Nsis, &dir)).await;
 
@@ -122,7 +123,7 @@ async fn a_newer_version_is_downloaded_and_verified() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_current_version_is_up_to_date() {
-    let server = server(Some(fixture(PACKAGE))).await;
+    let server = server(Some(fixture(PACKAGE)), "nsis").await;
     let dir = temp_dir();
     let seen = run(config(&server, "9.9.9", Install::Nsis, &dir)).await;
     assert_eq!(seen, [Progress::UpToDate]);
@@ -132,7 +133,7 @@ async fn the_current_version_is_up_to_date() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_newer_install_never_goes_back() {
-    let server = server(Some(fixture(PACKAGE))).await;
+    let server = server(Some(fixture(PACKAGE)), "nsis").await;
     let dir = temp_dir();
     let seen = run(config(&server, "10.0.0", Install::Nsis, &dir)).await;
     assert_eq!(seen, [Progress::UpToDate]);
@@ -144,10 +145,10 @@ async fn a_newer_install_never_goes_back() {
 async fn tampered_bytes_fail_and_leave_nothing() {
     let mut bytes = fixture(PACKAGE);
     bytes[0] ^= 0xff;
-    let server = server(Some(bytes)).await;
+    let server = server(Some(bytes), "nsis").await;
     let dir = temp_dir();
     let seen = run(config(&server, "0.1.0", Install::Nsis, &dir)).await;
-    assert_eq!(seen.last(), Some(&Progress::Failed(Failure::Download)));
+    assert_eq!(seen.last(), Some(&Progress::Failed));
     assert!(!seen.iter().any(|p| matches!(p, Progress::Ready(_))));
     assert!(files_in(&dir).is_empty(), "left {:?}", files_in(&dir));
     let _ = std::fs::remove_dir_all(&dir);
@@ -158,13 +159,13 @@ async fn a_missing_manifest_is_a_failed_check() {
     let server = MockServer::start().await;
     let dir = temp_dir();
     let seen = run(config(&server, "0.1.0", Install::Nsis, &dir)).await;
-    assert_eq!(seen, [Progress::Failed(Failure::Check)]);
+    assert_eq!(seen, [Progress::Failed]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_manual_install_only_hears_about_it() {
-    let server = server(Some(fixture(PACKAGE))).await;
+    let server = server(Some(fixture(PACKAGE)), "nsis").await;
     let dir = temp_dir();
     let seen = run(config(&server, "0.1.0", Install::Manual, &dir)).await;
     assert_eq!(
@@ -178,14 +179,45 @@ async fn a_manual_install_only_hears_about_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn old_downloads_are_cleared_before_a_check() {
-    let server = server(None).await;
+async fn old_downloads_are_cleared_before_a_new_one() {
+    let server = server(Some(fixture(PACKAGE)), "nsis").await;
     let dir = temp_dir();
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("stale.part"), b"x").unwrap();
+    let seen = run(config(&server, "0.1.0", Install::Nsis, &dir)).await;
+    assert!(matches!(seen.last(), Some(Progress::Ready(_))), "{seen:?}");
+    assert_eq!(files_in(&dir), [PACKAGE]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_up_to_date_check_leaves_the_download_folder_alone() {
+    let server = server(None, "nsis").await;
+    let dir = temp_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("kept.bin"), b"x").unwrap();
     let seen = run(config(&server, "9.9.9", Install::Nsis, &dir)).await;
     assert_eq!(seen, [Progress::UpToDate]);
-    assert!(files_in(&dir).is_empty());
+    assert_eq!(files_in(&dir), ["kept.bin"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_verified_package_is_not_downloaded_again() {
+    let first = server(Some(fixture(PACKAGE)), "nsis").await;
+    let dir = temp_dir();
+    let seen = run(config(&first, "0.1.0", Install::Nsis, &dir)).await;
+    assert!(matches!(seen.last(), Some(Progress::Ready(_))), "{seen:?}");
+
+    // The next check finds the same manifest, and this server has no package.
+    let second = server(None, "nsis").await;
+    let seen = run(config(&second, "0.1.0", Install::Nsis, &dir)).await;
+    assert!(
+        matches!(seen.as_slice(), [Progress::Ready(p)] if p.version == "9.9.9"),
+        "{seen:?}"
+    );
+    assert_eq!(requests_for(&second, PACKAGE).await, 0);
+    assert_eq!(files_in(&dir), [PACKAGE]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -194,28 +226,8 @@ async fn old_downloads_are_cleared_before_a_check() {
 async fn an_appimage_is_swapped_in_place_keeping_its_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
-    // The manifest of this test names an AppImage package.
-    let server = MockServer::start().await;
     let name = PACKAGE;
-    let manifest = serde_json::json!({
-        "version": "9.9.9",
-        "platforms": { update::platform_key().unwrap(): {
-            "url": format!("{}/{name}", server.uri()),
-            "signature": text(&format!("{name}.sig")),
-            "format": "appimage",
-        }},
-    });
-    Mock::given(method("GET"))
-        .and(path("/latest.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(manifest))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path(format!("/{name}")))
-        .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(name)))
-        .mount(&server)
-        .await;
-
+    let server = server(Some(fixture(name)), "appimage").await;
     let dir = temp_dir();
     let app = dir.join("apps");
     std::fs::create_dir_all(&app).unwrap();
