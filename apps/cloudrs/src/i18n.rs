@@ -76,55 +76,55 @@ macro_rules! formats {
 
 pub mod app {
     strings! {
-        window_title { en: "cloudrs" }
-        brand_cloud { en: "cloud" }
-        brand_rs { en: "rs" }
-        try_again { en: "Try again" }
-        undo { en: "Undo" }
-        on { en: "On" }
-        off { en: "Off" }
-        switch_to_light { en: "Light theme" }
-        switch_to_dark { en: "Dark theme" }
-        minimize { en: "Minimize" }
-        maximize { en: "Maximize" }
-        close { en: "Close" }
+        window_title { en: "cloudrs", pt_br: "cloudrs" }
+        brand_cloud { en: "cloud", pt_br: "cloud" }
+        brand_rs { en: "rs", pt_br: "rs" }
+        try_again { en: "Try again", pt_br: "Tentar de novo" }
+        undo { en: "Undo", pt_br: "Desfazer" }
+        on { en: "On", pt_br: "Ligado" }
+        off { en: "Off", pt_br: "Desligado" }
+        switch_to_light { en: "Light theme", pt_br: "Tema claro" }
+        switch_to_dark { en: "Dark theme", pt_br: "Tema escuro" }
+        minimize { en: "Minimize", pt_br: "Minimizar" }
+        maximize { en: "Maximize", pt_br: "Maximizar" }
+        close { en: "Close", pt_br: "Fechar" }
     }
 }
 
 /// The Settings screen.
 pub mod settings {
     strings! {
-        title { en: "Settings" }
-        theme { en: "Theme" }
-        theme_hint { en: "System follows the light or dark mode of your computer." }
-        theme_system { en: "System" }
-        theme_dark { en: "Dark" }
-        theme_light { en: "Light" }
-        output { en: "Output" }
-        output_hint { en: "Where cloudrs plays. System default follows your computer\u{2019}s choice." }
-        output_default { en: "System default" }
-        output_none { en: "No other output devices found." }
-        refresh { en: "Refresh" }
-        sound { en: "Sound" }
-        sound_hint { en: "How cloudrs shapes what you hear." }
-        normalize { en: "Normalize volume" }
-        normalize_hint { en: "Evens out loud and quiet tracks." }
-        equalizer { en: "Equalizer" }
-        eq_off { en: "Off" }
-        eq_bass { en: "Bass" }
-        eq_treble { en: "Treble" }
-        eq_vocal { en: "Vocal" }
-        eq_electronic { en: "Electronic" }
-        volume_boost { en: "Volume boost" }
-        volume_boost_hint { en: "Lets the volume go up to 200% and lifts quiet tracks. Loud sound can harm your hearing." }
-        cache { en: "Cache" }
-        cache_hint { en: "Covers kept on this computer so pages open faster. Covers on screen stay." }
-        clear_cache { en: "Clear cache" }
-        cache_cleared { en: "Cache cleared" }
-        shortcuts { en: "Keyboard shortcuts" }
+        title { en: "Settings", pt_br: "Configurações" }
+        theme { en: "Theme", pt_br: "Tema" }
+        theme_hint { en: "System follows the light or dark mode of your computer.", pt_br: "Sistema segue o modo claro ou escuro do seu computador." }
+        theme_system { en: "System", pt_br: "Sistema" }
+        theme_dark { en: "Dark", pt_br: "Escuro" }
+        theme_light { en: "Light", pt_br: "Claro" }
+        output { en: "Output", pt_br: "Saída" }
+        output_hint { en: "Where cloudrs plays. System default follows your computer\u{2019}s choice.", pt_br: "Onde o cloudrs toca. O padrão do sistema segue a escolha do seu computador." }
+        output_default { en: "System default", pt_br: "Padrão do sistema" }
+        output_none { en: "No other output devices found.", pt_br: "Nenhum outro dispositivo de saída encontrado." }
+        refresh { en: "Refresh", pt_br: "Atualizar" }
+        sound { en: "Sound", pt_br: "Som" }
+        sound_hint { en: "How cloudrs shapes what you hear.", pt_br: "Como o cloudrs molda o que você ouve." }
+        normalize { en: "Normalize volume", pt_br: "Normalizar volume" }
+        normalize_hint { en: "Evens out loud and quiet tracks.", pt_br: "Equilibra faixas altas e baixas." }
+        equalizer { en: "Equalizer", pt_br: "Equalizador" }
+        eq_off { en: "Off", pt_br: "Desligado" }
+        eq_bass { en: "Bass", pt_br: "Graves" }
+        eq_treble { en: "Treble", pt_br: "Agudos" }
+        eq_vocal { en: "Vocal", pt_br: "Vocal" }
+        eq_electronic { en: "Electronic", pt_br: "Eletrônica" }
+        volume_boost { en: "Volume boost", pt_br: "Reforço de volume" }
+        volume_boost_hint { en: "Lets the volume go up to 200% and lifts quiet tracks. Loud sound can harm your hearing.", pt_br: "Deixa o volume chegar a 200% e realça faixas baixas. Som alto pode prejudicar sua audição." }
+        cache { en: "Cache", pt_br: "Cache" }
+        cache_hint { en: "Covers kept on this computer so pages open faster. Covers on screen stay.", pt_br: "Capas guardadas neste computador para as páginas abrirem mais rápido. As capas na tela ficam." }
+        clear_cache { en: "Clear cache", pt_br: "Limpar cache" }
+        cache_cleared { en: "Cache cleared", pt_br: "Cache limpo" }
+        shortcuts { en: "Keyboard shortcuts", pt_br: "Atalhos de teclado" }
     }
     formats! {
-        cache_size(megabytes) { en: "{megabytes} MB" }
+        cache_size(megabytes) { en: "{megabytes} MB", pt_br: "{megabytes} MB" }
     }
 }
 
@@ -132,29 +132,29 @@ pub mod settings {
 /// on macOS.
 pub mod shortcuts {
     strings! {
-        key_play { en: "Space" }
-        key_seek { en: "\u{2190} \u{2192}" }
-        key_skip { en: "Shift \u{2190} \u{2192}" }
-        key_like { en: "Ctrl L" }
-        key_like_mac { en: "\u{2318}L" }
-        key_search { en: "Ctrl K  /" }
-        key_search_mac { en: "\u{2318}K  /" }
-        key_paste { en: "Ctrl V" }
-        key_paste_mac { en: "\u{2318}V" }
-        key_history { en: "Alt \u{2190} \u{2192}" }
-        key_history_mac { en: "\u{2318}[ \u{2318}]" }
-        key_palette { en: "Ctrl P" }
-        key_palette_mac { en: "\u{2318}P" }
+        key_play { en: "Space", pt_br: "Espaço" }
+        key_seek { en: "\u{2190} \u{2192}", pt_br: "\u{2190} \u{2192}" }
+        key_skip { en: "Shift \u{2190} \u{2192}", pt_br: "Shift \u{2190} \u{2192}" }
+        key_like { en: "Ctrl L", pt_br: "Ctrl L" }
+        key_like_mac { en: "\u{2318}L", pt_br: "\u{2318}L" }
+        key_search { en: "Ctrl K  /", pt_br: "Ctrl K  /" }
+        key_search_mac { en: "\u{2318}K  /", pt_br: "\u{2318}K  /" }
+        key_paste { en: "Ctrl V", pt_br: "Ctrl V" }
+        key_paste_mac { en: "\u{2318}V", pt_br: "\u{2318}V" }
+        key_history { en: "Alt \u{2190} \u{2192}", pt_br: "Alt \u{2190} \u{2192}" }
+        key_history_mac { en: "\u{2318}[ \u{2318}]", pt_br: "\u{2318}[ \u{2318}]" }
+        key_palette { en: "Ctrl P", pt_br: "Ctrl P" }
+        key_palette_mac { en: "\u{2318}P", pt_br: "\u{2318}P" }
         key_mini { en: "Ctrl Shift M", pt_br: "Ctrl Shift M" }
         key_mini_mac { en: "\u{21e7}\u{2318}M", pt_br: "\u{21e7}\u{2318}M" }
-        action_play { en: "Play or pause" }
-        action_seek { en: "Seek 5 seconds" }
-        action_skip { en: "Previous or next track" }
-        action_like { en: "Like the playing track" }
-        action_search { en: "Search" }
-        action_paste { en: "Open a copied link" }
-        action_history { en: "Back or forward" }
-        action_palette { en: "Command palette" }
+        action_play { en: "Play or pause", pt_br: "Tocar ou pausar" }
+        action_seek { en: "Seek 5 seconds", pt_br: "Avançar ou voltar 5 segundos" }
+        action_skip { en: "Previous or next track", pt_br: "Faixa anterior ou próxima" }
+        action_like { en: "Like the playing track", pt_br: "Curtir a faixa que está tocando" }
+        action_search { en: "Search", pt_br: "Buscar" }
+        action_paste { en: "Open a copied link", pt_br: "Abrir um link copiado" }
+        action_history { en: "Back or forward", pt_br: "Voltar ou avançar" }
+        action_palette { en: "Command palette", pt_br: "Paleta de comandos" }
         action_mini { en: "Mini player", pt_br: "Mini player" }
     }
 }
@@ -162,17 +162,17 @@ pub mod shortcuts {
 /// The command palette (ADR 0018). Screens use the `nav` names.
 pub mod palette {
     strings! {
-        title { en: "Command palette" }
-        placeholder { en: "Go to a screen or run an action" }
-        no_matches { en: "No matching commands" }
-        play_pause { en: "Play or pause" }
-        previous { en: "Previous track" }
-        next { en: "Next track" }
-        like { en: "Like the playing track" }
-        queue { en: "Show or hide the queue" }
-        theme_system { en: "Theme: system" }
-        theme_dark { en: "Theme: dark" }
-        theme_light { en: "Theme: light" }
+        title { en: "Command palette", pt_br: "Paleta de comandos" }
+        placeholder { en: "Go to a screen or run an action", pt_br: "Ir para uma tela ou executar uma ação" }
+        no_matches { en: "No matching commands", pt_br: "Nenhum comando encontrado" }
+        play_pause { en: "Play or pause", pt_br: "Tocar ou pausar" }
+        previous { en: "Previous track", pt_br: "Faixa anterior" }
+        next { en: "Next track", pt_br: "Próxima faixa" }
+        like { en: "Like the playing track", pt_br: "Curtir a faixa que está tocando" }
+        queue { en: "Show or hide the queue", pt_br: "Mostrar ou ocultar a fila" }
+        theme_system { en: "Theme: system", pt_br: "Tema: sistema" }
+        theme_dark { en: "Theme: dark", pt_br: "Tema: escuro" }
+        theme_light { en: "Theme: light", pt_br: "Tema: claro" }
         mini_player { en: "Mini player", pt_br: "Mini player" }
     }
 }
@@ -180,48 +180,48 @@ pub mod palette {
 /// Updates (ADR 0026), in Settings, the command palette and toasts.
 pub mod update {
     strings! {
-        title { en: "Updates" }
-        hint { en: "cloudrs checks GitHub once a day and installs new versions when you restart." }
-        automatic { en: "Automatic updates" }
-        check_now { en: "Check now" }
-        check_for_updates { en: "Check for updates" }
-        never_checked { en: "Not checked yet" }
-        checking { en: "Checking for updates\u{2026}" }
-        up_to_date { en: "cloudrs is up to date" }
-        failed { en: "Couldn\u{2019}t check for updates" }
-        download { en: "Download" }
-        restart { en: "Restart to update" }
-        unavailable { en: "This build does not update itself." }
+        title { en: "Updates", pt_br: "Atualizações" }
+        hint { en: "cloudrs checks GitHub once a day and installs new versions when you restart.", pt_br: "O cloudrs verifica o GitHub uma vez por dia e instala novas versões quando você reinicia." }
+        automatic { en: "Automatic updates", pt_br: "Atualizações automáticas" }
+        check_now { en: "Check now", pt_br: "Verificar agora" }
+        check_for_updates { en: "Check for updates", pt_br: "Verificar atualizações" }
+        never_checked { en: "Not checked yet", pt_br: "Ainda não verificado" }
+        checking { en: "Checking for updates\u{2026}", pt_br: "Verificando atualizações\u{2026}" }
+        up_to_date { en: "cloudrs is up to date", pt_br: "O cloudrs está atualizado" }
+        failed { en: "Couldn\u{2019}t check for updates", pt_br: "Não foi possível verificar atualizações" }
+        download { en: "Download", pt_br: "Baixar" }
+        restart { en: "Restart to update", pt_br: "Reiniciar para atualizar" }
+        unavailable { en: "This build does not update itself.", pt_br: "Esta versão não se atualiza sozinha." }
     }
     formats! {
-        version(version) { en: "Version {version}" }
-        checked_at(time) { en: "Up to date \u{b7} checked at {time}" }
-        available(version) { en: "Version {version} is available" }
-        downloading(version, percent) { en: "Downloading {version}\u{2026} {percent}%" }
-        ready(version) { en: "cloudrs {version} is ready to install" }
+        version(version) { en: "Version {version}", pt_br: "Versão {version}" }
+        checked_at(time) { en: "Up to date \u{b7} checked at {time}", pt_br: "Atualizado \u{b7} verificado às {time}" }
+        available(version) { en: "Version {version} is available", pt_br: "A versão {version} está disponível" }
+        downloading(version, percent) { en: "Downloading {version}\u{2026} {percent}%", pt_br: "Baixando {version}\u{2026} {percent}%" }
+        ready(version) { en: "cloudrs {version} is ready to install", pt_br: "O cloudrs {version} está pronto para instalar" }
     }
 }
 
 pub mod search {
     strings! {
-        placeholder { en: "Search tracks or paste a SoundCloud link" }
-        hint { en: "Ctrl K" }
-        hint_mac { en: "\u{2318}K" }
-        results { en: "Search results" }
-        empty_title { en: "Search SoundCloud" }
-        empty_hint { en: "Type a track or artist, or paste a soundcloud.com link to play it." }
-        no_results_hint { en: "Check the spelling or try fewer words." }
-        error_title { en: "Could not load the results" }
-        error_hint { en: "Check your connection and try again." }
-        preview_badge { en: "30s preview" }
-        tab_tracks { en: "Tracks" }
-        tab_people { en: "People" }
-        tab_playlists { en: "Playlists" }
-        tab_albums { en: "Albums" }
+        placeholder { en: "Search tracks or paste a SoundCloud link", pt_br: "Busque faixas ou cole um link do SoundCloud" }
+        hint { en: "Ctrl K", pt_br: "Ctrl K" }
+        hint_mac { en: "\u{2318}K", pt_br: "\u{2318}K" }
+        results { en: "Search results", pt_br: "Resultados da busca" }
+        empty_title { en: "Search SoundCloud", pt_br: "Buscar no SoundCloud" }
+        empty_hint { en: "Type a track or artist, or paste a soundcloud.com link to play it.", pt_br: "Digite uma faixa ou artista, ou cole um link do soundcloud.com para tocá-lo." }
+        no_results_hint { en: "Check the spelling or try fewer words.", pt_br: "Confira a ortografia ou use menos palavras." }
+        error_title { en: "Could not load the results", pt_br: "Não foi possível carregar os resultados" }
+        error_hint { en: "Check your connection and try again.", pt_br: "Verifique sua conexão e tente de novo." }
+        preview_badge { en: "30s preview", pt_br: "Prévia de 30s" }
+        tab_tracks { en: "Tracks", pt_br: "Faixas" }
+        tab_people { en: "People", pt_br: "Pessoas" }
+        tab_playlists { en: "Playlists", pt_br: "Playlists" }
+        tab_albums { en: "Albums", pt_br: "Álbuns" }
     }
     formats! {
-        no_results_title(query) { en: "No results for \u{201c}{query}\u{201d}" }
-        play_track(title, artist) { en: "Play {title} by {artist}" }
+        no_results_title(query) { en: "No results for \u{201c}{query}\u{201d}", pt_br: "Nenhum resultado para \u{201c}{query}\u{201d}" }
+        play_track(title, artist) { en: "Play {title} by {artist}", pt_br: "Tocar {title} de {artist}" }
     }
 }
 
@@ -232,112 +232,112 @@ pub fn dot_join(parts: &[String]) -> String {
 
 pub mod nav {
     strings! {
-        sidebar { en: "Main navigation" }
-        home { en: "Home" }
-        search { en: "Search" }
-        history { en: "History" }
-        back { en: "Back" }
-        forward { en: "Forward" }
-        feed { en: "Feed" }
-        likes { en: "Likes" }
-        library { en: "Library" }
-        following { en: "Following" }
-        sign_in { en: "Sign in" }
-        jam { en: "Jam" }
-        settings { en: "Settings" }
-        your_playlists { en: "YOUR PLAYLISTS" }
+        sidebar { en: "Main navigation", pt_br: "Navegação principal" }
+        home { en: "Home", pt_br: "Início" }
+        search { en: "Search", pt_br: "Buscar" }
+        history { en: "History", pt_br: "Histórico" }
+        back { en: "Back", pt_br: "Voltar" }
+        forward { en: "Forward", pt_br: "Avançar" }
+        feed { en: "Feed", pt_br: "Feed" }
+        likes { en: "Likes", pt_br: "Curtidas" }
+        library { en: "Library", pt_br: "Biblioteca" }
+        following { en: "Following", pt_br: "Seguindo" }
+        sign_in { en: "Sign in", pt_br: "Entrar" }
+        jam { en: "Jam", pt_br: "Jam" }
+        settings { en: "Settings", pt_br: "Configurações" }
+        your_playlists { en: "YOUR PLAYLISTS", pt_br: "SUAS PLAYLISTS" }
     }
 }
 
 /// Shared by every list: the empty and error states of the screens.
 pub mod list {
     strings! {
-        error_title { en: "Could not load this list" }
-        error_hint { en: "Check your connection and try again." }
-        empty_hint { en: "Nothing to show here yet." }
-        user_tracks_empty { en: "No tracks yet" }
-        user_playlists_empty { en: "No playlists yet" }
-        user_likes_empty { en: "No likes yet" }
-        playlist_empty { en: "This playlist is empty" }
-        related_empty { en: "No related tracks" }
-        history_empty { en: "Nothing played yet" }
-        history_empty_hint { en: "Tracks you play show up here." }
-        followings_empty { en: "Not following anyone yet" }
-        feed_empty { en: "Your feed is empty" }
-        feed_empty_hint { en: "Follow people to see what they post and repost." }
-        library_empty { en: "No playlists or albums yet" }
-        trending_empty { en: "Nothing trending here right now" }
+        error_title { en: "Could not load this list", pt_br: "Não foi possível carregar esta lista" }
+        error_hint { en: "Check your connection and try again.", pt_br: "Verifique sua conexão e tente de novo." }
+        empty_hint { en: "Nothing to show here yet.", pt_br: "Ainda não há nada para mostrar aqui." }
+        user_tracks_empty { en: "No tracks yet", pt_br: "Nenhuma faixa ainda" }
+        user_playlists_empty { en: "No playlists yet", pt_br: "Nenhuma playlist ainda" }
+        user_likes_empty { en: "No likes yet", pt_br: "Nenhuma curtida ainda" }
+        playlist_empty { en: "This playlist is empty", pt_br: "Esta playlist está vazia" }
+        related_empty { en: "No related tracks", pt_br: "Nenhuma faixa relacionada" }
+        history_empty { en: "Nothing played yet", pt_br: "Nada tocado ainda" }
+        history_empty_hint { en: "Tracks you play show up here.", pt_br: "As faixas que você tocar aparecem aqui." }
+        followings_empty { en: "Not following anyone yet", pt_br: "Você ainda não segue ninguém" }
+        feed_empty { en: "Your feed is empty", pt_br: "Seu feed está vazio" }
+        feed_empty_hint { en: "Follow people to see what they post and repost.", pt_br: "Siga pessoas para ver o que elas publicam e repostam." }
+        library_empty { en: "No playlists or albums yet", pt_br: "Nenhuma playlist ou álbum ainda" }
+        trending_empty { en: "Nothing trending here right now", pt_br: "Nada em alta por aqui agora" }
     }
 }
 
 /// Shared by the track, profile and playlist pages.
 pub mod page {
     strings! {
-        error_title { en: "Could not load this page" }
-        error_hint { en: "Check your connection and try again." }
-        resolving_title { en: "Opening the link" }
-        resolving_hint { en: "Looking it up on SoundCloud." }
+        error_title { en: "Could not load this page", pt_br: "Não foi possível carregar esta página" }
+        error_hint { en: "Check your connection and try again.", pt_br: "Verifique sua conexão e tente de novo." }
+        resolving_title { en: "Opening the link", pt_br: "Abrindo o link" }
+        resolving_hint { en: "Looking it up on SoundCloud.", pt_br: "Procurando no SoundCloud." }
     }
 }
 
 pub mod track {
     strings! {
-        related { en: "Related" }
+        related { en: "Related", pt_br: "Relacionadas" }
     }
     formats! {
-        plays(count) { en: "{count} plays" }
-        open_profile(name) { en: "Open the profile of {name}" }
+        plays(count) { en: "{count} plays", pt_br: "{count} reproduções" }
+        open_profile(name) { en: "Open the profile of {name}", pt_br: "Abrir o perfil de {name}" }
     }
 }
 
 /// The comments of a track page (ADR 0021).
 pub mod comments {
     strings! {
-        tab { en: "Comments" }
-        lane { en: "Timed comments" }
-        empty_title { en: "No comments yet" }
-        empty_hint { en: "Comments people leave on this track show up here." }
-        off_title { en: "Comments are turned off" }
-        off_hint { en: "The artist turned off comments for this track." }
-        error_title { en: "Could not load the comments" }
+        tab { en: "Comments", pt_br: "Comentários" }
+        lane { en: "Timed comments", pt_br: "Comentários com marcação de tempo" }
+        empty_title { en: "No comments yet", pt_br: "Nenhum comentário ainda" }
+        empty_hint { en: "Comments people leave on this track show up here.", pt_br: "Os comentários deixados nesta faixa aparecem aqui." }
+        off_title { en: "Comments are turned off", pt_br: "Os comentários estão desativados" }
+        off_hint { en: "The artist turned off comments for this track.", pt_br: "O artista desativou os comentários desta faixa." }
+        error_title { en: "Could not load the comments", pt_br: "Não foi possível carregar os comentários" }
     }
     formats! {
-        more(count) { en: "+{count} more" }
-        row_label(name, time) { en: "Comment by {name} at {time}" }
-        row_label_untimed(name) { en: "Comment by {name}" }
+        more(count) { en: "+{count} more", pt_br: "+{count} mais" }
+        row_label(name, time) { en: "Comment by {name} at {time}", pt_br: "Comentário de {name} em {time}" }
+        row_label_untimed(name) { en: "Comment by {name}", pt_br: "Comentário de {name}" }
     }
 }
 
 pub mod user {
     strings! {
-        tab_tracks { en: "Tracks" }
-        tab_playlists { en: "Playlists" }
-        tab_likes { en: "Likes" }
+        tab_tracks { en: "Tracks", pt_br: "Faixas" }
+        tab_playlists { en: "Playlists", pt_br: "Playlists" }
+        tab_likes { en: "Likes", pt_br: "Curtidas" }
     }
     formats! {
-        followers(count) { en: "{count} followers" }
-        following(count) { en: "{count} following" }
-        open_profile(name) { en: "Open the profile of {name}" }
+        followers(count) { en: "{count} followers", pt_br: "{count} seguidores" }
+        following(count) { en: "{count} following", pt_br: "{count} seguindo" }
+        open_profile(name) { en: "Open the profile of {name}", pt_br: "Abrir o perfil de {name}" }
     }
 }
 
 pub mod playlist {
     strings! {
-        album_badge { en: "Album" }
-        kind_playlist { en: "Playlist" }
-        play { en: "Play" }
+        album_badge { en: "Album", pt_br: "Álbum" }
+        kind_playlist { en: "Playlist", pt_br: "Playlist" }
+        play { en: "Play", pt_br: "Tocar" }
     }
     formats! {
-        open_playlist(title) { en: "Open {title}" }
+        open_playlist(title) { en: "Open {title}", pt_br: "Abrir {title}" }
     }
 }
 
 pub mod count {
     strings! {
-        one_track { en: "1 track" }
+        one_track { en: "1 track", pt_br: "1 faixa" }
     }
     formats! {
-        many_tracks(count) { en: "{count} tracks" }
+        many_tracks(count) { en: "{count} tracks", pt_br: "{count} faixas" }
     }
 
     /// `1 track`, `12 tracks`.
