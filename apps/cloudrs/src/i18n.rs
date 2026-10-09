@@ -382,6 +382,18 @@ pub mod mini {
     }
 }
 
+/// The tray icon's menu (ADR 0024).
+pub mod tray {
+    strings! {
+        show { en: "Show cloudrs", pt_br: "Mostrar o cloudrs" }
+        play { en: "Play", pt_br: "Tocar" }
+        pause { en: "Pause", pt_br: "Pausar" }
+        previous { en: "Previous track", pt_br: "Faixa anterior" }
+        next { en: "Next track", pt_br: "Próxima faixa" }
+        quit { en: "Quit cloudrs", pt_br: "Sair do cloudrs" }
+    }
+}
+
 pub mod queue {
     strings! {
         title { en: "Queue" }

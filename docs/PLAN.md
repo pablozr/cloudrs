@@ -292,7 +292,7 @@ Outside text fields Space always plays/pauses, even over a focused control (Ente
 - **Track-change notifications:** `notify-rust` (Linux/Windows), optional; deferred (ADR 0019).
 - **Discord Rich Presence:** `discord-rich-presence`, on by default and switchable (ADR 0015).
 - **Updates:** our own updater on `minisign-verify` and `reqwest`, a `latest.json` on GitHub Releases ([ADR 0026](./adr/0026-in-app-updates.md)).
-- **Tray icon:** `tray-icon` (M5).
+- **Tray icon:** `tray-icon` with the ksni backend, [ADR 0024](./adr/0024-tray-icon.md).
 
 ---
 
@@ -390,7 +390,9 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
   - [ ] Tried end to end by the maintainer (an older build updating to the newest release).
 - [x] Mini player (ADR 0023).
   - [ ] Tried by the maintainer: always on top on Windows, dragging, focus, both themes.
-- [ ] Tray, Discord RPC.
+- [x] Tray (ADR 0024).
+  - [ ] Tried by the maintainer on Windows; macOS and Linux untried.
+- [x] Discord RPC (ADR 0015).
 - [ ] Packaging: `.AppImage`/`.deb`/Flatpak, `.dmg`, `.msi` (via `cargo-dist` or
       `cargo-packager`).
 - [ ] First translations beyond English.

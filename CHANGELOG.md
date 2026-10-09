@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Tray icon:** cloudrs sits in the notification area; click it to show the window, or use its
+  menu for play or pause, previous, next and quit.
 - **Mini player:** a small window with the cover, title, previous, play, next and a progress
   line; open it from the player bar, Ctrl P or Ctrl Shift M. Always on top on Windows.
 - **Updates:** cloudrs checks GitHub once a day, downloads a new version in the background and

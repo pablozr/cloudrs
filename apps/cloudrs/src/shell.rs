@@ -45,6 +45,7 @@ pub(crate) mod playlist_ui;
 pub(crate) mod presence;
 pub(crate) mod queue_panel;
 pub(crate) mod shortcuts;
+pub(crate) mod tray;
 pub(crate) mod updates;
 
 actions!(shell, [FocusSearch, GoBack, GoForward]);
@@ -155,6 +156,8 @@ pub struct Shell {
     pub(crate) discord: presence::DiscordPresence,
     /// What plays, on the OS media controls and keys.
     pub(crate) media: media::SystemMedia,
+    /// The tray icon and its menu (ADR 0024).
+    pub(crate) tray: tray::SystemTray,
     /// Looking for, downloading and installing new versions (ADR 0026).
     pub(crate) updates: updates::Updates,
     /// The command palette while it is open.
@@ -246,6 +249,7 @@ impl Shell {
 
         let discord = presence::DiscordPresence::new(config.settings.discord);
         let media = media::SystemMedia::start(window, cx);
+        let tray = tray::SystemTray::start(cx);
         let updates = updates::Updates::new(&config.cache_dir);
         cx.observe_window_appearance(window, |this, window, cx| {
             if this.models.settings.theme == ThemeChoice::System {
@@ -289,6 +293,7 @@ impl Shell {
             pending_undo: None,
             discord,
             media,
+            tray,
             updates,
             palette: None,
             palette_field,
@@ -384,6 +389,7 @@ impl Shell {
         let changed = seam::apply(&mut self.models, &event);
         self.discord_event(&event);
         self.media_event(&event);
+        self.tray_event(&event);
         let queue_changed = self.queue.apply(&event);
         if let Event::Searching { kind, .. } = &event
             && let Some(scroll) = self.scrolls.get(&ListId::Search { kind: *kind })
