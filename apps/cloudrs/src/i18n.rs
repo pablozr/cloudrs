@@ -168,6 +168,31 @@ pub mod palette {
     }
 }
 
+/// Updates (ADR 0026), in Settings, the command palette and toasts.
+pub mod update {
+    strings! {
+        title { en: "Updates" }
+        hint { en: "cloudrs checks GitHub once a day and installs new versions when you restart." }
+        automatic { en: "Automatic updates" }
+        check_now { en: "Check now" }
+        check_for_updates { en: "Check for updates" }
+        never_checked { en: "Not checked yet" }
+        checking { en: "Checking for updates\u{2026}" }
+        up_to_date { en: "cloudrs is up to date" }
+        failed { en: "Couldn\u{2019}t check for updates" }
+        download { en: "Download" }
+        restart { en: "Restart to update" }
+        unavailable { en: "This build does not update itself." }
+    }
+    formats! {
+        version(version) { en: "Version {version}" }
+        checked_at(time) { en: "Up to date \u{b7} checked at {time}" }
+        available(version) { en: "Version {version} is available" }
+        downloading(version, percent) { en: "Downloading {version}\u{2026} {percent}%" }
+        ready(version) { en: "cloudrs {version} is ready to install" }
+    }
+}
+
 pub mod search {
     strings! {
         placeholder { en: "Search tracks or paste a SoundCloud link" }

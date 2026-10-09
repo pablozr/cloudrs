@@ -119,8 +119,10 @@ pub struct Prepared {
     install: Install,
 }
 
-/// Looks for an update on a thread of its own and reports on `report`.
-pub fn check(config: Config, report: flume::Sender<Progress>) {
+/// Looks for an update on a thread of its own. The receiver gets the reports
+/// and ends after the last one, so the app needs no channel crate of its own.
+pub fn check(config: Config) -> flume::Receiver<Progress> {
+    let (report, reports) = flume::unbounded();
     let on_thread = report.clone();
     let spawned = std::thread::Builder::new()
         .name("cloudrs-update".into())
@@ -132,6 +134,7 @@ pub fn check(config: Config, report: flume::Sender<Progress>) {
         tracing::warn!(%error, "the update thread could not start");
         let _ = report.send(Progress::Failed(Failure::Check));
     }
+    reports
 }
 
 fn run(config: &Config, report: &flume::Sender<Progress>) -> Result<Progress, Failure> {

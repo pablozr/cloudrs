@@ -42,6 +42,7 @@ pub(crate) mod playlist_ui;
 pub(crate) mod presence;
 pub(crate) mod queue_panel;
 pub(crate) mod shortcuts;
+pub(crate) mod updates;
 
 actions!(shell, [FocusSearch, GoBack, GoForward]);
 
@@ -88,8 +89,17 @@ struct ToastState {
     id: usize,
     kind: ToastKind,
     text: SharedString,
-    /// "Undo" on the right, sending this command.
-    undo: Option<Command>,
+    /// The button on the right, if any.
+    action: Option<ToastAction>,
+}
+
+/// What a toast button does.
+#[derive(Clone)]
+pub(crate) enum ToastAction {
+    /// "Undo": sends this command and closes the toast.
+    Undo(Command),
+    /// "Restart to update" (ADR 0026).
+    RestartToUpdate,
 }
 
 pub struct Shell {
@@ -136,6 +146,8 @@ pub struct Shell {
     pub(crate) discord: presence::DiscordPresence,
     /// What plays, on the OS media controls and keys.
     pub(crate) media: media::SystemMedia,
+    /// Looking for, downloading and installing new versions (ADR 0026).
+    pub(crate) updates: updates::Updates,
     /// The command palette while it is open.
     palette: Option<palette::PaletteState>,
     /// Its search field.
@@ -221,6 +233,7 @@ impl Shell {
 
         let discord = presence::DiscordPresence::new(config.settings.discord);
         let media = media::SystemMedia::start(window, cx);
+        let updates = updates::Updates::new(&config.cache_dir);
         cx.observe_window_appearance(window, |this, window, cx| {
             if this.models.settings.theme == ThemeChoice::System {
                 let mode = appearance::theme_mode(ThemeChoice::System, window.appearance());
@@ -260,6 +273,7 @@ impl Shell {
             pending_undo: None,
             discord,
             media,
+            updates,
             palette: None,
             palette_field,
             toast: None,
@@ -269,6 +283,7 @@ impl Shell {
             stopped: false,
         };
         shell.start_pump(cx);
+        shell.start_updates(cx);
         // Home opens first; Ctrl K or / reach the search field.
         window.focus(&shell.focus, cx);
         shell.refresh_home(cx);
@@ -578,12 +593,23 @@ impl Shell {
         undo: Option<Command>,
         cx: &mut Context<Self>,
     ) {
+        self.show_toast_action(kind, text, undo.map(ToastAction::Undo), cx);
+    }
+
+    /// A toast with a button on the right.
+    pub(crate) fn show_toast_action(
+        &mut self,
+        kind: ToastKind,
+        text: impl Into<SharedString>,
+        action: Option<ToastAction>,
+        cx: &mut Context<Self>,
+    ) {
         self.toasts_shown += 1;
         self.toast = Some(ToastState {
             id: self.toasts_shown,
             kind,
             text: text.into(),
-            undo,
+            action,
         });
         // Replacing the timer drops the previous one, so a newer problem
         // always gets its full time on screen.
@@ -1141,17 +1167,31 @@ impl Render for Shell {
             .queue_open
             .then(|| self.queue_panel(&theme, cx).into_any_element());
         let toast = self.toast.as_ref().map(|t| {
-            let undo = t.undo.clone().map(|command| {
-                button(&theme, "toast-undo", i18n::app::undo(), ButtonKind::Ghost)
-                    .aria_label(i18n::app::undo())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.send(command.clone());
-                        this.toast = None;
-                        cx.notify();
-                    }))
-                    .into_any_element()
+            let action = t.action.clone().map(|action| match action {
+                ToastAction::Undo(command) => {
+                    button(&theme, "toast-undo", i18n::app::undo(), ButtonKind::Ghost)
+                        .aria_label(i18n::app::undo())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.send(command.clone());
+                            this.toast = None;
+                            cx.notify();
+                        }))
+                        .into_any_element()
+                }
+                ToastAction::RestartToUpdate => button(
+                    &theme,
+                    "toast-restart",
+                    i18n::update::restart(),
+                    ButtonKind::Ghost,
+                )
+                .aria_label(i18n::update::restart())
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.toast = None;
+                    this.restart_to_update(cx);
+                }))
+                .into_any_element(),
             });
-            toast(&theme, ("toast", t.id), t.kind, t.text.clone(), undo)
+            toast(&theme, ("toast", t.id), t.kind, t.text.clone(), action)
         });
         let sidebar = self.sidebar(&theme, cx).into_any_element();
         let playlist_menu = self.playlist_menu_view(&theme, cx);

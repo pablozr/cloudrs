@@ -48,6 +48,9 @@ The beta is **not code-signed** yet, so your system will warn you the first time
 
 Signed Windows builds are on the way; see the [code signing policy](#code-signing-policy).
 
+From 0.1.0-beta.2 on, cloudrs updates itself (the .deb shows a link instead). Beta 1 must be
+updated by hand once.
+
 ## What it does
 
 **Home**
@@ -229,6 +232,8 @@ its Windows releases. Once accepted: free code signing provided by
   [release workflow](.github/workflows/release.yml), on GitHub-hosted runners from a `v*` tag,
   are signed. Nothing built on a personal machine is.
 - Every signing request is approved by hand before it is signed.
+- Update packages are also signed with a separate minisign key kept as a repository secret; the
+  app checks that signature before installing.
 
 **Team roles**
 
@@ -245,6 +250,9 @@ what you use:
   in your system's keychain.
 - **Discord**, through the Discord app on your computer, to show what you are listening to.
   It can be turned off in Settings ([Discord privacy policy](https://discord.com/privacy)).
+- **GitHub**, once a day, to read a small file with the latest version number; the request
+  carries only cloudrs's version in its User-Agent. Updates are verified with a signature before
+  they run.
 - **Jam**, only when you start or join one: a peer-to-peer connection to the other listeners,
   through public [iroh](https://iroh.computer) relay servers when a direct path is not possible.
   It carries what is playing and your name and avatar, never the audio.

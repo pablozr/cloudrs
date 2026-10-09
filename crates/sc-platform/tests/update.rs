@@ -70,8 +70,7 @@ fn config(server: &MockServer, current: &str, install: Install, dir: &Path) -> C
 
 /// Everything the check reports, up to and including its last message.
 async fn run(config: Config) -> Vec<Progress> {
-    let (tx, rx) = flume::unbounded();
-    update::check(config, tx);
+    let rx = update::check(config);
     let mut seen = Vec::new();
     loop {
         let next = tokio::time::timeout(Duration::from_secs(20), rx.recv_async())

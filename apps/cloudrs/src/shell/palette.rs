@@ -64,10 +64,11 @@ pub(crate) enum PaletteCommand {
     ThemeSystem,
     ThemeDark,
     ThemeLight,
+    CheckForUpdates,
 }
 
 impl PaletteCommand {
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 19] = [
         Self::Home,
         Self::Search,
         Self::History,
@@ -86,6 +87,7 @@ impl PaletteCommand {
         Self::ThemeSystem,
         Self::ThemeDark,
         Self::ThemeLight,
+        Self::CheckForUpdates,
     ];
 
     fn label(self) -> &'static str {
@@ -108,6 +110,7 @@ impl PaletteCommand {
             Self::ThemeSystem => t::theme_system(),
             Self::ThemeDark => t::theme_dark(),
             Self::ThemeLight => t::theme_light(),
+            Self::CheckForUpdates => i18n::update::check_for_updates(),
         }
     }
 
@@ -118,7 +121,7 @@ impl PaletteCommand {
             Self::History => Icon::History,
             Self::Jam => Icon::Jam,
             Self::Account => Icon::Account,
-            Self::Settings | Self::ThemeSystem => Icon::Settings,
+            Self::Settings | Self::ThemeSystem | Self::CheckForUpdates => Icon::Settings,
             Self::Feed => Icon::Feed,
             Self::Likes | Self::Like => Icon::Heart,
             Self::Library => Icon::Library,
@@ -312,6 +315,7 @@ impl Shell {
             PaletteCommand::ThemeLight => {
                 self.change_settings(|settings| settings.theme = ThemeChoice::Light);
             }
+            PaletteCommand::CheckForUpdates => self.check_for_updates(true, cx),
         }
     }
 
@@ -399,6 +403,12 @@ mod tests {
             assert!(some.contains(&command), "{command:?}");
         }
         assert!(none.contains(&PaletteCommand::Queue));
+    }
+
+    #[test]
+    fn checking_for_updates_is_always_offered() {
+        assert!(available(false, false).contains(&PaletteCommand::CheckForUpdates));
+        assert!(available(true, true).contains(&PaletteCommand::CheckForUpdates));
     }
 
     #[test]

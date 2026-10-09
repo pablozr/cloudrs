@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Updates:** cloudrs checks GitHub once a day, downloads a new version in the background and
+  installs it when you restart or quit (Windows installer, AppImage, macOS); the .deb shows a
+  link. Turn it off in Settings › Updates, or run "Check for updates" from Ctrl P.
 - **Sound:** loudness normalization (on by default), an equalizer with presets, and an optional
   volume boost up to 200% with a limiter, in Settings › Sound.
 - **Gapless:** the next track is buffered about 20 s before the end and follows with no gap (not

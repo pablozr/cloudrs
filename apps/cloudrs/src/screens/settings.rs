@@ -1,5 +1,6 @@
 //! The Settings screen (ADR 0017): theme, the audio output (ADR 0020), sound
-//! (ADR 0022), Discord, the artwork cache and the keyboard shortcuts. Every change goes to the core as a whole `Settings`
+//! (ADR 0022), Discord, the artwork cache, updates (ADR 0026) and the keyboard
+//! shortcuts. Every change goes to the core as a whole `Settings`
 //! and takes effect when the core echoes it.
 
 use cloudrs_ui::Theme;
@@ -10,7 +11,8 @@ use gpui::{AnyElement, Context, Div, FontWeight, div};
 use sc_core::{Command, EqPreset, ThemeChoice};
 
 use super::account::muted;
-use crate::i18n::{discord as d, settings as t};
+use crate::i18n::{discord as d, settings as t, update as u};
+use crate::shell::updates::{UpdateState, local_time, status_text};
 use crate::shell::{Shell, shortcuts};
 
 /// Megabytes with one decimal, for the cache size.
@@ -43,6 +45,7 @@ impl Shell {
             .children(self.discord_setting(theme, cx))
             // The language picker appears with a second language (ADR 0017).
             .child(self.cache_setting(theme, cx))
+            .child(self.update_setting(theme, cx))
             .child(shortcut_list(theme))
             .into_any_element()
     }
@@ -217,6 +220,96 @@ impl Shell {
                     .child(choice(1, d::off(), !on)),
             ),
         )
+    }
+
+    /// The version, how the last check went, the button for the state, and
+    /// the switch for automatic updates (ADR 0026).
+    fn update_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let c = theme.colors;
+        let version = theme
+            .text(div(), typography::BODY)
+            .text_color(c.text)
+            .child(u::version(env!("CARGO_PKG_VERSION")));
+        let section = section(theme, u::title(), u::hint()).child(version);
+        if !self.updates.available() {
+            return section.child(muted(theme, u::unavailable()));
+        }
+
+        let state = self.updates.state.clone();
+        let checked_at = self.updates.last_check.and_then(local_time);
+        let status = match &state {
+            UpdateState::Checking => div()
+                .h(size::SKELETON_TITLE_HEIGHT)
+                .w(size::SKELETON_ARTIST_WIDTH)
+                .rounded(radius::S)
+                .bg(c.surface_hover)
+                .into_any_element(),
+            _ => theme
+                .text(div(), typography::BODY)
+                .text_color(c.text)
+                .child(status_text(&state, checked_at))
+                .into_any_element(),
+        };
+        let check = |id: &'static str, label: &'static str, cx: &mut Context<Self>| {
+            button(theme, id, label, ButtonKind::Secondary)
+                .aria_label(label)
+                .on_click(cx.listener(|this, _, _, cx| this.check_for_updates(true, cx)))
+                .into_any_element()
+        };
+        let action = match &state {
+            UpdateState::Idle | UpdateState::UpToDate => {
+                Some(check("update-check", u::check_now(), cx))
+            }
+            UpdateState::Failed => Some(check("update-retry", crate::i18n::app::try_again(), cx)),
+            UpdateState::Manual { .. } => Some(
+                button(
+                    theme,
+                    "update-download",
+                    u::download(),
+                    ButtonKind::Secondary,
+                )
+                .aria_label(u::download())
+                .on_click(cx.listener(|_, _, _, cx| {
+                    cx.open_url(sc_platform::update::RELEASES_PAGE);
+                }))
+                .into_any_element(),
+            ),
+            UpdateState::Ready(_) => Some(
+                button(theme, "update-restart", u::restart(), ButtonKind::Primary)
+                    .aria_label(u::restart())
+                    .on_click(cx.listener(|this, _, _, cx| this.restart_to_update(cx)))
+                    .into_any_element(),
+            ),
+            UpdateState::Checking | UpdateState::Downloading { .. } => None,
+        };
+
+        let on = self.models.settings.auto_update;
+        let choice = |ix: usize, label: &'static str, selected: bool| {
+            pill(theme, ("auto-update", ix), label, selected)
+                .tab_index(0)
+                .aria_label(label)
+                .on_click(cx.listener(move |this, _, _, _| {
+                    this.change_settings(|settings| settings.auto_update = ix == 0);
+                }))
+        };
+        section
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(space::S4)
+                    .pt(space::S1)
+                    .child(status)
+                    .children(action),
+            )
+            .child(sub_title(theme, u::automatic()))
+            .child(
+                div()
+                    .flex()
+                    .gap(space::S2)
+                    .child(choice(0, d::on(), on))
+                    .child(choice(1, d::off(), !on)),
+            )
     }
 
     /// The size of the artwork cache and "Clear cache".
