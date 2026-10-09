@@ -317,7 +317,6 @@ impl Shell {
     }
 }
 
-/// The name of a preset, for its pill.
 /// A one-line placeholder while a value loads.
 fn skeleton_line(theme: &Theme) -> Div {
     div()
@@ -352,6 +351,7 @@ fn on_off_row(
         .child(choice(1, app::off(), false, cx))
 }
 
+/// The name of a preset, for its pill.
 fn preset_label(preset: EqPreset) -> &'static str {
     match preset {
         EqPreset::Off => t::eq_off(),

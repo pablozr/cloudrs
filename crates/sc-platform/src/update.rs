@@ -122,10 +122,21 @@ pub fn check(config: Config) -> flume::Receiver<Progress> {
     let spawned = std::thread::Builder::new()
         .name("cloudrs-update".into())
         .spawn(move || {
-            let last = run(&config, &on_thread).unwrap_or_else(|error| {
-                tracing::warn!(%error, "the update check failed");
-                Progress::Failed
-            });
+            // A panic still ends with a report, or the app would wait on a
+            // check that never finishes and refuse every later one.
+            let outcome =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&config, &on_thread)));
+            let last = match outcome {
+                Ok(Ok(progress)) => progress,
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "the update check failed");
+                    Progress::Failed
+                }
+                Err(_) => {
+                    tracing::error!("the update check panicked");
+                    Progress::Failed
+                }
+            };
             let _ = on_thread.send(last);
         });
     if let Err(error) = spawned {

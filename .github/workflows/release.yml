@@ -57,8 +57,10 @@ jobs:
           fi
           cargo packager --release --formats ${{ matrix.formats }}
       # The signature names the file it signs (ADR 0026), so the macOS archive
-      # gets its final name, with the version and the architecture, before it is signed.
-      - name: Name and sign the macOS update archive
+      # is made here under its final name, with the version and the
+      # architecture, and signed once. (cargo-packager only archives the .app
+      # while it signs, which the build step does not do on macOS.)
+      - name: Archive and sign the macOS update
         if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -70,9 +72,9 @@ jobs:
           export CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD="$UPDATE_KEY_PASSWORD"
           VERSION=$(cargo pkgid -p cloudrs | sed -E 's/.*[#@]//')
           ARCH=$(uname -m | sed 's/arm64/aarch64/')
-          SRC=$(ls target/packages/*.app.tar.gz | head -n 1)
           DST="target/packages/cloudrs_${VERSION}_${ARCH}.app.tar.gz"
-          mv "$SRC" "$DST"
+          # The app unpacks this and expects cloudrs.app at the top.
+          COPYFILE_DISABLE=1 tar -czf "$DST" -C target/packages cloudrs.app
           cargo packager signer sign "$DST"
       - uses: actions/upload-artifact@v4
         with:
