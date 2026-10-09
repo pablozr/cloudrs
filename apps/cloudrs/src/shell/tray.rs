@@ -62,6 +62,8 @@ impl SystemTray {
         };
         match event {
             Event::NowPlaying(_) => tray.set_active(true),
+            // An emptied queue leaves nothing to play, pause or skip.
+            Event::Queue(queue) => tray.set_active(queue.current.is_some()),
             // `set_playing` only reaches the OS when play or pause flips.
             Event::Playback(playback) => tray.set_playing(playback.state == PlayState::Playing),
             _ => {}
