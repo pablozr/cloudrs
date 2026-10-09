@@ -43,8 +43,11 @@ mod tests {
     }
 }
 
+// Transitional (ADR 0025): `pt_br` is optional until Brazilian Portuguese is a
+// `Language`, so its texts can land in small commits. The expansion ignores it
+// for now; the commit that adds the language makes it required.
 macro_rules! strings {
-    ($( $(#[$meta:meta])* $name:ident { en: $en:literal $(,)? } )*) => {
+    ($( $(#[$meta:meta])* $name:ident { en: $en:literal $(, pt_br: $pt:literal)? $(,)? } )*) => {
         $(
             $(#[$meta])*
             pub fn $name() -> &'static str {
@@ -59,7 +62,7 @@ macro_rules! strings {
 /// Like `strings!`, for text with named arguments (`"{count} tracks"`), so a
 /// language can reorder them.
 macro_rules! formats {
-    ($( $(#[$meta:meta])* $name:ident($($arg:ident),+) { en: $en:literal $(,)? } )*) => {
+    ($( $(#[$meta:meta])* $name:ident($($arg:ident),+) { en: $en:literal $(, pt_br: $pt:literal)? $(,)? } )*) => {
         $(
             $(#[$meta])*
             pub fn $name($($arg: impl ::std::fmt::Display),+) -> String {
