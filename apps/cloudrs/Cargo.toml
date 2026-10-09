@@ -58,6 +58,8 @@ binaries = [{ path = "cloudrs", main = true }]
 [package.metadata.packager.nsis]
 # Per user: no administrator rights needed.
 installMode = "currentUser"
+# English, and Brazilian Portuguese when the system language is Portuguese (ADR 0025).
+languages = ["English", "PortugueseBR"]
 # Brand images (assets/installer/make-images.ps1 draws them).
 sidebarImage = "../../assets/installer/sidebar.bmp"
 headerImage = "../../assets/installer/header.bmp"
