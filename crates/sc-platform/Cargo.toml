@@ -1,18 +1,36 @@
 [package]
 name = "sc-platform"
-description = "cloudrs OS integration: keychain, sign-in window, Discord and media controls"
+description = "cloudrs OS integration: keychain, sign-in window, Discord, media controls and updates"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
 
 [dependencies]
+# Decode the base64 minisign key and signature of an update (ADR 0026).
+base64 = "0.22"
 # Discord Rich Presence over its local IPC (ADR 0015).
 discord-rich-presence = "1"
 flume = "0.11"
 keyring = "4"
+# Verify the minisign signature of a downloaded update (ADR 0026).
+minisign-verify = "0.3"
+# Fetch the update manifest and package, with the features sc-audio uses so the lock gains no copy (ADR 0026).
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls", "http2", "system-proxy"] }
+# Compare versions, pre-releases included (ADR 0026).
+semver = "1"
+# Read the update manifest (ADR 0026).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # OS media controls: SMTC, MPRIS, Now Playing (ADR 0019). Pinned to master for current windows/zbus; zbus, so Linux needs no libdbus.
 souvlaki = { git = "https://github.com/Sinono3/souvlaki", rev = "93ff3d16700348f32fe174e985c828eff0587e3b", default-features = false, features = ["use_zbus"] }
 tao = "0.37"
 tracing = "0.1"
+# Check that update URLs are https (ADR 0026).
+url = "2"
 wry = "0.57"
+
+[dev-dependencies]
+# A local server for the update tests.
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wiremock = "0.6"
