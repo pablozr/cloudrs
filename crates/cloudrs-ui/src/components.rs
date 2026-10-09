@@ -211,6 +211,8 @@ pub enum Icon {
     Settings,
     /// Play (the command palette's play or pause).
     Play,
+    /// The small always-on-top player window.
+    MiniPlayer,
 }
 
 impl Icon {
@@ -256,6 +258,7 @@ impl Icon {
             Self::Crown => "icons/crown.svg",
             Self::Settings => "icons/settings.svg",
             Self::Play => "icons/play.svg",
+            Self::MiniPlayer => "icons/picture-in-picture-2.svg",
         }
     }
 }

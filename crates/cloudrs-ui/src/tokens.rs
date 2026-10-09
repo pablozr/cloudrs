@@ -251,6 +251,12 @@ pub mod size {
     pub const LOGO_CLEAR_SPACE: Pixels = px(8.0);
     /// Round icon buttons (previous, next, shuffle, repeat, queue).
     pub const ICON_BUTTON: Pixels = px(34.0);
+    /// The mini player window (ADR 0023): its size, the cover in it and the
+    /// thin progress line along its bottom edge.
+    pub const MINI_PLAYER_WIDTH: Pixels = px(360.0);
+    pub const MINI_PLAYER_HEIGHT: Pixels = px(88.0);
+    pub const MINI_PLAYER_COVER: Pixels = px(56.0);
+    pub const MINI_PROGRESS_HEIGHT: Pixels = px(3.0);
     /// The queue side panel.
     pub const QUEUE_PANEL_WIDTH: Pixels = px(360.0);
     /// The row that follows the pointer while it is dragged.
