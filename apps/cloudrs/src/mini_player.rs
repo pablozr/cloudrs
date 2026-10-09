@@ -78,6 +78,8 @@ fn options(cx: &App) -> WindowOptions {
         is_minimizable: false,
         app_id: Some("dev.cloudrs.cloudrs".into()),
         kind: window_kind(),
+        // Opening it leaves the window the person is using active; a click on it activates it. Only Windows honors this in the pinned GPUI.
+        focus: false,
         ..Default::default()
     }
 }
@@ -132,6 +134,7 @@ impl MiniPlayer {
             true
         });
         let focus = cx.focus_handle();
+        // Focus inside its own window, so its keys work once it is clicked.
         window.focus(&focus, cx);
         Self { state, focus }
     }

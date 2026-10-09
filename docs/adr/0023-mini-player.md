@@ -25,6 +25,10 @@ behaves on each OS.
    - Toggled by the palette command "Mini player", an icon button in the player bar (before the
      queue button) and `Ctrl Shift M` (`Shift Cmd M` on macOS), which also closes it from the
      mini player itself.
+   - Opening it does not activate it (`WindowOptions::focus: false`, shown with
+     `SW_SHOWNOACTIVATE` on Windows), so the main window keeps its shortcuts; a click activates
+     it. Linux and macOS may ignore this. Closing it does not reactivate the main window, which
+     could restore a window the person minimized; the OS picks the next active window.
    - Its X closes only the mini player. "Open cloudrs" activates the main window.
    - Closing the main window still quits the app and takes the mini player with it, so the app
      never lives on with only the mini player.
@@ -34,7 +38,8 @@ behaves on each OS.
    `start_window_move` on Linux). The buttons stay outside it, because on Windows a drag area
    answers the hit test before a button under it can.
 5. **Keys.** The mini player has a `MiniPlayer` key context: Space, Shift Left and Shift Right
-   do what they do in the main window. It has no text field, so the keys need no guard.
+   do what they do in the main window once the mini player is clicked and active. It has no
+   text field, so the keys need no guard.
 
 ## Consequences
 
