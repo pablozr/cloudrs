@@ -44,3 +44,4 @@ from a website. PLAN M5 named `cargo-dist` or `cargo-packager` for packages.
 - `app-icon-256.png`, `app-icon-512.png` and `app-icon.ico` were cut off at the bottom
   (transparent below about four fifths of the height). They were rendered again from
   `app-icon.svg` with resvg 0.46 (the ICO holds PNGs at 16, 24, 32, 48, 64, 128 and 256 px).
+- Releases are drafted by CI from ADR 0026 on.

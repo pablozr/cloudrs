@@ -605,7 +605,7 @@ fn a_damaged_database_is_reset_and_reported() {
     let version: i32 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 5);
+    assert_eq!(version, 6);
     drop(conn);
     let _ = std::fs::remove_dir_all(&dir);
 }

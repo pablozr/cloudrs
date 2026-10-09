@@ -117,6 +117,8 @@ pub struct Settings {
     pub equalizer: EqPreset,
     /// Let the volume go up to 200%, behind a limiter (ADR 0022).
     pub volume_boost: bool,
+    /// Check GitHub for a new version and install it on restart (ADR 0026).
+    pub auto_update: bool,
 }
 
 impl Default for Settings {
@@ -129,6 +131,7 @@ impl Default for Settings {
             normalize: true,
             equalizer: EqPreset::Off,
             volume_boost: false,
+            auto_update: true,
         }
     }
 }
