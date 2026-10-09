@@ -181,22 +181,6 @@ pub fn format_time(time: Duration) -> String {
     }
 }
 
-/// `842`, `1.2K`, `3.4M`: a count short enough for a meta line.
-pub fn compact_count(count: u64) -> String {
-    let (unit, suffix) = match count {
-        0..=999 => return count.to_string(),
-        1_000..=999_499 => (1_000.0, "K"),
-        _ => (1_000_000.0, "M"),
-    };
-    let value = count as f64 / unit;
-    // One decimal below 10, none above (`12K`), and `1K` rather than `1.0K`.
-    if value < 10.0 && (value * 10.0).round() % 10.0 != 0.0 {
-        format!("{value:.1}{suffix}")
-    } else {
-        format!("{value:.0}{suffix}")
-    }
-}
-
 /// Whether pasted search text is a soundcloud.com link (`http(s)://`, with an
 /// optional `www.` or `m.`) that should be played instead of searched.
 pub fn is_soundcloud_url(text: &str) -> bool {
@@ -390,22 +374,6 @@ mod tests {
         assert_eq!(format_time(Duration::from_secs(0)), "00:00");
         assert_eq!(format_time(Duration::from_secs(225)), "03:45");
         assert_eq!(format_time(Duration::from_secs(3725)), "1:02:05");
-    }
-
-    #[test]
-    fn counts_are_shortened() {
-        for (count, text) in [
-            (0, "0"),
-            (999, "999"),
-            (1_000, "1K"),
-            (1_234, "1.2K"),
-            (12_400, "12K"),
-            (999_499, "999K"),
-            (999_999, "1M"),
-            (3_400_000, "3.4M"),
-        ] {
-            assert_eq!(compact_count(count), text, "{count}");
-        }
     }
 
     #[test]

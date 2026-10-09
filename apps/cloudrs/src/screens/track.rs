@@ -17,7 +17,7 @@ use crate::i18n;
 use crate::intent::UiIntent;
 use crate::models::{ListId, Page};
 use crate::shell::{Shell, status_view};
-use crate::state::{compact_count, format_time, seek_target};
+use crate::state::{format_time, seek_target};
 
 /// Waveforms kept at most; the oldest are dropped all at once.
 const MAX_WAVEFORMS: usize = 16;
@@ -144,7 +144,7 @@ fn meta(header: &TrackPage) -> String {
     parts.extend(
         header
             .plays
-            .map(|plays| i18n::track::plays(compact_count(plays))),
+            .map(|plays| i18n::track::plays(i18n::number::compact(plays))),
     );
     i18n::dot_join(&parts)
 }

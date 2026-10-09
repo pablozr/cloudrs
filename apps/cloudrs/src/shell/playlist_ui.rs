@@ -49,6 +49,18 @@ impl PlaylistForm {
         }
     }
 
+    /// Writes the placeholders again, after the language changed.
+    pub fn relabel(&self, cx: &mut Context<Shell>) {
+        let fields = [
+            (&self.description, t::description_placeholder()),
+            (&self.genre, t::genre_placeholder()),
+            (&self.tags, t::tags_placeholder()),
+        ];
+        for (field, placeholder) in fields {
+            field.update(cx, |field, cx| field.set_texts(placeholder, "", cx));
+        }
+    }
+
     /// Empty again, for the next playlist.
     fn reset(&mut self, cx: &mut Context<Shell>) {
         for field in [&self.description, &self.genre, &self.tags] {

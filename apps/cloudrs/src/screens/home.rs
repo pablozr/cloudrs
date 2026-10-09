@@ -564,7 +564,7 @@ impl Shell {
         let id = user.id;
         let meta = user
             .followers
-            .map(|n| i18n::user::followers(crate::state::compact_count(n)))
+            .map(|n| i18n::user::followers(i18n::number::compact(n)))
             .unwrap_or_default();
         card(
             theme,

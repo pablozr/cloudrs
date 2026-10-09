@@ -1204,6 +1204,7 @@ dependencies = [
  "raw-window-handle",
  "sc-core",
  "sc-platform",
+ "sys-locale",
  "time",
  "tracing",
  "tracing-subscriber",

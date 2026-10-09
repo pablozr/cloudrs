@@ -21,7 +21,7 @@ use sc_core::{ListItems, PlaylistSummary, TrackId, TrackSummary, UserSummary};
 use crate::models::ListId;
 use crate::shell::queue_panel::DragView;
 use crate::shell::{Shell, status_view};
-use crate::state::{compact_count, format_time};
+use crate::state::format_time;
 
 /// Skeleton rows while a first page loads, and at the end while the next does.
 const FIRST_PAGE_SKELETONS: usize = 10;
@@ -306,7 +306,7 @@ impl Shell {
         let id = user.id;
         let meta = user
             .followers
-            .map(|followers| i18n::user::followers(compact_count(followers)))
+            .map(|followers| i18n::user::followers(i18n::number::compact(followers)))
             .unwrap_or_default();
         let row = UserRowData {
             name: &user.username,

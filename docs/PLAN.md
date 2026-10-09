@@ -373,8 +373,8 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
   - [ ] Tried by the maintainer: unplugging headphones while playing, switching the Windows
     default; macOS and Linux untried.
 - [x] Timed comments on the waveform (ADR 0021).
-- [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker waits
-      for a second language (M5).
+- [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker came
+      with the second language (ADR 0025).
 
 ### M5 — Polish and 0.1 release
 - [x] Gapless (ADR 0022).
@@ -395,7 +395,8 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 - [x] Discord RPC (ADR 0015).
 - [ ] Packaging: `.AppImage`/`.deb`/Flatpak, `.dmg`, `.msi` (via `cargo-dist` or
       `cargo-packager`).
-- [ ] First translations beyond English.
+- [x] First translations beyond English: Brazilian Portuguese (ADR 0025).
+  - [ ] Translations reviewed by the maintainer.
 - [ ] Website/README with GIFs and a download page.
 
 ### Later — Listen together (after M2)

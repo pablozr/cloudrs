@@ -122,6 +122,19 @@ impl SearchField {
         &self.edit.text
     }
 
+    /// Changes the placeholder and the hint, when the interface language
+    /// changes while the field exists.
+    pub fn set_texts(
+        &mut self,
+        placeholder: impl Into<SharedString>,
+        hint: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+    ) {
+        self.placeholder = placeholder.into();
+        self.hint = hint.into();
+        cx.notify();
+    }
+
     fn changed(&mut self, cx: &mut Context<Self>) {
         self.layout = None;
         cx.emit(SearchChanged(self.edit.text.clone()));

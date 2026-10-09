@@ -12,13 +12,13 @@ use sc_core::{Command, EqPreset, Settings, ThemeChoice};
 use sc_platform::update::Progress;
 
 use super::account::muted;
-use crate::i18n::{app, discord as d, settings as t, update as u};
+use crate::i18n::{self, Language, app, discord as d, settings as t, update as u};
 use crate::shell::updates::{UpdateState, local_time, status_text};
 use crate::shell::{Shell, shortcuts};
 
 /// Megabytes with one decimal, for the cache size.
 fn megabytes(bytes: u64) -> String {
-    format!("{:.1}", bytes as f64 / 1_048_576.0)
+    i18n::number::one_decimal(bytes as f64 / 1_048_576.0)
 }
 
 impl Shell {
@@ -41,10 +41,10 @@ impl Shell {
                     .child(t::title()),
             )
             .child(self.theme_setting(theme, cx))
+            .child(self.language_setting(theme, cx))
             .child(self.output_setting(theme, cx))
             .child(self.sound_setting(theme, cx))
             .children(self.discord_setting(theme, cx))
-            // The language picker appears with a second language (ADR 0017).
             .child(self.cache_setting(theme, cx))
             .child(self.update_setting(theme, cx))
             .child(shortcut_list(theme))
@@ -71,6 +71,24 @@ impl Shell {
                 .child(choice(1, t::theme_dark(), ThemeChoice::Dark))
                 .child(choice(2, t::theme_light(), ThemeChoice::Light)),
         )
+    }
+
+    /// One pill per language, each in its own name (ADR 0025).
+    fn language_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let selected = self.models.settings.language;
+        let mut row = div().flex().flex_wrap().gap(space::S2).pt(space::S1);
+        for (ix, language) in Language::ALL.into_iter().enumerate() {
+            let name = i18n::language_name(language);
+            row = row.child(
+                pill(theme, ("language", ix), name, selected == language)
+                    .tab_index(0)
+                    .aria_label(name)
+                    .on_click(cx.listener(move |this, _, _, _| {
+                        this.change_settings(|settings| settings.language = language);
+                    })),
+            );
+        }
+        section(theme, t::language(), t::language_hint()).child(row)
     }
 
     /// System default, then one pill per output device. The core lists the

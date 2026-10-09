@@ -27,7 +27,7 @@ use sc_core::{
 };
 
 use crate::appearance;
-use crate::i18n;
+use crate::i18n::{self, Language};
 use crate::intent::UiIntent;
 use crate::mini_player::MiniPlayer;
 use crate::models::{ListId, Models};
@@ -160,6 +160,8 @@ pub struct Shell {
     pub(crate) tray: tray::SystemTray,
     /// Looking for, downloading and installing new versions (ADR 0026).
     pub(crate) updates: updates::Updates,
+    /// The language the texts frozen in widgets were last written in.
+    labels_in: Language,
     /// The command palette while it is open.
     palette: Option<palette::PaletteState>,
     /// Its search field.
@@ -173,6 +175,15 @@ pub struct Shell {
     stopped: bool,
 }
 
+/// The shortcut shown inside the search field.
+fn search_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        i18n::search::hint_mac()
+    } else {
+        i18n::search::hint()
+    }
+}
+
 fn start_core(config: &CoreConfig) -> Result<CoreHandle, StartError> {
     sc_core::start(config.clone()).inspect_err(|error| {
         tracing::error!(%error, "the core could not start");
@@ -181,12 +192,7 @@ fn start_core(config: &CoreConfig) -> Result<CoreHandle, StartError> {
 
 impl Shell {
     pub fn new(config: CoreConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let hint = if cfg!(target_os = "macos") {
-            i18n::search::hint_mac()
-        } else {
-            i18n::search::hint()
-        };
-        let search = cx.new(|cx| SearchField::new(i18n::search::placeholder(), hint, cx));
+        let search = cx.new(|cx| SearchField::new(i18n::search::placeholder(), search_hint(), cx));
         cx.subscribe(&search, |this, _, event: &SearchChanged, cx| {
             this.on_search(&event.0, cx);
         })
@@ -259,6 +265,7 @@ impl Shell {
             }
         })
         .detach();
+        let language = config.settings.language;
         let mut models = Models::new();
         models.settings.clone_from(&config.settings);
         let mut shell = Self {
@@ -295,6 +302,7 @@ impl Shell {
             media,
             tray,
             updates,
+            labels_in: language,
             palette: None,
             palette_field,
             toast: None,
@@ -420,6 +428,10 @@ impl Shell {
                 self.player.update(cx, |bar, cx| {
                     bar.set_volume_boost(settings.volume_boost, cx)
                 });
+                if settings.language != self.labels_in {
+                    self.labels_in = settings.language;
+                    self.relabel(cx);
+                }
                 cx.refresh_windows();
             }
             Event::CacheCleared => {
@@ -476,6 +488,31 @@ impl Shell {
         if changed || artwork_in_queue || (queue_changed && self.queue_open) {
             cx.notify();
         }
+    }
+
+    /// Writes again the texts that widgets keep (placeholders, window titles,
+    /// the tray menu) after the interface language changed. Texts drawn in
+    /// `render` follow by themselves.
+    fn relabel(&mut self, cx: &mut Context<Self>) {
+        self.search.update(cx, |field, cx| {
+            field.set_texts(i18n::search::placeholder(), search_hint(), cx);
+        });
+        let fields = [
+            (&self.name_field, i18n::playlists::name_placeholder()),
+            (&self.palette_field, i18n::palette::placeholder()),
+            (&self.token_field, i18n::account::token_placeholder()),
+        ];
+        for (field, placeholder) in fields {
+            field.update(cx, |field, cx| field.set_texts(placeholder, "", cx));
+        }
+        self.form.relabel(cx);
+        self.main_window
+            .update(cx, |_, window, _| {
+                window.set_window_title(i18n::app::window_title());
+            })
+            .ok();
+        self.relabel_mini(cx);
+        self.tray.relabel();
     }
 
     /// Finds the artwork's colour off the UI thread, then shows it.

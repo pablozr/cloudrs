@@ -6,8 +6,9 @@
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Interface languages. English is the default and, for now, the only one.
-/// The enum lives in `sc-core` because it is a saved setting (ADR 0017).
+/// Interface languages: English (the default) and Brazilian Portuguese
+/// (ADR 0025). The enum lives in `sc-core` because it is a saved setting
+/// (ADR 0017).
 pub use sc_core::Language;
 
 /// Index into `Language::ALL` of the language in use.
@@ -15,19 +16,138 @@ static CURRENT: AtomicU8 = AtomicU8::new(0);
 
 /// Sets the language in use, from the saved settings.
 pub fn set(language: Language) {
-    let index = Language::ALL
-        .iter()
-        .position(|l| *l == language)
-        .unwrap_or_default();
-    CURRENT.store(index as u8, Ordering::Relaxed);
+    CURRENT.store(index_of(language), Ordering::Relaxed);
 }
 
 /// The language in use.
 pub fn current() -> Language {
+    language_at(CURRENT.load(Ordering::Relaxed))
+}
+
+fn index_of(language: Language) -> u8 {
+    let index = Language::ALL
+        .iter()
+        .position(|l| *l == language)
+        .unwrap_or_default();
+    index as u8
+}
+
+fn language_at(index: u8) -> Language {
     Language::ALL
-        .get(usize::from(CURRENT.load(Ordering::Relaxed)))
+        .get(usize::from(index))
         .copied()
         .unwrap_or_default()
+}
+
+/// A language written in itself, so it can be found whatever the interface
+/// shows. Not translated.
+pub fn language_name(language: Language) -> &'static str {
+    match language {
+        Language::English => "English",
+        Language::PtBr => "Português (Brasil)",
+    }
+}
+
+/// The language of the operating system, for a first run with nothing saved.
+pub fn system_language() -> Language {
+    sys_locale::get_locale()
+        .as_deref()
+        .map_or_else(Language::default, language_for_locale)
+}
+
+/// The language for a locale name such as `pt-BR`, `pt_BR.UTF-8` or `en-US`:
+/// any Portuguese becomes Brazilian Portuguese, and anything else English.
+fn language_for_locale(locale: &str) -> Language {
+    let tag = locale.split(['.', '@']).next().unwrap_or_default();
+    let language = tag.split(['-', '_']).next().unwrap_or_default();
+    if language.eq_ignore_ascii_case("pt") {
+        Language::PtBr
+    } else {
+        Language::English
+    }
+}
+
+/// Numbers the way the language writes them.
+pub mod number {
+    use super::{Language, current};
+
+    /// `842`, `1.2K`, `3.4M` in English and `842`, `1,2 mil`, `3,4 mi` in
+    /// Portuguese: a count short enough for a meta line.
+    pub fn compact(count: u64) -> String {
+        compact_in(current(), count)
+    }
+
+    /// A number with one decimal (`1.5`, `1,5`).
+    pub fn one_decimal(value: f64) -> String {
+        one_decimal_in(current(), value)
+    }
+
+    fn compact_in(language: Language, count: u64) -> String {
+        let (unit, suffix) = match count {
+            0..=999 => return count.to_string(),
+            1_000..=999_499 => (1_000.0, thousands_suffix(language)),
+            _ => (1_000_000.0, millions_suffix(language)),
+        };
+        let value = count as f64 / unit;
+        // One decimal below 10, none above (`12K`), and `1K` rather than `1.0K`.
+        let number = if value < 10.0 && (value * 10.0).round() % 10.0 != 0.0 {
+            one_decimal_in(language, value)
+        } else {
+            format!("{value:.0}")
+        };
+        format!("{number}{suffix}")
+    }
+
+    fn one_decimal_in(language: Language, value: f64) -> String {
+        let text = format!("{value:.1}");
+        match language {
+            Language::English => text,
+            Language::PtBr => text.replace('.', ","),
+        }
+    }
+
+    fn thousands_suffix(language: Language) -> &'static str {
+        match language {
+            Language::English => "K",
+            Language::PtBr => " mil",
+        }
+    }
+
+    fn millions_suffix(language: Language) -> &'static str {
+        match language {
+            Language::English => "M",
+            Language::PtBr => " mi",
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn counts_are_shortened() {
+            for (count, english, portuguese) in [
+                (0, "0", "0"),
+                (999, "999", "999"),
+                (1_000, "1K", "1 mil"),
+                (1_234, "1.2K", "1,2 mil"),
+                (12_400, "12K", "12 mil"),
+                (999_499, "999K", "999 mil"),
+                (999_999, "1M", "1 mi"),
+                (3_400_000, "3.4M", "3,4 mi"),
+            ] {
+                assert_eq!(compact_in(Language::English, count), english, "{count}");
+                assert_eq!(compact_in(Language::PtBr, count), portuguese, "{count}");
+            }
+        }
+
+        #[test]
+        fn one_decimal_follows_the_language() {
+            assert_eq!(one_decimal_in(Language::English, 1.5), "1.5");
+            assert_eq!(one_decimal_in(Language::PtBr, 1.5), "1,5");
+            assert_eq!(one_decimal_in(Language::PtBr, 10.0), "10,0");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -35,24 +155,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn set_then_current() {
+    fn every_language_has_an_index_and_back() {
         for language in Language::ALL {
-            set(language);
-            assert_eq!(current(), language);
+            assert_eq!(language_at(index_of(language)), language);
+        }
+    }
+
+    #[test]
+    fn languages_have_their_own_distinct_names() {
+        assert_eq!(language_name(Language::English), "English");
+        assert_eq!(language_name(Language::PtBr), "Português (Brasil)");
+    }
+
+    #[test]
+    fn locales_map_to_a_language() {
+        for (locale, language) in [
+            ("pt-BR", Language::PtBr),
+            ("pt_BR.UTF-8", Language::PtBr),
+            ("pt", Language::PtBr),
+            ("PT-pt", Language::PtBr),
+            ("en-US", Language::English),
+            ("fr-FR", Language::English),
+            ("", Language::English),
+        ] {
+            assert_eq!(language_for_locale(locale), language, "{locale:?}");
         }
     }
 }
 
-// Transitional (ADR 0025): `pt_br` is optional until Brazilian Portuguese is a
-// `Language`, so its texts can land in small commits. The expansion ignores it
-// for now; the commit that adds the language makes it required.
 macro_rules! strings {
-    ($( $(#[$meta:meta])* $name:ident { en: $en:literal $(, pt_br: $pt:literal)? $(,)? } )*) => {
+    ($( $(#[$meta:meta])* $name:ident { en: $en:literal, pt_br: $pt:literal $(,)? } )*) => {
         $(
             $(#[$meta])*
             pub fn $name() -> &'static str {
                 match $crate::i18n::current() {
                     $crate::i18n::Language::English => $en,
+                    $crate::i18n::Language::PtBr => $pt,
                 }
             }
         )*
@@ -62,12 +200,13 @@ macro_rules! strings {
 /// Like `strings!`, for text with named arguments (`"{count} tracks"`), so a
 /// language can reorder them.
 macro_rules! formats {
-    ($( $(#[$meta:meta])* $name:ident($($arg:ident),+) { en: $en:literal $(, pt_br: $pt:literal)? $(,)? } )*) => {
+    ($( $(#[$meta:meta])* $name:ident($($arg:ident),+) { en: $en:literal, pt_br: $pt:literal $(,)? } )*) => {
         $(
             $(#[$meta])*
             pub fn $name($($arg: impl ::std::fmt::Display),+) -> String {
                 match $crate::i18n::current() {
                     $crate::i18n::Language::English => format!($en),
+                    $crate::i18n::Language::PtBr => format!($pt),
                 }
             }
         )*
@@ -100,6 +239,8 @@ pub mod settings {
         theme_system { en: "System", pt_br: "Sistema" }
         theme_dark { en: "Dark", pt_br: "Escuro" }
         theme_light { en: "Light", pt_br: "Claro" }
+        language { en: "Language", pt_br: "Idioma" }
+        language_hint { en: "Changes the interface text. Track titles and comments stay as posted.", pt_br: "Muda os textos da interface. Títulos de faixas e comentários ficam como foram publicados." }
         output { en: "Output", pt_br: "Saída" }
         output_hint { en: "Where cloudrs plays. System default follows your computer\u{2019}s choice.", pt_br: "Onde o cloudrs toca. O padrão do sistema segue a escolha do seu computador." }
         output_default { en: "System default", pt_br: "Padrão do sistema" }

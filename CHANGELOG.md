@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Brazilian Portuguese:** pick the language in Settings (it changes at once); a first run follows
+  your system's language. Track titles and comments stay as posted.
 - **Tray icon:** cloudrs sits in the notification area; click it to show the window, or use its
   menu for play or pause, previous, next and quit.
 - **Mini player:** a small window with the cover, title, previous, play, next and a progress

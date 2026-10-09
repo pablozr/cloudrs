@@ -51,6 +51,13 @@ impl SystemTray {
         this
     }
 
+    /// Relabels the menu after a language change.
+    pub(crate) fn relabel(&mut self) {
+        if let Some(tray) = &mut self.tray {
+            tray.set_labels(labels());
+        }
+    }
+
     fn apply(&mut self, event: &Event) {
         let Some(tray) = &mut self.tray else {
             return;

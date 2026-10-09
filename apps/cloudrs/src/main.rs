@@ -41,7 +41,11 @@ fn main() {
     let oauth_token = sc_platform::keychain::load_token();
     // Read before the window opens, so the first frame has the right theme (ADR 0017).
     let data_dir = app_dir(dirs::data_dir(), "data");
-    let settings = sc_core::read_settings(&data_dir);
+    // With nothing saved, the first run follows the system language (ADR 0025).
+    let settings = sc_core::read_saved_settings(&data_dir).unwrap_or_else(|| sc_core::Settings {
+        language: i18n::system_language(),
+        ..sc_core::Settings::default()
+    });
 
     application()
         .with_assets(cloudrs_ui::assets::Assets)

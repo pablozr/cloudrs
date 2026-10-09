@@ -11,7 +11,6 @@ use crate::i18n::{self, user as t};
 use crate::intent::UiIntent;
 use crate::models::{ListId, Page};
 use crate::shell::{Shell, status_view};
-use crate::state::compact_count;
 use sc_core::{UserId, UserPage};
 
 /// The list behind each tab, in tab order.
@@ -29,12 +28,12 @@ fn meta(header: &UserPage) -> String {
     parts.extend(
         header
             .followers
-            .map(|count| t::followers(compact_count(count))),
+            .map(|count| t::followers(i18n::number::compact(count))),
     );
     parts.extend(
         header
             .followings
-            .map(|count| t::following(compact_count(count))),
+            .map(|count| t::following(i18n::number::compact(count))),
     );
     parts.extend(header.track_count.map(i18n::count::tracks));
     i18n::dot_join(&parts)

@@ -12,6 +12,8 @@ gpui.workspace = true
 gpui_platform.workspace = true
 sc-core = { path = "../../crates/sc-core", default-features = false }
 dirs = "6"
+# The system language, for the first run (ADR 0025); already in the lock through cosmic-text.
+sys-locale = "0.3"
 sc-platform = { path = "../../crates/sc-platform" }
 # Same version and codecs GPUI already compiles; decodes artwork to find its colour.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }

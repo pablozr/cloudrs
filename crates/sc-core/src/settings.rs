@@ -22,16 +22,19 @@ pub enum ThemeChoice {
 pub enum Language {
     #[default]
     English,
+    /// Brazilian Portuguese (ADR 0025).
+    PtBr,
 }
 
 impl Language {
     /// Every language the interface has texts for.
-    pub const ALL: [Language; 1] = [Language::English];
+    pub const ALL: [Language; 2] = [Language::English, Language::PtBr];
 
     /// The stable code saved in the database.
     pub fn tag(self) -> &'static str {
         match self {
             Self::English => "en",
+            Self::PtBr => "pt-BR",
         }
     }
 
@@ -187,6 +190,7 @@ mod tests {
             assert_eq!(Language::from_tag(language.tag()), language);
         }
         assert_eq!(Language::from_tag("xx"), Language::English);
+        assert_eq!(Language::from_tag("pt-BR"), Language::PtBr);
     }
 
     #[test]

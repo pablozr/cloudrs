@@ -469,7 +469,7 @@ mod tests {
         let conn = memory();
         let saved = Settings {
             theme: ThemeChoice::Light,
-            language: Language::English,
+            language: Language::PtBr,
             discord: false,
             output_device: Some("wasapi:x".into()),
             normalize: false,

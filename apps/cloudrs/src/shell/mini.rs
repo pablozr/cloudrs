@@ -75,6 +75,17 @@ impl Shell {
         }
     }
 
+    /// Writes the window title again, after the language changed.
+    pub(super) fn relabel_mini(&self, cx: &mut Context<Self>) {
+        if let Some(handle) = &self.mini {
+            handle
+                .update(cx, |_, window, _| {
+                    window.set_window_title(crate::i18n::mini::window_title());
+                })
+                .ok();
+        }
+    }
+
     /// Brings the main window to the front.
     pub(crate) fn show_main_window(&mut self, cx: &mut Context<Self>) {
         self.main_window
