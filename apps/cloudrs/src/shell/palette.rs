@@ -65,10 +65,11 @@ pub(crate) enum PaletteCommand {
     ThemeDark,
     ThemeLight,
     CheckForUpdates,
+    MiniPlayer,
 }
 
 impl PaletteCommand {
-    const ALL: [Self; 19] = [
+    const ALL: [Self; 20] = [
         Self::Home,
         Self::Search,
         Self::History,
@@ -88,6 +89,7 @@ impl PaletteCommand {
         Self::ThemeDark,
         Self::ThemeLight,
         Self::CheckForUpdates,
+        Self::MiniPlayer,
     ];
 
     fn label(self) -> &'static str {
@@ -111,6 +113,7 @@ impl PaletteCommand {
             Self::ThemeDark => t::theme_dark(),
             Self::ThemeLight => t::theme_light(),
             Self::CheckForUpdates => i18n::update::check_for_updates(),
+            Self::MiniPlayer => t::mini_player(),
         }
     }
 
@@ -130,6 +133,7 @@ impl PaletteCommand {
             Self::Previous => Icon::Previous,
             Self::Next => Icon::Next,
             Self::Queue => Icon::Queue,
+            Self::MiniPlayer => Icon::MiniPlayer,
             Self::ThemeDark => Icon::Moon,
             Self::ThemeLight => Icon::Sun,
         }
@@ -142,6 +146,7 @@ impl PaletteCommand {
             Self::Search => Some(shortcuts::platform(k::key_search(), k::key_search_mac())),
             Self::TogglePlay => Some(k::key_play()),
             Self::Like => Some(shortcuts::platform(k::key_like(), k::key_like_mac())),
+            Self::MiniPlayer => Some(shortcuts::platform(k::key_mini(), k::key_mini_mac())),
             _ => None,
         }
     }
@@ -316,6 +321,7 @@ impl Shell {
                 self.change_settings(|settings| settings.theme = ThemeChoice::Light);
             }
             PaletteCommand::CheckForUpdates => self.check_for_updates(true, cx),
+            PaletteCommand::MiniPlayer => self.toggle_mini_player(cx),
         }
     }
 

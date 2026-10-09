@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Mini player:** a small window with the cover, title, previous, play, next and a progress
+  line; open it from the player bar, Ctrl P or Ctrl Shift M. Always on top on Windows.
 - **Updates:** cloudrs checks GitHub once a day, downloads a new version in the background and
   installs it when you restart or quit (Windows installer, AppImage, macOS); the .deb shows a
   link. Turn it off in Settings › Updates, or run "Check for updates" from Ctrl P.

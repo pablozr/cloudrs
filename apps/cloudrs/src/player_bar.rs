@@ -27,6 +27,8 @@ pub enum PlayerAction {
     SetShuffle(bool),
     SetRepeat(Repeat),
     ToggleQueue,
+    /// Opens or closes the mini player window (ADR 0023).
+    ToggleMiniPlayer,
     Seek(Duration),
     /// 0.0 to 2.0 (above 1.0 only with the volume boost).
     SetVolume(f32),
@@ -41,6 +43,8 @@ pub struct PlayerBar {
     hover: Option<f32>,
     /// The queue panel is open (the queue button shows it).
     queue_open: bool,
+    /// The mini player window is open (its button shows it).
+    mini_open: bool,
 }
 
 impl EventEmitter<PlayerAction> for PlayerBar {}
@@ -55,6 +59,7 @@ impl PlayerBar {
             flat_waveform: vec![tokens::PLACEHOLDER_LEVEL; tokens::PLACEHOLDER_BARS].into(),
             hover: None,
             queue_open: false,
+            mini_open: false,
         }
     }
 
@@ -79,6 +84,16 @@ impl PlayerBar {
     pub fn set_queue_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.queue_open = open;
         cx.notify();
+    }
+
+    pub fn set_mini_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.mini_open = open;
+        cx.notify();
+    }
+
+    /// What the bar shows, for a new mini player to start from.
+    pub fn state(&self) -> &PlayerState {
+        &self.state
     }
 
     pub fn apply(&mut self, event: &Event, artwork: &ArtworkMap, cx: &mut Context<Self>) {
@@ -185,6 +200,10 @@ impl Render for PlayerBar {
             .on_click(cx.listener(|this, _, _, cx| {
                 cx.emit(PlayerAction::SetRepeat(next_repeat(this.state.repeat)));
             }));
+        let mini = icon_button(&theme, "mini", Icon::MiniPlayer, self.mini_open)
+            .aria_label(t::mini_player())
+            .tooltip(tooltip(t::mini_player()))
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(PlayerAction::ToggleMiniPlayer)));
         let queue = icon_button(&theme, "queue", Icon::Queue, self.queue_open)
             .aria_label(t::queue())
             .tooltip(tooltip(t::queue()))
@@ -318,6 +337,7 @@ impl Render for PlayerBar {
             .gap(space::S3)
             .w(size::PLAYER_INFO_WIDTH)
             .child(volume)
+            .child(mini)
             .child(queue);
 
         div()

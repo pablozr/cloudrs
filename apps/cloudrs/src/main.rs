@@ -7,6 +7,7 @@ mod appearance;
 mod comments;
 mod i18n;
 mod intent;
+mod mini_player;
 mod models;
 mod nav;
 mod player_bar;

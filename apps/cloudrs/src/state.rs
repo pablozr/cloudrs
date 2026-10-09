@@ -59,7 +59,7 @@ pub fn next_repeat(repeat: Repeat) -> Repeat {
 }
 
 /// What the player bar shows.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PlayerState {
     pub track: Option<TrackSummary>,
     pub artwork: Option<Arc<Path>>,

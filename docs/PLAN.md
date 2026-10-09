@@ -279,6 +279,7 @@ The visual rules, tokens and motion catalog live in
 | `Ctrl+L` | like |
 | `Ctrl+K` / `/` | search |
 | `Ctrl+P` | command palette (screens and actions) |
+| `Ctrl+Shift+M` | open or close the mini player |
 | `Ctrl+V` anywhere | resolve a pasted SoundCloud URL and play it |
 
 Outside text fields Space always plays/pauses, even over a focused control (Enter activates it); the arrows and Ctrl+V act outside text fields only; `secondary` = Cmd on macOS.
@@ -387,7 +388,9 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
   - [ ] Listened to by the maintainer.
 - [x] In-app updates (ADR 0026).
   - [ ] Tried end to end by the maintainer (an older build updating to the newest release).
-- [ ] Mini player, tray, Discord RPC.
+- [x] Mini player (ADR 0023).
+  - [ ] Tried by the maintainer: always on top on Windows, dragging, focus, both themes.
+- [ ] Tray, Discord RPC.
 - [ ] Packaging: `.AppImage`/`.deb`/Flatpak, `.dmg`, `.msi` (via `cargo-dist` or
       `cargo-packager`).
 - [ ] First translations beyond English.

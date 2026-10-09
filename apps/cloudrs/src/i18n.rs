@@ -145,6 +145,8 @@ pub mod shortcuts {
         key_history_mac { en: "\u{2318}[ \u{2318}]" }
         key_palette { en: "Ctrl P" }
         key_palette_mac { en: "\u{2318}P" }
+        key_mini { en: "Ctrl Shift M", pt_br: "Ctrl Shift M" }
+        key_mini_mac { en: "\u{21e7}\u{2318}M", pt_br: "\u{21e7}\u{2318}M" }
         action_play { en: "Play or pause" }
         action_seek { en: "Seek 5 seconds" }
         action_skip { en: "Previous or next track" }
@@ -153,6 +155,7 @@ pub mod shortcuts {
         action_paste { en: "Open a copied link" }
         action_history { en: "Back or forward" }
         action_palette { en: "Command palette" }
+        action_mini { en: "Mini player", pt_br: "Mini player" }
     }
 }
 
@@ -170,6 +173,7 @@ pub mod palette {
         theme_system { en: "Theme: system" }
         theme_dark { en: "Theme: dark" }
         theme_light { en: "Theme: light" }
+        mini_player { en: "Mini player", pt_br: "Mini player" }
     }
 }
 
@@ -362,9 +366,19 @@ pub mod player {
         queue { en: "Queue" }
         seek { en: "Seek" }
         volume { en: "Volume" }
+        mini_player { en: "Mini player", pt_br: "Mini player" }
     }
     formats! {
         volume_percent(percent) { en: "{percent}%" }
+    }
+}
+
+/// The mini player window (ADR 0023).
+pub mod mini {
+    strings! {
+        window_title { en: "cloudrs mini player", pt_br: "Mini player do cloudrs" }
+        open_main { en: "Open cloudrs", pt_br: "Abrir o cloudrs" }
+        close { en: "Close the mini player", pt_br: "Fechar o mini player" }
     }
 }
 

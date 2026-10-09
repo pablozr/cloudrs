@@ -17,9 +17,10 @@ use cloudrs_ui::tokens::{self, size, space, typography};
 use cloudrs_ui::{Theme, ThemeMode, motion};
 use gpui::prelude::*;
 use gpui::{
-    AnimationExt, AnyElement, App, Context, Entity, FocusHandle, Focusable, KeyBinding,
-    MouseButton, NavigationDirection, Role, ScrollStrategy, SharedString, Stateful, Task,
-    UniformListScrollHandle, Window, WindowControlArea, actions, div, img, px,
+    AnimationExt, AnyElement, AnyWindowHandle, App, Context, Entity, FocusHandle, Focusable,
+    KeyBinding, MouseButton, NavigationDirection, Role, ScrollStrategy, SharedString, Stateful,
+    Subscription, Task, UniformListScrollHandle, Window, WindowControlArea, WindowHandle, actions,
+    div, img, px,
 };
 use sc_core::{
     ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, Settings, StartError, ThemeChoice,
@@ -28,6 +29,7 @@ use sc_core::{
 use crate::appearance;
 use crate::i18n;
 use crate::intent::UiIntent;
+use crate::mini_player::MiniPlayer;
 use crate::models::{ListId, Models};
 use crate::nav::{Route, Router, Section};
 use crate::player_bar::{PlayerAction, PlayerBar};
@@ -37,6 +39,7 @@ use crate::state::QueueState;
 use crate::tint::{self, Rgb};
 
 pub(crate) mod media;
+pub(crate) mod mini;
 pub(crate) mod palette;
 pub(crate) mod playlist_ui;
 pub(crate) mod presence;
@@ -112,6 +115,12 @@ pub struct Shell {
     /// The fallback sign-in: a pasted `oauth_token`.
     pub(crate) token_field: Entity<SearchField>,
     player: Entity<PlayerBar>,
+    /// The mini player window while it is open (ADR 0023), and the
+    /// subscription to what it asks.
+    mini: Option<WindowHandle<MiniPlayer>>,
+    mini_sub: Option<Subscription>,
+    /// The main window, for "Open cloudrs".
+    main_window: AnyWindowHandle,
     pub(crate) models: Models,
     pub(crate) router: Router,
     /// Changes with every navigation, so the screen's entrance plays again.
@@ -219,6 +228,10 @@ impl Shell {
                     this.toggle_queue(cx);
                     return;
                 }
+                PlayerAction::ToggleMiniPlayer => {
+                    this.toggle_mini_player(cx);
+                    return;
+                }
             };
             this.send(command);
         })
@@ -252,6 +265,9 @@ impl Shell {
             search,
             token_field,
             player,
+            mini: None,
+            mini_sub: None,
+            main_window: window.window_handle(),
             models,
             router: Router::new(),
             nav_seq: 0,
@@ -297,10 +313,14 @@ impl Shell {
         if self.stopping {
             return false;
         }
-        let Ok(core) = &self.core else {
-            return true;
-        };
-        if !core.send(Command::Shutdown) {
+        let sent = self
+            .core
+            .as_ref()
+            .is_ok_and(|core| core.send(Command::Shutdown));
+        if !sent {
+            // Nothing to save: the main window closes now, and the app must
+            // not outlive it with only the mini player left.
+            self.close_mini(cx);
             return true;
         }
         self.stopping = true;
@@ -386,6 +406,7 @@ impl Shell {
                 let artwork = &self.models.art.tracks;
                 self.player
                     .update(cx, |bar, cx| bar.apply(&event, artwork, cx));
+                self.mini_event(&event, cx);
             }
             Event::Settings(settings) => {
                 appearance::apply(settings, cx);

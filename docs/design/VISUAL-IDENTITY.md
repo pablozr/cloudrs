@@ -182,6 +182,10 @@ The OS "reduce motion" setting turns every duration down to an instant change.
     repeat, centred) and, underneath, a wide waveform with the elapsed time on its left and
     the total on its right (timed-comment pins live only on the track page, ADR 0021);
   - right: volume and the queue button.
+- **MiniPlayer (ADR 0023):** a 360 x 88 window on `canvas_deep` with a `line` border: the cover
+  (56 px), title and artist (truncated), previous, play and next, and a stack of "Open cloudrs"
+  and close above each other. A 3 px progress line (`line` track, `accent` fill) runs along the
+  bottom. Cover and text drag the window; every control has an `aria_label` and a tooltip.
 - **Sidebar:** brand, main navigation with an accent rail on the active item, "Your playlists".
 
 Every surface has the full set of states: loading (skeleton), empty (what fills it), error (with

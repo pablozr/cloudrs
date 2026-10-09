@@ -18,12 +18,13 @@ actions!(
         PreviousTrack,
         NextTrack,
         ToggleLike,
-        PasteLink
+        PasteLink,
+        ToggleMiniPlayer
     ]
 );
 
 /// The keys Settings lists: the key as shown (Cmd on macOS) and what it does.
-pub(crate) fn help() -> [(&'static str, &'static str); 8] {
+pub(crate) fn help() -> [(&'static str, &'static str); 9] {
     use crate::i18n::shortcuts as t;
     let pick = platform;
     [
@@ -44,6 +45,7 @@ pub(crate) fn help() -> [(&'static str, &'static str); 8] {
             pick(t::key_palette(), t::key_palette_mac()),
             t::action_palette(),
         ),
+        (pick(t::key_mini(), t::key_mini_mac()), t::action_mini()),
     ]
 }
 
@@ -55,6 +57,9 @@ pub(crate) fn platform(pc: &'static str, apple: &'static str) -> &'static str {
 /// Key context of the shell when no text field has focus.
 const NOT_TYPING: &str = "Shell && !SearchField";
 
+/// Key context of the mini player window.
+pub(crate) const MINI_PLAYER: &str = "MiniPlayer";
+
 /// Registers the shortcuts. `secondary` is Cmd on macOS and Ctrl elsewhere.
 pub(crate) fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -65,6 +70,11 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("shift-right", NextTrack, Some(NOT_TYPING)),
         KeyBinding::new("secondary-l", ToggleLike, None),
         KeyBinding::new("secondary-v", PasteLink, Some(NOT_TYPING)),
+        KeyBinding::new("secondary-shift-m", ToggleMiniPlayer, None),
+        // The mini player has no text field, so its keys need no guard.
+        KeyBinding::new("space", TogglePlay, Some(MINI_PLAYER)),
+        KeyBinding::new("shift-left", PreviousTrack, Some(MINI_PLAYER)),
+        KeyBinding::new("shift-right", NextTrack, Some(MINI_PLAYER)),
     ]);
 }
 
@@ -77,6 +87,7 @@ pub(super) fn shortcut_actions(root: Div, cx: &mut Context<Shell>) -> Div {
         .on_action(cx.listener(Shell::on_next))
         .on_action(cx.listener(Shell::on_toggle_like))
         .on_action(cx.listener(Shell::on_paste_link))
+        .on_action(cx.listener(Shell::on_toggle_mini_player))
 }
 
 impl Shell {
