@@ -352,24 +352,24 @@ pub mod count {
 
 pub mod player {
     strings! {
-        nothing_playing { en: "Nothing playing" }
-        nothing_playing_hint { en: "Pick a track from the results." }
-        play { en: "Play" }
-        pause { en: "Pause" }
-        previous { en: "Previous" }
-        next { en: "Next" }
-        shuffle_off { en: "Shuffle: off" }
-        shuffle_on { en: "Shuffle: on" }
-        repeat_off { en: "Repeat: off" }
-        repeat_all { en: "Repeat: all" }
-        repeat_one { en: "Repeat: one track" }
-        queue { en: "Queue" }
-        seek { en: "Seek" }
-        volume { en: "Volume" }
+        nothing_playing { en: "Nothing playing", pt_br: "Nada tocando" }
+        nothing_playing_hint { en: "Pick a track from the results.", pt_br: "Escolha uma faixa nos resultados." }
+        play { en: "Play", pt_br: "Tocar" }
+        pause { en: "Pause", pt_br: "Pausar" }
+        previous { en: "Previous", pt_br: "Anterior" }
+        next { en: "Next", pt_br: "Próxima" }
+        shuffle_off { en: "Shuffle: off", pt_br: "Aleatório: desligado" }
+        shuffle_on { en: "Shuffle: on", pt_br: "Aleatório: ligado" }
+        repeat_off { en: "Repeat: off", pt_br: "Repetir: desligado" }
+        repeat_all { en: "Repeat: all", pt_br: "Repetir: tudo" }
+        repeat_one { en: "Repeat: one track", pt_br: "Repetir: uma faixa" }
+        queue { en: "Queue", pt_br: "Fila" }
+        seek { en: "Seek", pt_br: "Posição" }
+        volume { en: "Volume", pt_br: "Volume" }
         mini_player { en: "Mini player", pt_br: "Mini player" }
     }
     formats! {
-        volume_percent(percent) { en: "{percent}%" }
+        volume_percent(percent) { en: "{percent}%", pt_br: "{percent}%" }
     }
 }
 
@@ -396,76 +396,76 @@ pub mod tray {
 
 pub mod queue {
     strings! {
-        title { en: "Queue" }
-        empty_title { en: "The queue is empty" }
-        empty_hint { en: "Play a track, or add one from the results." }
-        play_next { en: "Play next" }
-        add_to_queue { en: "Add to queue" }
-        remove { en: "Remove" }
+        title { en: "Queue", pt_br: "Fila" }
+        empty_title { en: "The queue is empty", pt_br: "A fila está vazia" }
+        empty_hint { en: "Play a track, or add one from the results.", pt_br: "Toque uma faixa ou adicione uma dos resultados." }
+        play_next { en: "Play next", pt_br: "Tocar em seguida" }
+        add_to_queue { en: "Add to queue", pt_br: "Adicionar à fila" }
+        remove { en: "Remove", pt_br: "Remover" }
     }
 }
 
 pub mod startup {
     strings! {
-        audio_title { en: "No audio output found" }
-        audio_hint { en: "Connect speakers or headphones, then try again." }
-        network_title { en: "Could not start the network" }
-        network_hint { en: "Check your connection and try again." }
+        audio_title { en: "No audio output found", pt_br: "Nenhuma saída de áudio encontrada" }
+        audio_hint { en: "Connect speakers or headphones, then try again.", pt_br: "Conecte alto-falantes ou fones de ouvido e tente de novo." }
+        network_title { en: "Could not start the network", pt_br: "Não foi possível iniciar a rede" }
+        network_hint { en: "Check your connection and try again.", pt_br: "Verifique sua conexão e tente de novo." }
     }
 }
 
 pub mod problem {
     strings! {
-        cache_not_cleared { en: "Couldn\u{2019}t clear the cache. Try again." }
-        offline { en: "Can\u{2019}t reach SoundCloud. Check your connection." }
-        rate_limited { en: "SoundCloud asked us to slow down. Try again in a moment." }
-        not_found { en: "That track or link doesn\u{2019}t exist or is private." }
-        unsupported_link { en: "That link can\u{2019}t be opened." }
-        preview_only { en: "Only a 30-second preview is available for this track." }
-        cannot_play { en: "This track can\u{2019}t be played here." }
-        audio { en: "Something went wrong with the audio. Try again." }
-        output_missing { en: "Your chosen audio device isn\u{2019}t available. Using the system default." }
-        output_lost { en: "Audio device disconnected. Playback paused on the system default." }
-        storage_reset { en: "Your history and saved session were damaged and have been reset." }
-        sign_in_failed { en: "SoundCloud didn\u{2019}t accept that sign-in. Try again." }
-        session_expired { en: "Your SoundCloud session expired. Sign in again." }
-        sign_in_required { en: "Sign in to like tracks and follow people." }
-        sign_in_window { en: "The sign-in window could not open. Try signing in with a token." }
-        playlist_not_saved { en: "That playlist change couldn\u{2019}t be saved. Try again." }
-        jam_unreachable { en: "Couldn\u{2019}t reach the Jam. Check your connection and the link." }
-        jam_bad_link { en: "That isn\u{2019}t a Jam link." }
-        jam_ended { en: "The Jam has ended." }
-        jam_removed { en: "The host removed you from the Jam." }
-        jam_full { en: "That Jam is full." }
-        jam_version { en: "The host uses another version of cloudrs. Update to join." }
-        jam_not_allowed { en: "Only the host can do that in this Jam." }
+        cache_not_cleared { en: "Couldn\u{2019}t clear the cache. Try again.", pt_br: "Não foi possível limpar o cache. Tente de novo." }
+        offline { en: "Can\u{2019}t reach SoundCloud. Check your connection.", pt_br: "Não foi possível acessar o SoundCloud. Verifique sua conexão." }
+        rate_limited { en: "SoundCloud asked us to slow down. Try again in a moment.", pt_br: "O SoundCloud pediu para diminuirmos o ritmo. Tente de novo em instantes." }
+        not_found { en: "That track or link doesn\u{2019}t exist or is private.", pt_br: "Essa faixa ou link não existe ou é privado." }
+        unsupported_link { en: "That link can\u{2019}t be opened.", pt_br: "Esse link não pode ser aberto." }
+        preview_only { en: "Only a 30-second preview is available for this track.", pt_br: "Só há uma prévia de 30 segundos disponível para esta faixa." }
+        cannot_play { en: "This track can\u{2019}t be played here.", pt_br: "Esta faixa não pode ser tocada aqui." }
+        audio { en: "Something went wrong with the audio. Try again.", pt_br: "Algo deu errado com o áudio. Tente de novo." }
+        output_missing { en: "Your chosen audio device isn\u{2019}t available. Using the system default.", pt_br: "O dispositivo de áudio escolhido não está disponível. Usando o padrão do sistema." }
+        output_lost { en: "Audio device disconnected. Playback paused on the system default.", pt_br: "Dispositivo de áudio desconectado. A reprodução foi pausada no padrão do sistema." }
+        storage_reset { en: "Your history and saved session were damaged and have been reset.", pt_br: "Seu histórico e a sessão salva estavam danificados e foram redefinidos." }
+        sign_in_failed { en: "SoundCloud didn\u{2019}t accept that sign-in. Try again.", pt_br: "O SoundCloud não aceitou essa entrada. Tente de novo." }
+        session_expired { en: "Your SoundCloud session expired. Sign in again.", pt_br: "Sua sessão do SoundCloud expirou. Entre de novo." }
+        sign_in_required { en: "Sign in to like tracks and follow people.", pt_br: "Entre para curtir faixas e seguir pessoas." }
+        sign_in_window { en: "The sign-in window could not open. Try signing in with a token.", pt_br: "Não foi possível abrir a janela de entrada. Tente entrar com um token." }
+        playlist_not_saved { en: "That playlist change couldn\u{2019}t be saved. Try again.", pt_br: "Não foi possível salvar essa alteração na playlist. Tente de novo." }
+        jam_unreachable { en: "Couldn\u{2019}t reach the Jam. Check your connection and the link.", pt_br: "Não foi possível acessar a Jam. Verifique sua conexão e o link." }
+        jam_bad_link { en: "That isn\u{2019}t a Jam link.", pt_br: "Esse não é um link de Jam." }
+        jam_ended { en: "The Jam has ended.", pt_br: "A Jam terminou." }
+        jam_removed { en: "The host removed you from the Jam.", pt_br: "O anfitrião removeu você da Jam." }
+        jam_full { en: "That Jam is full.", pt_br: "Essa Jam está cheia." }
+        jam_version { en: "The host uses another version of cloudrs. Update to join.", pt_br: "O anfitrião usa outra versão do cloudrs. Atualize para entrar." }
+        jam_not_allowed { en: "Only the host can do that in this Jam.", pt_br: "Só o anfitrião pode fazer isso nesta Jam." }
     }
 }
 
 /// The account screen (ADR 0010).
 pub mod account {
     strings! {
-        title { en: "Account" }
-        signed_out_title { en: "Sign in to SoundCloud" }
-        signed_out_hint { en: "See your feed, likes and library, like tracks and follow people. You sign in on soundcloud.com in a small window; cloudrs only keeps the session in your system\u{2019}s keychain." }
-        sign_in { en: "Sign in with SoundCloud" }
-        waiting { en: "Finish signing in in the SoundCloud window\u{2026}" }
-        other_ways { en: "Other ways to sign in" }
-        token_steps { en: "1. Sign in on soundcloud.com in your browser.  2. Open the developer tools (F12) \u{2192} Application (Storage in Firefox) \u{2192} Cookies \u{2192} https://soundcloud.com.  3. Copy the value of the cookie named oauth_token and paste it here." }
-        token_placeholder { en: "Paste your oauth_token" }
-        token_sign_in { en: "Sign in with token" }
-        sign_out { en: "Sign out" }
-        signed_in_hint { en: "Signed in to SoundCloud. Signing out removes the session from this computer." }
-        unofficial { en: "cloudrs is an unofficial client, not made by SoundCloud." }
+        title { en: "Account", pt_br: "Conta" }
+        signed_out_title { en: "Sign in to SoundCloud", pt_br: "Entre no SoundCloud" }
+        signed_out_hint { en: "See your feed, likes and library, like tracks and follow people. You sign in on soundcloud.com in a small window; cloudrs only keeps the session in your system\u{2019}s keychain.", pt_br: "Veja seu feed, curtidas e biblioteca, curta faixas e siga pessoas. Você entra no soundcloud.com em uma janela pequena; o cloudrs só guarda a sessão no chaveiro do seu sistema." }
+        sign_in { en: "Sign in with SoundCloud", pt_br: "Entrar com o SoundCloud" }
+        waiting { en: "Finish signing in in the SoundCloud window\u{2026}", pt_br: "Conclua a entrada na janela do SoundCloud\u{2026}" }
+        other_ways { en: "Other ways to sign in", pt_br: "Outras formas de entrar" }
+        token_steps { en: "1. Sign in on soundcloud.com in your browser.  2. Open the developer tools (F12) \u{2192} Application (Storage in Firefox) \u{2192} Cookies \u{2192} https://soundcloud.com.  3. Copy the value of the cookie named oauth_token and paste it here.", pt_br: "1. Entre no soundcloud.com no seu navegador.  2. Abra as ferramentas do desenvolvedor (F12) \u{2192} Application (Storage no Firefox) \u{2192} Cookies \u{2192} https://soundcloud.com.  3. Copie o valor do cookie chamado oauth_token e cole aqui." }
+        token_placeholder { en: "Paste your oauth_token", pt_br: "Cole seu oauth_token" }
+        token_sign_in { en: "Sign in with token", pt_br: "Entrar com token" }
+        sign_out { en: "Sign out", pt_br: "Sair" }
+        signed_in_hint { en: "Signed in to SoundCloud. Signing out removes the session from this computer.", pt_br: "Você está conectado ao SoundCloud. Sair remove a sessão deste computador." }
+        unofficial { en: "cloudrs is an unofficial client, not made by SoundCloud.", pt_br: "O cloudrs é um cliente não oficial, não feito pelo SoundCloud." }
     }
 }
 
 pub mod social {
     strings! {
-        like { en: "Like" }
-        unlike { en: "Unlike" }
-        follow { en: "Follow" }
-        unfollow { en: "Unfollow" }
+        like { en: "Like", pt_br: "Curtir" }
+        unlike { en: "Unlike", pt_br: "Descurtir" }
+        follow { en: "Follow", pt_br: "Seguir" }
+        unfollow { en: "Unfollow", pt_br: "Deixar de seguir" }
     }
 }
 
@@ -625,15 +625,15 @@ pub mod playlists {
 /// What Discord shows (ADR 0015), and its on/off switch.
 pub mod discord {
     strings! {
-        listen_on_soundcloud { en: "Listen on SoundCloud" }
-        get_cloudrs { en: "Get cloudrs" }
-        playing { en: "Playing on cloudrs" }
-        paused { en: "Paused" }
-        setting { en: "Show what I play on Discord" }
-        setting_hint { en: "Your Discord profile shows the track, its cover and a link to it. Nothing goes through a server of ours." }
+        listen_on_soundcloud { en: "Listen on SoundCloud", pt_br: "Ouvir no SoundCloud" }
+        get_cloudrs { en: "Get cloudrs", pt_br: "Baixar o cloudrs" }
+        playing { en: "Playing on cloudrs", pt_br: "Tocando no cloudrs" }
+        paused { en: "Paused", pt_br: "Pausado" }
+        setting { en: "Show what I play on Discord", pt_br: "Mostrar o que estou ouvindo no Discord" }
+        setting_hint { en: "Your Discord profile shows the track, its cover and a link to it. Nothing goes through a server of ours.", pt_br: "Seu perfil do Discord mostra a faixa, a capa e um link para ela. Nada passa por um servidor nosso." }
     }
     formats! {
-        by(artist) { en: "by {artist}" }
-        in_jam(artist, people) { en: "by {artist} \u{b7} in a Jam of {people}" }
+        by(artist) { en: "by {artist}", pt_br: "de {artist}" }
+        in_jam(artist, people) { en: "by {artist} \u{b7} in a Jam of {people}", pt_br: "de {artist} \u{b7} em uma Jam de {people}" }
     }
 }
