@@ -78,7 +78,8 @@ fn options(cx: &App) -> WindowOptions {
         is_minimizable: false,
         app_id: Some("dev.cloudrs.cloudrs".into()),
         kind: window_kind(),
-        // Opening it leaves the window the person is using active; a click on it activates it. Only Windows honors this in the pinned GPUI.
+        // Opening it leaves the window the person is using active; a click on it
+        // activates it. Only Windows honors this in the pinned GPUI.
         focus: false,
         ..Default::default()
     }

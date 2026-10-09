@@ -143,10 +143,11 @@ impl Default for Settings {
 /// cannot be read. See [`read_saved_settings`].
 pub fn read_settings(data_dir: &Path) -> Settings {
     read_saved_settings(data_dir)
-        .unwrap_or_else(|error| {
-            tracing::warn!(%error, "could not read the settings; using the defaults");
-            None
-        })
+        .inspect_err(
+            |error| tracing::warn!(%error, "could not read the settings; using the defaults"),
+        )
+        .ok()
+        .flatten()
         .unwrap_or_default()
 }
 
