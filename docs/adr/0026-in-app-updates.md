@@ -122,15 +122,18 @@ Detection runs on the update thread, never at startup.
 - **Velopack.** A complete system with delta updates, but it replaces the installers and the
   packaging chain from ADR 0012 and ADR 0016 and needs its own CLI and runtime.
 - **Notify only** (a link to the release page). Cheapest, but it leaves the person to download
-  and run the installer by hand. It remains the behavior of the `.deb`, of platforms with no
-  package and of builds where the key is empty.
+  and run the installer by hand. It remains the behavior of the `.deb` and of platforms with no
+  package.
 
 ## Releasing
+
+Steps 1–3 run once; they were done on 2026-10-09. Every release after that starts at step 4.
 
 1. `cargo packager signer generate --path "$HOME/.cloudrs/update.key"`. Keep the key and its
    password in a password manager: losing the key means installed copies refuse future updates.
 2. `gh secret set UPDATE_SIGNING_KEY --repo pablozr/cloudrs < "$HOME/.cloudrs/update.key"` and
-   `gh secret set UPDATE_SIGNING_KEY_PASSWORD --repo pablozr/cloudrs`.
+   `gh secret set UPDATE_SIGNING_KEY_PASSWORD --repo pablozr/cloudrs`. PowerShell has no `<`:
+   pass `--body (Get-Content -Raw "$HOME\.cloudrs\update.key")` instead.
 3. Put the contents of `update.key.pub` into `PUBLIC_KEY`
    (`crates/sc-platform/src/update.rs`) and commit.
 4. Move CHANGELOG Unreleased to `## 0.1.0-beta.N · <date>`, bump `version` in `Cargo.toml`, run

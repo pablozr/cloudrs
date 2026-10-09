@@ -4,8 +4,7 @@
 //!
 //! A thread owns the whole check. It reports through a channel and the app
 //! decides what to show and when to install; nothing here touches the core or
-//! the UI. Without a public key (or in a debug build) the updater is off, as
-//! Discord is without an application id.
+//! the UI. A debug build never updates.
 
 mod download;
 mod install;
@@ -25,9 +24,9 @@ pub fn releases_page() -> String {
 }
 
 /// The public half of the update signing key: the base64 line of
-/// `update.key.pub`, made by `cargo packager signer generate`. Empty keeps the
-/// updater off until the maintainer adds it (ADR 0026, Releasing).
-const PUBLIC_KEY: &str = "";
+/// `update.key.pub`, made by `cargo packager signer generate` (ADR 0026,
+/// Releasing). Changing it makes installed copies refuse every update.
+const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlENzc4RjFBRTM1RDQ4MTIKUldRU1NGM2pHbzkzbmZjVXpwenpyK082L3lHRkFNU01kZmN3Zzd2eVBURGZyWjJVYzlhTU9aamEK";
 
 /// How long after start the first check waits, so it never competes with the
 /// first frame or the first track.
@@ -68,9 +67,9 @@ pub struct Config {
 
 impl Config {
     /// The configuration of this app, or `None` when it must not update: a
-    /// debug build, no public key yet, or a version that is not SemVer. No I/O.
+    /// debug build or a version that is not SemVer. No I/O.
     pub fn for_this_app(current: &str, download_dir: PathBuf) -> Option<Self> {
-        if cfg!(debug_assertions) || PUBLIC_KEY.is_empty() {
+        if cfg!(debug_assertions) {
             return None;
         }
         Some(Self {
@@ -183,6 +182,16 @@ mod tests {
 
     fn at(secs: u64) -> SystemTime {
         SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
+    }
+
+    #[test]
+    fn the_public_key_decodes() {
+        use base64::Engine;
+        let text = base64::engine::general_purpose::STANDARD
+            .decode(PUBLIC_KEY)
+            .unwrap();
+        let text = String::from_utf8(text).unwrap();
+        assert!(minisign_verify::PublicKey::decode(&text).is_ok());
     }
 
     #[test]

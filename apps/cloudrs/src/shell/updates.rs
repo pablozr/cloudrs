@@ -23,7 +23,7 @@ pub(crate) enum UpdateState {
 }
 
 pub(crate) struct Updates {
-    /// `None` in debug builds and while the public key is empty.
+    /// `None` in debug builds.
     config: Option<Config>,
     pub(crate) state: UpdateState,
     pub(crate) last_check: Option<SystemTime>,
