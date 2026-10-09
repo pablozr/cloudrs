@@ -142,42 +142,39 @@ impl Default for Settings {
 /// The saved settings, or the defaults when there are none or the database
 /// cannot be read. See [`read_saved_settings`].
 pub fn read_settings(data_dir: &Path) -> Settings {
-    read_saved_settings(data_dir).unwrap_or_default()
-}
-
-/// The settings saved earlier, or `None` when nothing is saved or the
-/// database cannot be read. It tells a first run from a saved choice, so the
-/// app can pick a default (the system language) only for the first. Runs on
-/// the calling thread and costs one SQLite open, so the app calls it once
-/// before the window opens. A damaged or newer database is left for the core
-/// to report and reset.
-pub fn read_saved_settings(data_dir: &Path) -> Option<Settings> {
-    let read = || -> Result<Option<Settings>, String> {
-        std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
-        let conn = store::open(&data_dir.join(store::FILE_NAME)).map_err(|e| e.to_string())?;
-        let mut saved = store::load_settings(&conn).map_err(|e| e.to_string())?;
-        // The old flag file wins once: move it into the database, then drop it.
-        let legacy = data_dir.join(LEGACY_DISCORD_OFF);
-        if legacy.exists() {
-            let migrated = Settings {
-                discord: false,
-                ..saved.clone().unwrap_or_default()
-            };
-            store::save_settings(&conn, &migrated).map_err(|e| e.to_string())?;
-            if let Err(error) = std::fs::remove_file(&legacy) {
-                tracing::warn!(%error, "could not remove the old Discord flag");
-            }
-            saved = Some(migrated);
-        }
-        Ok(saved)
-    };
-    match read() {
-        Ok(saved) => saved,
-        Err(error) => {
+    read_saved_settings(data_dir)
+        .unwrap_or_else(|error| {
             tracing::warn!(%error, "could not read the settings; using the defaults");
             None
+        })
+        .unwrap_or_default()
+}
+
+/// The settings saved earlier. `Ok(None)` when nothing is saved, which tells a
+/// first run from a saved choice, so the app can pick a default (the system
+/// language) only for the first. `Err` when the database cannot be read
+/// (locked by another instance past the busy timeout, damaged, or newer); that
+/// is left for the core to report and reset, and is not a first run. Runs on
+/// the calling thread and costs one SQLite open, so the app calls it once
+/// before the window opens.
+pub fn read_saved_settings(data_dir: &Path) -> Result<Option<Settings>, String> {
+    std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
+    let conn = store::open(&data_dir.join(store::FILE_NAME)).map_err(|e| e.to_string())?;
+    let mut saved = store::load_settings(&conn).map_err(|e| e.to_string())?;
+    // The old flag file wins once: move it into the database, then drop it.
+    let legacy = data_dir.join(LEGACY_DISCORD_OFF);
+    if legacy.exists() {
+        let migrated = Settings {
+            discord: false,
+            ..saved.clone().unwrap_or_default()
+        };
+        store::save_settings(&conn, &migrated).map_err(|e| e.to_string())?;
+        if let Err(error) = std::fs::remove_file(&legacy) {
+            tracing::warn!(%error, "could not remove the old Discord flag");
         }
+        saved = Some(migrated);
     }
+    Ok(saved)
 }
 
 #[cfg(test)]
@@ -210,7 +207,7 @@ mod tests {
     fn an_empty_directory_has_no_saved_settings() {
         let dir = std::env::temp_dir().join(format!("cloudrs-unsaved-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(read_saved_settings(&dir), None);
+        assert_eq!(read_saved_settings(&dir), Ok(None));
         assert_eq!(read_settings(&dir), Settings::default());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -221,8 +218,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(LEGACY_DISCORD_OFF), b"").unwrap();
-        let saved = read_saved_settings(&dir).expect("migrated settings are saved");
-        assert!(!saved.discord);
+        let saved = read_saved_settings(&dir).expect("readable");
+        assert!(!saved.expect("migrated settings are saved").discord);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_database_is_not_a_first_run() {
+        let dir = std::env::temp_dir().join(format!("cloudrs-unreadable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(store::FILE_NAME);
+        let junk = b"this is not a sqlite database, just text".repeat(50);
+        std::fs::write(&file, &junk).unwrap();
+
+        assert!(read_saved_settings(&dir).is_err());
+        assert_eq!(read_settings(&dir), Settings::default());
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().len(),
+            junk.len() as u64,
+            "nothing is reset on this path"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -16,10 +16,14 @@ language is Brazilian Portuguese.
 7. **`Language::PtBr`**, tag `"pt-BR"`. The settings table keeps the language as TEXT, so there is
    no migration. The picker in Settings shows one pill per language, each in its own name
    ("English", "Português (Brasil)"), right after the theme.
-8. **The system language on a first run only.** `sc_core::read_saved_settings` returns `None` when
-   nothing is saved; then `sys-locale` 0.3 in the app picks the language, with any `pt*` locale
-   mapping to `PtBr` and anything else to English. A saved choice always wins. `sys-locale` is
-   already in the lock through `cosmic-text`, so no crate is added. Only the pure mapping
+8. **The system language on a first run only.** `sc_core::read_saved_settings` returns `Ok(None)`
+   when nothing is saved, and only then `sys-locale` 0.3 in the app picks the language, with any
+   `pt*` locale mapping to `PtBr` and anything else to English. A saved choice always wins. When
+   the database cannot be read (`Err`: locked by another instance past the busy timeout, damaged,
+   or newer), the app starts with the defaults (English), as before this ADR, not the system
+   language. If the read failed and the core later opens the store, the next settings change
+   saves the whole in-memory `Settings` over the saved ones (true since ADR 0017). `sys-locale`
+   is already in the lock through `cosmic-text`, so no crate is added. Only the pure mapping
    (`language_for_locale`) is unit-tested, not the call into the OS.
 9. **Numbers follow the language.** `i18n::number::compact` gives "1,2 mil", "12 mil", "3,4 mi" in
    Portuguese (and "1.2K", "12K", "3.4M" in English as before), and `one_decimal` uses a decimal

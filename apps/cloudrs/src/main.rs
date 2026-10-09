@@ -41,11 +41,19 @@ fn main() {
     let oauth_token = sc_platform::keychain::load_token();
     // Read before the window opens, so the first frame has the right theme (ADR 0017).
     let data_dir = app_dir(dirs::data_dir(), "data");
-    // With nothing saved, the first run follows the system language (ADR 0025).
-    let settings = sc_core::read_saved_settings(&data_dir).unwrap_or_else(|| sc_core::Settings {
-        language: i18n::system_language(),
-        ..sc_core::Settings::default()
-    });
+    // With nothing saved, the first run follows the system language (ADR 0025); an
+    // unreadable database keeps the defaults rather than guessing.
+    let settings = match sc_core::read_saved_settings(&data_dir) {
+        Ok(Some(saved)) => saved,
+        Ok(None) => sc_core::Settings {
+            language: i18n::system_language(),
+            ..sc_core::Settings::default()
+        },
+        Err(error) => {
+            tracing::warn!(%error, "could not read the settings; using the defaults");
+            sc_core::Settings::default()
+        }
+    };
 
     application()
         .with_assets(cloudrs_ui::assets::Assets)
