@@ -18,7 +18,9 @@ mod waveform;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub use settings::{EqPreset, Language, Settings, ThemeChoice, max_volume, read_settings};
+pub use settings::{
+    EqPreset, Language, Settings, ThemeChoice, max_volume, read_saved_settings, read_settings,
+};
 pub use types::{
     Account, ArtKey, CommentSummary, Genre, HomeShelf, JamPerson, JamRole, JamState, ListId,
     ListItems, NewPlaylist, OutputDevice, PlayState, Playback, PlaylistChange, PlaylistId,

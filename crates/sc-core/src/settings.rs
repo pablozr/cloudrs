@@ -137,10 +137,18 @@ impl Default for Settings {
 }
 
 /// The saved settings, or the defaults when there are none or the database
-/// cannot be read. Runs on the calling thread and costs one SQLite open, so
-/// the app calls it once before the window opens. A damaged or newer database
-/// is left for the core to report and reset.
+/// cannot be read. See [`read_saved_settings`].
 pub fn read_settings(data_dir: &Path) -> Settings {
+    read_saved_settings(data_dir).unwrap_or_default()
+}
+
+/// The settings saved earlier, or `None` when nothing is saved or the
+/// database cannot be read. It tells a first run from a saved choice, so the
+/// app can pick a default (the system language) only for the first. Runs on
+/// the calling thread and costs one SQLite open, so the app calls it once
+/// before the window opens. A damaged or newer database is left for the core
+/// to report and reset.
+pub fn read_saved_settings(data_dir: &Path) -> Option<Settings> {
     let read = || -> Result<Option<Settings>, String> {
         std::fs::create_dir_all(data_dir).map_err(|e| e.to_string())?;
         let conn = store::open(&data_dir.join(store::FILE_NAME)).map_err(|e| e.to_string())?;
@@ -161,10 +169,10 @@ pub fn read_settings(data_dir: &Path) -> Settings {
         Ok(saved)
     };
     match read() {
-        Ok(saved) => saved.unwrap_or_default(),
+        Ok(saved) => saved,
         Err(error) => {
             tracing::warn!(%error, "could not read the settings; using the defaults");
-            Settings::default()
+            None
         }
     }
 }
@@ -191,6 +199,26 @@ mod tests {
         assert!(!read_settings(&dir).discord);
         assert!(!dir.join(LEGACY_DISCORD_OFF).exists());
         assert!(!read_settings(&dir).discord, "kept in the database");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_empty_directory_has_no_saved_settings() {
+        let dir = std::env::temp_dir().join(format!("cloudrs-unsaved-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(read_saved_settings(&dir), None);
+        assert_eq!(read_settings(&dir), Settings::default());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_migrated_discord_flag_counts_as_saved() {
+        let dir = std::env::temp_dir().join(format!("cloudrs-saved-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(LEGACY_DISCORD_OFF), b"").unwrap();
+        let saved = read_saved_settings(&dir).expect("migrated settings are saved");
+        assert!(!saved.discord);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
