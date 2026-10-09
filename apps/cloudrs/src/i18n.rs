@@ -472,153 +472,153 @@ pub mod social {
 /// The Jam screen: listening together (ADR 0011).
 pub mod jam {
     strings! {
-        title { en: "Jam" }
-        intro_title { en: "Listen together" }
-        intro_hint { en: "Start a Jam and share its link: friends hear the same track at the same moment, wherever they are, and can add to the queue. To join one, paste its link in the search field." }
-        start { en: "Start a Jam" }
-        step_start { en: "Start a Jam" }
-        step_start_hint { en: "You host: your queue plays for everyone." }
-        step_share { en: "Share the link" }
-        step_share_hint { en: "Send it in any chat. It works from any network." }
-        step_listen { en: "Listen together" }
-        step_listen_hint { en: "Same track, same second. Friends add songs too." }
-        going_online { en: "Going online\u{2026}" }
-        joining { en: "Joining the Jam\u{2026}" }
-        hosting { en: "You\u{2019}re hosting a Jam" }
-        share_hint { en: "Share this link. Anyone with cloudrs can join, from any network." }
-        copy_link { en: "Copy link" }
-        copied { en: "Link copied" }
-        people { en: "Listening" }
-        nobody_yet { en: "Nobody has joined yet." }
-        guests_control { en: "Guests can play, pause and skip" }
-        guests_add_only { en: "Guests can only add tracks" }
-        end { en: "End Jam" }
-        leave { en: "Leave Jam" }
-        guest_hint { en: "The host\u{2019}s queue plays here. Tracks you play are added to it." }
-        cannot_play { en: "can\u{2019}t play this track" }
-        role_host { en: "Host" }
-        role_guest { en: "Listening along" }
-        you { en: "You" }
-        connecting { en: "Connecting\u{2026}" }
-        open_jam { en: "Open the Jam" }
-        remove { en: "Remove" }
+        title { en: "Jam", pt_br: "Jam" }
+        intro_title { en: "Listen together", pt_br: "Ouçam juntos" }
+        intro_hint { en: "Start a Jam and share its link: friends hear the same track at the same moment, wherever they are, and can add to the queue. To join one, paste its link in the search field.", pt_br: "Inicie uma Jam e compartilhe o link: seus amigos ouvem a mesma faixa no mesmo momento, onde estiverem, e podem adicionar à fila. Para entrar em uma, cole o link dela no campo de busca." }
+        start { en: "Start a Jam", pt_br: "Iniciar uma Jam" }
+        step_start { en: "Start a Jam", pt_br: "Inicie uma Jam" }
+        step_start_hint { en: "You host: your queue plays for everyone.", pt_br: "Você é o anfitrião: sua fila toca para todos." }
+        step_share { en: "Share the link", pt_br: "Compartilhe o link" }
+        step_share_hint { en: "Send it in any chat. It works from any network.", pt_br: "Envie em qualquer chat. Funciona de qualquer rede." }
+        step_listen { en: "Listen together", pt_br: "Ouçam juntos" }
+        step_listen_hint { en: "Same track, same second. Friends add songs too.", pt_br: "Mesma faixa, mesmo segundo. Seus amigos também adicionam músicas." }
+        going_online { en: "Going online\u{2026}", pt_br: "Conectando à internet\u{2026}" }
+        joining { en: "Joining the Jam\u{2026}", pt_br: "Entrando na Jam\u{2026}" }
+        hosting { en: "You\u{2019}re hosting a Jam", pt_br: "Você é o anfitrião de uma Jam" }
+        share_hint { en: "Share this link. Anyone with cloudrs can join, from any network.", pt_br: "Compartilhe este link. Qualquer pessoa com o cloudrs pode entrar, de qualquer rede." }
+        copy_link { en: "Copy link", pt_br: "Copiar link" }
+        copied { en: "Link copied", pt_br: "Link copiado" }
+        people { en: "Listening", pt_br: "Ouvindo" }
+        nobody_yet { en: "Nobody has joined yet.", pt_br: "Ninguém entrou ainda." }
+        guests_control { en: "Guests can play, pause and skip", pt_br: "Convidados podem tocar, pausar e pular" }
+        guests_add_only { en: "Guests can only add tracks", pt_br: "Convidados só podem adicionar faixas" }
+        end { en: "End Jam", pt_br: "Encerrar Jam" }
+        leave { en: "Leave Jam", pt_br: "Sair da Jam" }
+        guest_hint { en: "The host\u{2019}s queue plays here. Tracks you play are added to it.", pt_br: "A fila do anfitrião toca aqui. As faixas que você tocar são adicionadas a ela." }
+        cannot_play { en: "can\u{2019}t play this track", pt_br: "não pode tocar esta faixa" }
+        role_host { en: "Host", pt_br: "Anfitrião" }
+        role_guest { en: "Listening along", pt_br: "Ouvindo junto" }
+        you { en: "You", pt_br: "Você" }
+        connecting { en: "Connecting\u{2026}", pt_br: "Conectando\u{2026}" }
+        open_jam { en: "Open the Jam", pt_br: "Abrir a Jam" }
+        remove { en: "Remove", pt_br: "Remover" }
     }
     formats! {
-        in_jam(host) { en: "In {host}\u{2019}s Jam" }
-        remove_person(name) { en: "Remove {name} from the Jam" }
-        listening(count) { en: "{count} listening" }
+        in_jam(host) { en: "In {host}\u{2019}s Jam", pt_br: "Na Jam de {host}" }
+        remove_person(name) { en: "Remove {name} from the Jam", pt_br: "Remover {name} da Jam" }
+        listening(count) { en: "{count} listening", pt_br: "{count} ouvindo" }
     }
 }
 
 /// Home, where cloudrs opens.
 pub mod home {
     strings! {
-        welcome { en: "Welcome to cloudrs" }
-        good_morning { en: "Good morning" }
-        good_afternoon { en: "Good afternoon" }
-        good_evening { en: "Good evening" }
-        subtitle { en: "Pick up where you left off, or find something new." }
-        recently_played { en: "Recently played" }
-        your_playlists { en: "Your playlists" }
-        from_people_you_follow { en: "New from people you follow" }
-        liked_tracks { en: "Liked tracks" }
-        artists_you_follow { en: "Artists you follow" }
-        trending { en: "Trending on SoundCloud" }
-        now_playing { en: "NOW PLAYING" }
-        jump_back_in { en: "JUMP BACK IN" }
-        trending_now { en: "TRENDING NOW" }
-        play { en: "Play" }
-        pause { en: "Pause" }
-        open_track { en: "Open track" }
-        see_all { en: "See all" }
-        start_title { en: "Start listening" }
-        start_hint { en: "Search for a track or an artist, or paste a SoundCloud link. Sign in to bring your likes, playlists and feed." }
+        welcome { en: "Welcome to cloudrs", pt_br: "Boas-vindas ao cloudrs" }
+        good_morning { en: "Good morning", pt_br: "Bom dia" }
+        good_afternoon { en: "Good afternoon", pt_br: "Boa tarde" }
+        good_evening { en: "Good evening", pt_br: "Boa noite" }
+        subtitle { en: "Pick up where you left off, or find something new.", pt_br: "Continue de onde parou ou descubra algo novo." }
+        recently_played { en: "Recently played", pt_br: "Tocadas recentemente" }
+        your_playlists { en: "Your playlists", pt_br: "Suas playlists" }
+        from_people_you_follow { en: "New from people you follow", pt_br: "Novidades de quem você segue" }
+        liked_tracks { en: "Liked tracks", pt_br: "Faixas curtidas" }
+        artists_you_follow { en: "Artists you follow", pt_br: "Artistas que você segue" }
+        trending { en: "Trending on SoundCloud", pt_br: "Em alta no SoundCloud" }
+        now_playing { en: "NOW PLAYING", pt_br: "TOCANDO AGORA" }
+        jump_back_in { en: "JUMP BACK IN", pt_br: "CONTINUE OUVINDO" }
+        trending_now { en: "TRENDING NOW", pt_br: "EM ALTA AGORA" }
+        play { en: "Play", pt_br: "Tocar" }
+        pause { en: "Pause", pt_br: "Pausar" }
+        open_track { en: "Open track", pt_br: "Abrir faixa" }
+        see_all { en: "See all", pt_br: "Ver tudo" }
+        start_title { en: "Start listening", pt_br: "Comece a ouvir" }
+        start_hint { en: "Search for a track or an artist, or paste a SoundCloud link. Sign in to bring your likes, playlists and feed.", pt_br: "Busque uma faixa ou um artista, ou cole um link do SoundCloud. Entre para trazer suas curtidas, playlists e feed." }
     }
     formats! {
-        welcome_back(name) { en: "Welcome back, {name}" }
-        good_morning_name(name) { en: "Good morning, {name}" }
-        good_afternoon_name(name) { en: "Good afternoon, {name}" }
-        good_evening_name(name) { en: "Good evening, {name}" }
-        see_all_of(shelf) { en: "See all: {shelf}" }
+        welcome_back(name) { en: "Welcome back, {name}", pt_br: "Olá de novo, {name}" }
+        good_morning_name(name) { en: "Good morning, {name}", pt_br: "Bom dia, {name}" }
+        good_afternoon_name(name) { en: "Good afternoon, {name}", pt_br: "Boa tarde, {name}" }
+        good_evening_name(name) { en: "Good evening, {name}", pt_br: "Boa noite, {name}" }
+        see_all_of(shelf) { en: "See all: {shelf}", pt_br: "Ver tudo: {shelf}" }
     }
 }
 
 /// The genre pills of Home's trending row.
 pub mod genre {
     strings! {
-        all { en: "All" }
-        electronic { en: "Electronic" }
-        house { en: "House" }
-        hip_hop { en: "Hip Hop" }
-        dubstep { en: "Dubstep" }
-        ambient { en: "Ambient" }
-        pop { en: "Pop" }
-        rock { en: "Rock" }
-        indie { en: "Indie" }
-        latin { en: "Latin" }
-        r_n_b { en: "R&B" }
-        trap { en: "Trap" }
+        all { en: "All", pt_br: "Todos" }
+        electronic { en: "Electronic", pt_br: "Eletrônica" }
+        house { en: "House", pt_br: "House" }
+        hip_hop { en: "Hip Hop", pt_br: "Hip Hop" }
+        dubstep { en: "Dubstep", pt_br: "Dubstep" }
+        ambient { en: "Ambient", pt_br: "Ambient" }
+        pop { en: "Pop", pt_br: "Pop" }
+        rock { en: "Rock", pt_br: "Rock" }
+        indie { en: "Indie", pt_br: "Indie" }
+        latin { en: "Latin", pt_br: "Latina" }
+        r_n_b { en: "R&B", pt_br: "R&B" }
+        trap { en: "Trap", pt_br: "Trap" }
     }
 }
 
 /// The Library screen.
 pub mod library {
     strings! {
-        title { en: "Your library" }
-        tab_all { en: "All" }
-        tab_playlists { en: "Playlists" }
-        tab_albums { en: "Albums" }
+        title { en: "Your library", pt_br: "Sua biblioteca" }
+        tab_all { en: "All", pt_br: "Tudo" }
+        tab_playlists { en: "Playlists", pt_br: "Playlists" }
+        tab_albums { en: "Albums", pt_br: "Álbuns" }
     }
     formats! {
-        playlists(count) { en: "{count} playlists" }
-        albums(count) { en: "{count} albums" }
+        playlists(count) { en: "{count} playlists", pt_br: "{count} playlists" }
+        albums(count) { en: "{count} albums", pt_br: "{count} álbuns" }
     }
 }
 
 /// Your own playlists: the menu, the dialogs and the toasts (ADR 0014).
 pub mod playlists {
     strings! {
-        add_to_playlist { en: "Add to playlist" }
-        new_playlist { en: "New playlist\u{2026}" }
-        new_playlist_title { en: "New playlist" }
-        name_placeholder { en: "Playlist name" }
-        private_hint { en: "Private: only you can see it, until you make it public." }
-        public_hint { en: "Public: anyone on SoundCloud can find and play it." }
-        description_placeholder { en: "Description (optional)" }
-        genre_placeholder { en: "Genre" }
-        tags_placeholder { en: "Tags, separated by commas" }
-        choose_cover { en: "Choose a cover image" }
-        cover_label { en: "COVER" }
-        change_cover { en: "Change cover" }
-        edit_description { en: "Description" }
-        description_title { en: "Playlist description" }
-        cover_not_saved { en: "The playlist was saved, but not its cover. Try another image (JPEG or PNG)." }
-        create { en: "Create" }
-        cancel { en: "Cancel" }
-        save { en: "Save" }
-        rename { en: "Rename" }
-        rename_title { en: "Rename playlist" }
-        delete { en: "Delete" }
-        delete_hint { en: "It disappears from SoundCloud too. This can\u{2019}t be undone." }
-        make_public { en: "Make public" }
-        make_private { en: "Make private" }
-        public_label { en: "Public" }
-        private_label { en: "Private" }
-        remove_from { en: "Remove from playlist" }
+        add_to_playlist { en: "Add to playlist", pt_br: "Adicionar à playlist" }
+        new_playlist { en: "New playlist\u{2026}", pt_br: "Nova playlist\u{2026}" }
+        new_playlist_title { en: "New playlist", pt_br: "Nova playlist" }
+        name_placeholder { en: "Playlist name", pt_br: "Nome da playlist" }
+        private_hint { en: "Private: only you can see it, until you make it public.", pt_br: "Privada: só você pode ver, até você torná-la pública." }
+        public_hint { en: "Public: anyone on SoundCloud can find and play it.", pt_br: "Pública: qualquer pessoa no SoundCloud pode encontrar e tocar." }
+        description_placeholder { en: "Description (optional)", pt_br: "Descrição (opcional)" }
+        genre_placeholder { en: "Genre", pt_br: "Gênero" }
+        tags_placeholder { en: "Tags, separated by commas", pt_br: "Tags, separadas por vírgula" }
+        choose_cover { en: "Choose a cover image", pt_br: "Escolher uma imagem de capa" }
+        cover_label { en: "COVER", pt_br: "CAPA" }
+        change_cover { en: "Change cover", pt_br: "Trocar capa" }
+        edit_description { en: "Description", pt_br: "Descrição" }
+        description_title { en: "Playlist description", pt_br: "Descrição da playlist" }
+        cover_not_saved { en: "The playlist was saved, but not its cover. Try another image (JPEG or PNG).", pt_br: "A playlist foi salva, mas a capa não. Tente outra imagem (JPEG ou PNG)." }
+        create { en: "Create", pt_br: "Criar" }
+        cancel { en: "Cancel", pt_br: "Cancelar" }
+        save { en: "Save", pt_br: "Salvar" }
+        rename { en: "Rename", pt_br: "Renomear" }
+        rename_title { en: "Rename playlist", pt_br: "Renomear playlist" }
+        delete { en: "Delete", pt_br: "Excluir" }
+        delete_hint { en: "It disappears from SoundCloud too. This can\u{2019}t be undone.", pt_br: "Ela também some do SoundCloud. Isso não pode ser desfeito." }
+        make_public { en: "Make public", pt_br: "Tornar pública" }
+        make_private { en: "Make private", pt_br: "Tornar privada" }
+        public_label { en: "Public", pt_br: "Pública" }
+        private_label { en: "Private", pt_br: "Privada" }
+        remove_from { en: "Remove from playlist", pt_br: "Remover da playlist" }
     }
     formats! {
-        add_to(name) { en: "Add to {name}" }
-        delete_title(name) { en: "Delete \u{201c}{name}\u{201d}?" }
-        created(name) { en: "Created {name}" }
-        added(name) { en: "Added to {name}" }
-        already_there(name) { en: "Already in {name}" }
-        removed(name) { en: "Removed from {name}" }
-        renamed(name) { en: "Renamed to {name}" }
-        now_public(name) { en: "{name} is now public" }
-        now_private(name) { en: "{name} is now private" }
-        deleted(name) { en: "Deleted {name}" }
-        described(name) { en: "Description of {name} saved" }
-        new_cover(name) { en: "New cover for {name}" }
+        add_to(name) { en: "Add to {name}", pt_br: "Adicionar a {name}" }
+        delete_title(name) { en: "Delete \u{201c}{name}\u{201d}?", pt_br: "Excluir \u{201c}{name}\u{201d}?" }
+        created(name) { en: "Created {name}", pt_br: "{name} criada" }
+        added(name) { en: "Added to {name}", pt_br: "Adicionada a {name}" }
+        already_there(name) { en: "Already in {name}", pt_br: "Já está em {name}" }
+        removed(name) { en: "Removed from {name}", pt_br: "Removida de {name}" }
+        renamed(name) { en: "Renamed to {name}", pt_br: "Renomeada para {name}" }
+        now_public(name) { en: "{name} is now public", pt_br: "{name} agora é pública" }
+        now_private(name) { en: "{name} is now private", pt_br: "{name} agora é privada" }
+        deleted(name) { en: "Deleted {name}", pt_br: "{name} excluída" }
+        described(name) { en: "Description of {name} saved", pt_br: "Descrição de {name} salva" }
+        new_cover(name) { en: "New cover for {name}", pt_br: "Nova capa para {name}" }
     }
 }
 
