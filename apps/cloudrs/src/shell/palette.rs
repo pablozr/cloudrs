@@ -359,6 +359,7 @@ impl Shell {
                 rows,
                 empty,
                 &state.scroll,
+                i18n::app::scrollbar().into(),
                 cx.listener(|this, _, window, cx| this.close_palette(window, cx)),
             )
             .into_any_element(),

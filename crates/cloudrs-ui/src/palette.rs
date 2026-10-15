@@ -9,6 +9,7 @@ use gpui::{
 };
 
 use crate::components::{Icon, menu_item};
+use crate::scrollbar::scrollbar;
 use crate::tokens::{self, radius, size, space, typography};
 use crate::{Theme, motion};
 
@@ -37,6 +38,7 @@ pub fn palette(
     rows: Vec<AnyElement>,
     empty: Option<SharedString>,
     scroll: &ScrollHandle,
+    scroll_label: SharedString,
     on_dismiss: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let c = theme.colors;
@@ -92,7 +94,11 @@ pub fn palette(
                 .shadow(tokens::floating_shadow())
                 .child(div().p(space::S2).child(field))
                 .child(div().h(px(1.0)).bg(c.line))
-                .child(list),
+                .child(div().relative().child(list).child(scrollbar(
+                    "palette-scrollbar",
+                    scroll,
+                    scroll_label,
+                ))),
         ))
 }
 
