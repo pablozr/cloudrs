@@ -247,7 +247,9 @@ pub mod settings {
         output_none { en: "No other output devices found.", pt_br: "Nenhum outro dispositivo de saída encontrado." }
         refresh { en: "Refresh", pt_br: "Atualizar" }
         sound { en: "Sound", pt_br: "Som" }
-        sound_hint { en: "How cloudrs shapes what you hear.", pt_br: "Como o cloudrs molda o que você ouve." }
+        appearance { en: "Appearance", pt_br: "Aparência" }
+        privacy_storage { en: "Privacy and storage", pt_br: "Privacidade e armazenamento" }
+        equalizer_hint { en: "A preset that shapes bass, mids and treble.", pt_br: "Um perfil que ajusta graves, médios e agudos." }
         normalize { en: "Normalize volume", pt_br: "Normalizar volume" }
         normalize_hint { en: "Evens out loud and quiet tracks.", pt_br: "Equilibra faixas altas e baixas." }
         equalizer { en: "Equalizer", pt_br: "Equalizador" }
@@ -266,6 +268,8 @@ pub mod settings {
     }
     formats! {
         cache_size(megabytes) { en: "{megabytes} MB", pt_br: "{megabytes} MB" }
+        /// The accessible name of one choice: the setting, then the value.
+        choice(setting, value) { en: "{setting}: {value}", pt_br: "{setting}: {value}" }
     }
 }
 

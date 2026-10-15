@@ -278,8 +278,8 @@ pub mod size {
     pub const TOAST_MAX_WIDTH: Pixels = px(420.0);
     /// Longest the search field grows in the header.
     pub const SEARCH_MAX_WIDTH: Pixels = px(560.0);
-    /// The key column of the shortcut list in Settings.
-    pub const SHORTCUT_KEY_WIDTH: Pixels = px(160.0);
+    /// Widest the Settings content grows.
+    pub const SETTINGS_MAX_WIDTH: Pixels = px(720.0);
     /// The command palette, and the tallest its list grows before scrolling.
     pub const PALETTE_WIDTH: Pixels = px(560.0);
     pub const PALETTE_MAX_HEIGHT: Pixels = px(420.0);

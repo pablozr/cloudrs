@@ -1,13 +1,15 @@
-//! The Settings screen (ADR 0017): theme, the audio output (ADR 0020), sound
-//! (ADR 0022), Discord, the artwork cache, updates (ADR 0026) and the keyboard
-//! shortcuts. Every change goes to the core as a whole `Settings`
-//! and takes effect when the core echoes it.
+//! The Settings screen (ADR 0017), in groups, each a titled card of rows
+//! (name and hint on the left, the control on the right): appearance (theme,
+//! language), sound (the audio output, ADR 0020, normalization, equalizer and
+//! volume boost, ADR 0022), privacy and storage (Discord, the artwork cache),
+//! updates (ADR 0026) and the keyboard shortcuts. Every change goes to the
+//! core as a whole `Settings` and takes effect when the core echoes it.
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::components::{ButtonKind, button, pill};
 use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
-use gpui::{AnyElement, Context, Div, FontWeight, div};
+use gpui::{AnyElement, Context, Div, SharedString, div, px};
 use sc_core::{Command, EqPreset, Settings, ThemeChoice};
 use sc_platform::update::Progress;
 
@@ -28,72 +30,147 @@ impl Shell {
             .id("settings")
             .size_full()
             .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .px(space::S5)
-            .pb(space::S6)
             .child(
-                theme
-                    .text(div(), typography::DISPLAY_L)
+                div()
+                    .w_full()
+                    .max_w(size::SETTINGS_MAX_WIDTH)
+                    .flex()
+                    .flex_col()
+                    .gap(space::S7)
+                    .px(space::S5)
                     .pt(space::S2)
-                    .pb(space::S4)
-                    .text_color(c.text)
-                    .child(t::title()),
+                    .pb(space::S8)
+                    .child(
+                        theme
+                            .text(div(), typography::DISPLAY_L)
+                            .text_color(c.text)
+                            .child(t::title()),
+                    )
+                    .child(self.appearance_group(theme, cx))
+                    .child(self.sound_group(theme, cx))
+                    .child(self.privacy_group(theme, cx))
+                    .child(self.update_group(theme, cx))
+                    .child(shortcut_group(theme)),
             )
-            .child(self.theme_setting(theme, cx))
-            .child(self.language_setting(theme, cx))
-            .child(self.output_setting(theme, cx))
-            .child(self.sound_setting(theme, cx))
-            .children(self.discord_setting(theme, cx))
-            .child(self.cache_setting(theme, cx))
-            .child(self.update_setting(theme, cx))
-            .child(shortcut_list(theme))
             .into_any_element()
     }
 
-    /// System, Dark or Light.
-    fn theme_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+    /// Theme (System, Dark or Light) and language, one pill per language in
+    /// its own name (ADR 0025).
+    fn appearance_group(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let selected = self.models.settings.theme;
         let choice = |ix: usize, label: &'static str, value: ThemeChoice| {
             pill(theme, ("theme", ix), label, selected == value)
                 .tab_index(0)
-                .aria_label(label)
+                .aria_label(t::choice(t::theme(), label))
                 .on_click(cx.listener(move |this, _, _, _| {
                     this.change_settings(|settings| settings.theme = value);
                 }))
         };
-        section(theme, t::theme(), t::theme_hint()).child(
-            div()
-                .flex()
-                .gap(space::S2)
-                .pt(space::S1)
-                .child(choice(0, t::theme_system(), ThemeChoice::System))
-                .child(choice(1, t::theme_dark(), ThemeChoice::Dark))
-                .child(choice(2, t::theme_light(), ThemeChoice::Light)),
-        )
-    }
+        let themes = div()
+            .flex()
+            .gap(space::S2)
+            .child(choice(0, t::theme_system(), ThemeChoice::System))
+            .child(choice(1, t::theme_dark(), ThemeChoice::Dark))
+            .child(choice(2, t::theme_light(), ThemeChoice::Light));
 
-    /// One pill per language, each in its own name (ADR 0025).
-    fn language_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let selected = self.models.settings.language;
-        let mut row = div().flex().flex_wrap().gap(space::S2).pt(space::S1);
+        let mut languages = div().flex().flex_wrap().gap(space::S2);
         for (ix, language) in Language::ALL.into_iter().enumerate() {
             let name = i18n::language_name(language);
-            row = row.child(
+            languages = languages.child(
                 pill(theme, ("language", ix), name, selected == language)
                     .tab_index(0)
-                    .aria_label(name)
+                    .aria_label(t::choice(t::language(), name))
                     .on_click(cx.listener(move |this, _, _, _| {
                         this.change_settings(|settings| settings.language = language);
                     })),
             );
         }
-        section(theme, t::language(), t::language_hint()).child(row)
+
+        group(
+            theme,
+            t::appearance(),
+            vec![
+                row(
+                    setting_label(theme, t::theme(), muted(theme, t::theme_hint())),
+                    themes,
+                ),
+                row(
+                    setting_label(theme, t::language(), muted(theme, t::language_hint())),
+                    languages,
+                ),
+            ],
+        )
+    }
+
+    /// The output device, normalization, the equalizer preset and the volume
+    /// boost.
+    fn sound_group(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let settings = &self.models.settings;
+        let (normalize, preset, boost) = (
+            settings.normalize,
+            settings.equalizer,
+            settings.volume_boost,
+        );
+        let normalize_row = on_off(
+            theme,
+            "normalize",
+            t::normalize(),
+            normalize,
+            |settings, on| settings.normalize = on,
+            cx,
+        );
+        let boost_row = on_off(
+            theme,
+            "boost",
+            t::volume_boost(),
+            boost,
+            |settings, on| settings.volume_boost = on,
+            cx,
+        );
+        let presets = EqPreset::ALL.into_iter().enumerate().map(|(ix, value)| {
+            let label = preset_label(value);
+            pill(theme, ("equalizer", ix), label, preset == value)
+                .tab_index(0)
+                .aria_label(t::choice(t::equalizer(), label))
+                .on_click(cx.listener(move |this, _, _, _| {
+                    this.change_settings(|settings| settings.equalizer = value);
+                }))
+        });
+        let presets = div().flex().flex_wrap().gap(space::S2).children(presets);
+
+        group(
+            theme,
+            t::sound(),
+            vec![
+                stacked_row(
+                    setting_label(theme, t::output(), muted(theme, t::output_hint())),
+                    self.output_choices(theme, cx),
+                ),
+                row(
+                    setting_label(theme, t::normalize(), muted(theme, t::normalize_hint())),
+                    normalize_row,
+                ),
+                stacked_row(
+                    setting_label(theme, t::equalizer(), muted(theme, t::equalizer_hint())),
+                    presets,
+                ),
+                row(
+                    setting_label(
+                        theme,
+                        t::volume_boost(),
+                        muted(theme, t::volume_boost_hint()),
+                    ),
+                    boost_row,
+                ),
+            ],
+        )
     }
 
     /// System default, then one pill per output device. The core lists the
     /// devices when the screen opens; a skeleton shows until it answers.
-    fn output_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+    fn output_choices(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let selected = self.models.settings.output_device.as_ref();
         let default = pill(
             theme,
@@ -102,23 +179,22 @@ impl Shell {
             selected.is_none(),
         )
         .tab_index(0)
-        .aria_label(t::output_default())
+        .aria_label(t::choice(t::output(), t::output_default()))
         .on_click(cx.listener(|this, _, _, _| {
             this.change_settings(|settings| settings.output_device = None);
         }));
-        let mut row = div()
+        let mut choices = div()
             .flex()
             .flex_wrap()
             .items_center()
             .gap(space::S2)
-            .pt(space::S1)
             .child(default);
         match &self.models.output_devices {
             None => {
-                row = row.child(skeleton_line(theme));
+                choices = choices.child(skeleton_line(theme));
             }
             Some(devices) if devices.is_empty() => {
-                row = row.child(muted(theme, t::output_none())).child(
+                choices = choices.child(muted(theme, t::output_none())).child(
                     button(theme, "output-refresh", t::refresh(), ButtonKind::Secondary)
                         .aria_label(t::refresh())
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -131,7 +207,7 @@ impl Shell {
             Some(devices) => {
                 for (ix, device) in devices.iter().enumerate() {
                     let id = device.id.clone();
-                    row = row.child(
+                    choices = choices.child(
                         pill(
                             theme,
                             ("output", ix + 1),
@@ -139,7 +215,7 @@ impl Shell {
                             selected == Some(&device.id),
                         )
                         .tab_index(0)
-                        .aria_label(device.name.clone())
+                        .aria_label(t::choice(t::output(), &device.name))
                         .on_click(cx.listener(move |this, _, _, _| {
                             this.change_settings(|settings| {
                                 settings.output_device = Some(id.clone());
@@ -149,89 +225,78 @@ impl Shell {
                 }
             }
         }
-        section(theme, t::output(), t::output_hint()).child(row)
+        choices
     }
 
-    /// Normalization, the equalizer preset and the volume boost (ADR 0022).
-    fn sound_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let settings = &self.models.settings;
-        let (normalize, preset, boost) = (
-            settings.normalize,
-            settings.equalizer,
-            settings.volume_boost,
-        );
-        let normalize_row = on_off_row(
-            theme,
-            "normalize",
-            normalize,
-            |settings, on| settings.normalize = on,
-            cx,
-        );
-        let boost_row = on_off_row(
-            theme,
-            "boost",
-            boost,
-            |settings, on| settings.volume_boost = on,
-            cx,
-        );
-        let presets = EqPreset::ALL.into_iter().enumerate().map(|(ix, value)| {
-            let label = preset_label(value);
-            pill(theme, ("equalizer", ix), label, preset == value)
-                .tab_index(0)
-                .aria_label(label)
-                .on_click(cx.listener(move |this, _, _, _| {
-                    this.change_settings(|settings| settings.equalizer = value);
-                }))
-        });
-        section(theme, t::sound(), t::sound_hint())
-            .child(sub_title(theme, t::normalize()))
-            .child(muted(theme, t::normalize_hint()))
-            .child(normalize_row)
-            .child(sub_title(theme, t::equalizer()))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(space::S2)
-                    .pt(space::S1)
-                    .children(presets),
-            )
-            .child(sub_title(theme, t::volume_boost()))
-            .child(muted(theme, t::volume_boost_hint()))
-            .child(boost_row)
-    }
-
-    /// "Show what I play on Discord", when this build can talk to Discord.
-    fn discord_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<Div> {
-        if !self.discord.available() {
-            return None;
+    /// "Show what I play on Discord", when this build can talk to Discord,
+    /// and the artwork cache.
+    fn privacy_group(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let c = theme.colors;
+        let mut rows = Vec::new();
+        if self.discord.available() {
+            let discord = on_off(
+                theme,
+                "discord",
+                d::setting(),
+                self.models.settings.discord,
+                |settings, on| settings.discord = on,
+                cx,
+            );
+            rows.push(row(
+                setting_label(theme, d::setting(), muted(theme, d::setting_hint())),
+                discord,
+            ));
         }
-        let row = on_off_row(
-            theme,
-            "discord",
-            self.models.settings.discord,
-            |settings, on| settings.discord = on,
-            cx,
-        );
-        Some(section(theme, d::setting(), d::setting_hint()).child(row))
+
+        let size_label = match self.models.cache_size {
+            Some(bytes) => theme
+                .text(div(), typography::BODY_MUTED)
+                .text_color(c.text_muted)
+                .child(t::cache_size(megabytes(bytes)))
+                .into_any_element(),
+            None => skeleton_line(theme).into_any_element(),
+        };
+        let cache = div()
+            .flex()
+            .items_center()
+            .gap(space::S3)
+            .child(size_label)
+            .child(
+                button(
+                    theme,
+                    "clear-cache",
+                    t::clear_cache(),
+                    ButtonKind::Secondary,
+                )
+                .aria_label(t::clear_cache())
+                .on_click(cx.listener(|this, _, _, _| this.send(Command::ClearCache))),
+            );
+        rows.push(row(
+            setting_label(theme, t::cache(), muted(theme, t::cache_hint())),
+            cache,
+        ));
+        group(theme, t::privacy_storage(), rows)
     }
 
     /// The version, how the last check went, the button for the state, and
-    /// the switch for automatic updates (ADR 0026).
-    fn update_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+    /// whether updates install on their own (ADR 0026).
+    fn update_group(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let c = theme.colors;
-        let version = theme
-            .text(div(), typography::BODY)
-            .text_color(c.text)
-            .child(u::version(env!("CARGO_PKG_VERSION")));
-        let section = section(theme, u::title(), u::hint()).child(version);
+        let version = u::version(env!("CARGO_PKG_VERSION"));
         if !self.updates.available() {
-            return section.child(muted(theme, u::unavailable()));
+            return group(
+                theme,
+                u::title(),
+                vec![row(
+                    setting_label(theme, version, muted(theme, u::unavailable())),
+                    div(),
+                )],
+            );
         }
 
         let state = &self.updates.state;
         let status = match state {
-            UpdateState::Checking => skeleton_line(theme).into_any_element(),
+            UpdateState::Checking => skeleton_line(theme),
             _ => {
                 // The time zone lookup is only worth it when the line shows it.
                 let checked_at = match state {
@@ -241,10 +306,9 @@ impl Shell {
                     _ => None,
                 };
                 theme
-                    .text(div(), typography::BODY)
-                    .text_color(c.text)
+                    .text(div(), typography::BODY_MUTED)
+                    .text_color(c.text_muted)
                     .child(status_text(state, checked_at))
-                    .into_any_element()
             }
         };
         let check = |id: &'static str, label: &'static str, cx: &mut Context<Self>| {
@@ -282,55 +346,27 @@ impl Shell {
             UpdateState::Checking | UpdateState::Reported(Progress::Downloading { .. }) => None,
         };
 
-        let auto_update = on_off_row(
+        let auto_update = on_off(
             theme,
             "auto-update",
+            u::automatic(),
             self.models.settings.auto_update,
             |settings, on| settings.auto_update = on,
             cx,
         );
-        section
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(space::S4)
-                    .pt(space::S1)
-                    .child(status)
-                    .children(action),
-            )
-            .child(sub_title(theme, u::automatic()))
-            .child(auto_update)
-    }
-
-    /// The size of the artwork cache and "Clear cache".
-    fn cache_setting(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
-        let c = theme.colors;
-        let size_label = match self.models.cache_size {
-            Some(bytes) => theme
-                .text(div(), typography::BODY)
-                .text_color(c.text)
-                .child(t::cache_size(megabytes(bytes)))
-                .into_any_element(),
-            None => skeleton_line(theme).into_any_element(),
-        };
-        section(theme, t::cache(), t::cache_hint()).child(
-            div()
-                .flex()
-                .items_center()
-                .gap(space::S4)
-                .pt(space::S1)
-                .child(size_label)
-                .child(
-                    button(
-                        theme,
-                        "clear-cache",
-                        t::clear_cache(),
-                        ButtonKind::Secondary,
-                    )
-                    .aria_label(t::clear_cache())
-                    .on_click(cx.listener(|this, _, _, _| this.send(Command::ClearCache))),
+        group(
+            theme,
+            u::title(),
+            vec![
+                row(
+                    setting_label(theme, version, status),
+                    div().children(action),
                 ),
+                row(
+                    setting_label(theme, u::automatic(), muted(theme, u::hint())),
+                    auto_update,
+                ),
+            ],
         )
     }
 }
@@ -345,9 +381,11 @@ fn skeleton_line(theme: &Theme) -> Div {
 }
 
 /// An On / Off pair of pills for a boolean setting; `set` writes the choice.
-fn on_off_row(
+/// `name` is the setting, so the pills read "Normalize volume: On".
+fn on_off(
     theme: &Theme,
     id: &'static str,
+    name: &'static str,
     current: bool,
     set: fn(&mut Settings, bool),
     cx: &mut Context<Shell>,
@@ -355,16 +393,14 @@ fn on_off_row(
     let choice = |ix: usize, label: &'static str, value: bool, cx: &mut Context<Shell>| {
         pill(theme, (id, ix), label, current == value)
             .tab_index(0)
-            .aria_label(label)
+            .aria_label(t::choice(name, label))
             .on_click(cx.listener(move |this, _, _, _| {
                 this.change_settings(|settings| set(settings, value));
             }))
     };
     div()
         .flex()
-        .flex_wrap()
         .gap(space::S2)
-        .pt(space::S1)
         .child(choice(0, app::on(), true, cx))
         .child(choice(1, app::off(), false, cx))
 }
@@ -380,75 +416,113 @@ fn preset_label(preset: EqPreset) -> &'static str {
     }
 }
 
-/// The name of one setting inside a section.
-fn sub_title(theme: &Theme, title: &'static str) -> Div {
-    div().pt(space::S2).child(
-        theme
-            .text(div(), typography::BODY)
-            .text_color(theme.colors.text)
-            .child(title),
-    )
-}
-
-/// A titled group: the title, a muted hint, then whatever the caller adds.
-fn section(theme: &Theme, title: &'static str, hint: &'static str) -> Div {
+/// The name of a setting over its hint (any element, usually muted text).
+fn setting_label(theme: &Theme, title: impl Into<SharedString>, hint: impl IntoElement) -> Div {
     div()
-        .max_w(size::SEARCH_MAX_WIDTH)
+        .flex_1()
+        .min_w(px(0.0))
         .flex()
         .flex_col()
-        .gap(space::S2)
-        .pb(space::S6)
+        .gap(space::S1)
         .child(
             theme
                 .text(div(), typography::BODY)
                 .text_color(theme.colors.text)
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(title),
+                .child(title.into()),
         )
-        .child(muted(theme, hint))
+        .child(hint)
 }
 
-/// The keys the app answers to, with the key in the style of a key cap.
-fn shortcut_list(theme: &Theme) -> Div {
+/// A setting: its label on the left, its control on the right.
+fn row(label: Div, control: impl IntoElement) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(space::S6)
+        .px(space::S4)
+        .py(space::S3)
+        .child(label)
+        .child(div().flex_none().child(control))
+}
+
+/// A setting with a wide choice: the label on top, the control under it.
+fn stacked_row(label: Div, control: impl IntoElement) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(space::S3)
+        .px(space::S4)
+        .py(space::S3)
+        .child(label)
+        .child(control)
+}
+
+/// A titled group: the title over a card whose rows a line separates.
+fn group(theme: &Theme, title: &'static str, rows: Vec<Div>) -> Div {
     let c = theme.colors;
-    let rows = shortcuts::help().map(|(keys, action)| {
+    let card = rows.into_iter().enumerate().fold(
         div()
             .flex()
-            .items_center()
-            .gap(space::S4)
-            .child(
-                div().w(size::SHORTCUT_KEY_WIDTH).flex().child(
+            .flex_col()
+            .rounded(radius::L)
+            .border_1()
+            .border_color(c.line)
+            .bg(c.surface),
+        |card, (ix, row)| {
+            card.child(if ix > 0 {
+                row.border_t_1().border_color(c.line)
+            } else {
+                row
+            })
+        },
+    );
+    div()
+        .flex()
+        .flex_col()
+        .gap(space::S3)
+        .child(
+            theme
+                .text(div(), typography::TITLE)
+                .text_color(c.text)
+                .child(title),
+        )
+        .child(card)
+}
+
+/// The keys the app answers to: the action on the left, the key on the right
+/// in the style of a key cap.
+fn shortcut_group(theme: &Theme) -> Div {
+    let c = theme.colors;
+    let rows = shortcuts::help()
+        .into_iter()
+        .map(|(keys, action)| {
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(space::S4)
+                .px(space::S4)
+                .py(space::S2)
+                .child(
+                    theme
+                        .text(div(), typography::BODY)
+                        .text_color(c.text)
+                        .child(action),
+                )
+                .child(
                     theme
                         .text(div(), typography::MONO)
+                        .flex_none()
                         .px(space::S2)
                         .rounded(radius::S)
                         .border_1()
                         .border_color(c.line_strong)
                         .text_color(c.text_subtle)
                         .child(keys),
-                ),
-            )
-            .child(
-                theme
-                    .text(div(), typography::BODY)
-                    .text_color(c.text)
-                    .child(action),
-            )
-    });
-    div()
-        .max_w(size::SEARCH_MAX_WIDTH)
-        .flex()
-        .flex_col()
-        .gap(space::S2)
-        .child(
-            theme
-                .text(div(), typography::BODY)
-                .text_color(c.text)
-                .font_weight(FontWeight::SEMIBOLD)
-                .pb(space::S1)
-                .child(t::shortcuts()),
-        )
-        .children(rows)
+                )
+        })
+        .collect();
+    group(theme, t::shortcuts(), rows)
 }
 
 #[cfg(test)]
@@ -474,5 +548,10 @@ mod tests {
     #[test]
     fn the_cache_size_is_a_text_with_its_unit() {
         assert_eq!(t::cache_size(megabytes(2_097_152)), "2.0 MB");
+    }
+
+    #[test]
+    fn a_choice_names_its_setting() {
+        assert_eq!(t::choice("Theme", "Dark"), "Theme: Dark");
     }
 }

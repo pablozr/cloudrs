@@ -155,8 +155,11 @@ The OS "reduce motion" setting turns every duration down to an instant change.
 - **Search field:** pill shape, accent ring on focus, `Ctrl K` hint.
 - **Filter pills:** the selected one is inverted (text color as fill). They are focusable and
   show the focus ring.
-- **Settings rows:** a title in body semibold, a muted hint, then the control (pills, a button
-  or a value); shortcut keys in key-cap style (mono, `line_strong` border).
+- **Settings:** groups with a `title` heading over a card (`surface`, `line` border, radius `l`), rows
+  separated by a `line`; each row has the setting's name (body) over a muted hint on the left and its
+  control on the right (pills, a button or a value); wide choices (output devices, equalizer
+  presets) sit under the text. Content grows up to `SETTINGS_MAX_WIDTH`. Shortcut keys in key-cap
+  style (mono, `line_strong` border) on the right of their action.
 - **Badges:** `AAC 160k`, `GO+`, `30s preview`, `Cached`, `Explicit`.
 - **Command palette:** an overlay like a dialog, with the panel near the top: a search field,
   then rows (icon, label, key). The selected row has the accent border; Esc, a click outside or
