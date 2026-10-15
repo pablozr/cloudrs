@@ -110,9 +110,13 @@ Manual listening checklist:
    (output rate and channel count) before they enter the ring buffer. The callback is untouched
    and still only multiplies by the volume. The state is allocated when the equalizer is built,
    so processing allocates nothing.
-3. **A preamp stops boosts from clipping.** It lowers the signal by the largest boost, so the
-   loudest band is at unity. A flat setting skips the equalizer entirely (the samples stay
-   bit-identical).
+3. **A preamp stops boosts from clipping.** It lowers the signal by the highest point of the
+   combined curve, computed from the bands' response on the engine thread whenever the gains
+   change, because neighbouring bands overlap and add up (adjacent +6 dB bands peak above +6 dB).
+   The loudest frequency is then at unity. A flat setting skips the equalizer entirely (the
+   samples stay bit-identical). Without the volume boost there is no limiter, so a brickwall
+   master can still overshoot on transients; a limiter whenever the equalizer is on would close
+   that, and needs the maintainer's approval.
 4. **Bands that do not fit are skipped.** A band above 45% of the sample rate is not built (at
    32 kHz the 16 kHz band is left out), and a gain of 0 dB costs nothing.
 5. **Changes keep the filter memory.** A new preset recomputes the coefficients and keeps the
@@ -124,7 +128,8 @@ Manual listening checklist:
 ### Validation
 
 Unit tests on synthetic sines: +6 dB at 1 kHz comes out at the preamp's level, a distant
-frequency gets only the preamp, flat gains are bit-identical, nothing turns to NaN from 22.05 to
+frequency gets only the preamp, adjacent +6 dB bands never come out above unity, cuts need no
+preamp, flat gains are bit-identical, nothing turns to NaN from 22.05 to
 96 kHz, and the top band is skipped at 32 kHz. Nobody listened to it, and the engine was not run
 on a device. The preset tables (in `sc-core`) are proposals, to be tuned by ear.
 

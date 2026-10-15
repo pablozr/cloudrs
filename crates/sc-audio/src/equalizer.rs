@@ -1,5 +1,6 @@
 //! A ten-band graphic equalizer on the engine thread: one RBJ peaking filter
-//! per band, in cascade, with a preamp so boosts never clip.
+//! per band, in cascade, with a preamp that lowers the signal by the highest
+//! point of the combined curve so boosts do not clip.
 
 use std::f64::consts::{PI, SQRT_2};
 
@@ -45,6 +46,39 @@ fn peaking(band: usize, rate: u32, gain_db: f32) -> Coefficients {
     }
 }
 
+/// The combined response of the bands at `hz`, in dB.
+fn magnitude_db(bands: &[Coefficients], rate: u32, hz: f64) -> f64 {
+    let w = 2.0 * PI * hz / f64::from(rate);
+    let (sin1, cos1) = w.sin_cos();
+    let (sin2, cos2) = (2.0 * w).sin_cos();
+    bands
+        .iter()
+        .map(|k| {
+            let (b0, b1, b2) = (f64::from(k.b0), f64::from(k.b1), f64::from(k.b2));
+            let (a1, a2) = (f64::from(k.a1), f64::from(k.a2));
+            let num = (b0 + b1 * cos1 + b2 * cos2).powi(2) + (b1 * sin1 + b2 * sin2).powi(2);
+            let den = (1.0 + a1 * cos1 + a2 * cos2).powi(2) + (a1 * sin1 + a2 * sin2).powi(2);
+            10.0 * (num / den).log10()
+        })
+        .sum()
+}
+
+/// Points checked between 20 Hz and the highest usable frequency.
+const PEAK_POINTS: usize = 96;
+
+/// The highest point of the combined curve, in dB: at the band centers and
+/// along a log-spaced sweep. Neighbouring bands overlap and add up, so this
+/// can exceed the largest single gain.
+fn peak_db(bands: &[Coefficients], rate: u32) -> f32 {
+    let centers = bands
+        .iter()
+        .map(|k| magnitude_db(bands, rate, FREQUENCIES[k.band]));
+    let top = MAX_FRACTION * f64::from(rate);
+    let ratio = (top / 20.0).powf(1.0 / (PEAK_POINTS - 1) as f64);
+    let sweep = (0..PEAK_POINTS).map(|i| magnitude_db(bands, rate, 20.0 * ratio.powi(i as i32)));
+    centers.chain(sweep).fold(0.0_f64, f64::max) as f32
+}
+
 #[derive(Debug)]
 pub(crate) struct Equalizer {
     channels: usize,
@@ -77,12 +111,7 @@ impl Equalizer {
                 self.bands.push(peaking(band, rate, gain));
             }
         }
-        let boost = gains_db
-            .iter()
-            .copied()
-            .filter(|g| g.is_finite())
-            .fold(0.0_f32, f32::max);
-        self.preamp = db_to_gain(-boost);
+        self.preamp = db_to_gain(-peak_db(&self.bands, rate).max(0.0));
     }
 
     pub(crate) fn reset(&mut self) {
@@ -169,6 +198,28 @@ mod tests {
             "{}",
             gain_db(&out, &input)
         );
+    }
+
+    #[test]
+    fn neighbouring_boosts_stay_at_or_below_unity() {
+        let mut g = [0.0; EQ_BANDS];
+        g[..3].fill(6.0);
+        for hz in [31.0, 45.0, 62.0, 90.0, 125.0, 177.0, 250.0] {
+            let input = sine(48_000, 2, hz, 3);
+            let mut out = input.clone();
+            Equalizer::new(48_000, 2, g).process(&mut out);
+            assert!(
+                gain_db(&out, &input) <= 0.1,
+                "{hz}: {}",
+                gain_db(&out, &input)
+            );
+        }
+    }
+
+    #[test]
+    fn cuts_only_need_no_preamp() {
+        let eq = Equalizer::new(48_000, 2, [-3., -6., 0., -2., 0., 0., -1., 0., -4., 0.]);
+        assert_eq!(eq.preamp, 1.0);
     }
 
     #[test]
