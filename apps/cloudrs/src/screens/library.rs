@@ -4,7 +4,6 @@
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{skeleton_card, tabs};
 use cloudrs_ui::components::{ButtonKind, Icon, button};
-use cloudrs_ui::scrollbar::scrollbar;
 use cloudrs_ui::tokens::{space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, SharedString, div};
@@ -104,74 +103,58 @@ impl Shell {
             }
         };
 
-        div()
-            .relative()
-            .size_full()
-            .child(
-                div()
-                    .id("library")
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.page_scroll)
-                    .flex()
-                    .flex_col()
-                    .gap(space::S4)
-                    .px(space::S5)
-                    .pt(space::S2)
-                    .pb(space::S8)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(space::S2)
-                            .child(
-                                theme
-                                    .text(div(), typography::DISPLAY_XL)
-                                    .text_color(c.text)
-                                    .child(t::title()),
+        self.scroll_page(
+            div()
+                .id("library")
+                .flex()
+                .flex_col()
+                .gap(space::S4)
+                .px(space::S5)
+                .pt(space::S2)
+                .pb(space::S8)
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(space::S2)
+                        .child(
+                            theme
+                                .text(div(), typography::DISPLAY_XL)
+                                .text_color(c.text)
+                                .child(t::title()),
+                        )
+                        .child(
+                            theme
+                                .text(div(), typography::BODY_MUTED)
+                                .text_color(c.text_muted)
+                                .child(meta),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(space::S3)
+                        .child(filter)
+                        .child(
+                            button(
+                                theme,
+                                "library-new",
+                                i18n::playlists::new_playlist(),
+                                ButtonKind::Primary,
                             )
-                            .child(
-                                theme
-                                    .text(div(), typography::BODY_MUTED)
-                                    .text_color(c.text_muted)
-                                    .child(meta),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .gap(space::S3)
-                            .child(filter)
-                            .child(
-                                button(
-                                    theme,
-                                    "library-new",
-                                    i18n::playlists::new_playlist(),
-                                    ButtonKind::Primary,
-                                )
-                                .aria_label(i18n::playlists::new_playlist_title())
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.open_dialog(
-                                            crate::shell::playlist_ui::Dialog::NewPlaylist {
-                                                track: None,
-                                            },
-                                            cx,
-                                        );
-                                    },
-                                )),
-                            ),
-                    )
-                    .child(body),
-            )
-            .child(scrollbar(
-                "library-scrollbar",
-                &self.page_scroll,
-                i18n::app::scrollbar(),
-            ))
-            .into_any_element()
+                            .aria_label(i18n::playlists::new_playlist_title())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.open_dialog(
+                                    crate::shell::playlist_ui::Dialog::NewPlaylist { track: None },
+                                    cx,
+                                );
+                            })),
+                        ),
+                )
+                .child(body),
+        )
     }
 }
 

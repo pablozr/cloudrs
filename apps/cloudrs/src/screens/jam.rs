@@ -6,13 +6,12 @@ use cloudrs_ui::browse::{avatar, avatar_stack};
 use cloudrs_ui::components::{
     ButtonKind, Icon, ToastKind, badge, button, icon, pill, row_action, tooltip,
 };
-use cloudrs_ui::scrollbar::scrollbar;
 use cloudrs_ui::tokens::{self, radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, ClipboardItem, Context, Div, div, px};
 use sc_core::{JamRole, JamState};
 
-use crate::i18n::{self, jam as t};
+use crate::i18n::jam as t;
 use crate::intent::UiIntent;
 use crate::shell::Shell;
 
@@ -23,35 +22,23 @@ impl Shell {
             None => self.jam_intro(theme, cx),
             Some(state) => self.jam_live(&state, theme, cx),
         };
-        div()
-            .relative()
-            .size_full()
-            .child(
-                div()
-                    .id("jam")
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.page_scroll)
-                    .flex()
-                    .flex_col()
-                    .px(space::S5)
-                    .pb(space::S6)
-                    .child(
-                        theme
-                            .text(div(), typography::DISPLAY_L)
-                            .pt(space::S2)
-                            .pb(space::S4)
-                            .text_color(c.text)
-                            .child(t::title()),
-                    )
-                    .child(div().max_w(size::SEARCH_MAX_WIDTH).child(body)),
-            )
-            .child(scrollbar(
-                "jam-scrollbar",
-                &self.page_scroll,
-                i18n::app::scrollbar(),
-            ))
-            .into_any_element()
+        self.scroll_page(
+            div()
+                .id("jam")
+                .flex()
+                .flex_col()
+                .px(space::S5)
+                .pb(space::S6)
+                .child(
+                    theme
+                        .text(div(), typography::DISPLAY_L)
+                        .pt(space::S2)
+                        .pb(space::S4)
+                        .text_color(c.text)
+                        .child(t::title()),
+                )
+                .child(div().max_w(size::SEARCH_MAX_WIDTH).child(body)),
+        )
     }
 
     /// No Jam yet: what it is, in three steps, and the button to start one.

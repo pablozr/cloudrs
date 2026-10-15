@@ -7,7 +7,6 @@
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::components::{ButtonKind, button, pill};
-use cloudrs_ui::scrollbar::scrollbar;
 use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Div, SharedString, div, px};
@@ -27,44 +26,30 @@ fn megabytes(bytes: u64) -> String {
 impl Shell {
     pub(crate) fn settings_screen(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let c = theme.colors;
-        div()
-            .relative()
-            .size_full()
-            .child(
+        self.scroll_page(
+            div().id("settings").child(
                 div()
-                    .id("settings")
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.page_scroll)
+                    .w_full()
+                    .max_w(size::SETTINGS_MAX_WIDTH)
+                    .flex()
+                    .flex_col()
+                    .gap(space::S7)
+                    .px(space::S5)
+                    .pt(space::S2)
+                    .pb(space::S8)
                     .child(
-                        div()
-                            .w_full()
-                            .max_w(size::SETTINGS_MAX_WIDTH)
-                            .flex()
-                            .flex_col()
-                            .gap(space::S7)
-                            .px(space::S5)
-                            .pt(space::S2)
-                            .pb(space::S8)
-                            .child(
-                                theme
-                                    .text(div(), typography::DISPLAY_L)
-                                    .text_color(c.text)
-                                    .child(t::title()),
-                            )
-                            .child(self.appearance_group(theme, cx))
-                            .child(self.sound_group(theme, cx))
-                            .child(self.privacy_group(theme, cx))
-                            .child(self.update_group(theme, cx))
-                            .child(shortcut_group(theme)),
-                    ),
-            )
-            .child(scrollbar(
-                "settings-scrollbar",
-                &self.page_scroll,
-                i18n::app::scrollbar(),
-            ))
-            .into_any_element()
+                        theme
+                            .text(div(), typography::DISPLAY_L)
+                            .text_color(c.text)
+                            .child(t::title()),
+                    )
+                    .child(self.appearance_group(theme, cx))
+                    .child(self.sound_group(theme, cx))
+                    .child(self.privacy_group(theme, cx))
+                    .child(self.update_group(theme, cx))
+                    .child(shortcut_group(theme)),
+            ),
+        )
     }
 
     /// Theme (System, Dark or Light) and language, one pill per language in

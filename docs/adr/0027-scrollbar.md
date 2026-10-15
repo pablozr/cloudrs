@@ -40,3 +40,9 @@ scrollbar helpers inside GPUI only serve its `list()` element, which we do not u
 - Dragging moves the offset directly and notifies the view, like the wheel does.
 - The five simple pages share one `ScrollHandle`, reset on navigation, so a page still opens at
   the top.
+- Dragging notifies the view only when the offset changes, so holding the thumb at an end of the
+  track costs nothing.
+- `list_scroll_handle` relies on `UniformListScrollHandle.0.base_handle` being the handle the list
+  registers with `track_scroll` and reads in prepaint. Re-check it on every gpui bump.
+- cloudrs-ui has no i18n, so the bar's accessible name comes in as a parameter, as for
+  `palette()`'s new `scroll_label`.

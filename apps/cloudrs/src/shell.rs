@@ -18,7 +18,7 @@ use cloudrs_ui::tokens::{self, size, space, typography};
 use cloudrs_ui::{Theme, ThemeMode, motion};
 use gpui::prelude::*;
 use gpui::{
-    AnimationExt, AnyElement, AnyWindowHandle, App, Context, Entity, FocusHandle, Focusable,
+    AnimationExt, AnyElement, AnyWindowHandle, App, Context, Div, Entity, FocusHandle, Focusable,
     KeyBinding, MouseButton, NavigationDirection, Role, ScrollHandle, ScrollStrategy, SharedString,
     Stateful, Subscription, Task, UniformListScrollHandle, Window, WindowControlArea, WindowHandle,
     actions, div, img, px,
@@ -795,6 +795,25 @@ impl Shell {
             self.send(Command::ListOutputDevices);
         }
         cx.notify();
+    }
+
+    /// A screen that scrolls as a whole (Home, Library, Settings, Account,
+    /// Jam), tracked by `page_scroll`, with its scroll bar (ADR 0027).
+    pub(crate) fn scroll_page(&self, page: Stateful<Div>) -> AnyElement {
+        div()
+            .relative()
+            .size_full()
+            .child(
+                page.size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.page_scroll),
+            )
+            .child(scrollbar(
+                "page-scrollbar",
+                &self.page_scroll,
+                i18n::app::scrollbar(),
+            ))
+            .into_any_element()
     }
 
     fn on_go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {

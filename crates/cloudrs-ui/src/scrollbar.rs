@@ -143,10 +143,11 @@ impl Element for ScrollbarElement {
         });
         let inset = f32::from(space::S1);
         let track = f32::from(bounds.size.height) - 2.0 * inset;
+        let max_offset = f32::from(self.handle.max_offset().y);
         let (top, len) = thumb(
             track,
             f32::from(self.handle.bounds().size.height),
-            f32::from(self.handle.max_offset().y),
+            max_offset,
             -f32::from(self.handle.offset().y),
             f32::from(size::SCROLLBAR_MIN_THUMB),
         )?;
@@ -157,7 +158,7 @@ impl Element for ScrollbarElement {
             track,
             top,
             len,
-            max_offset: f32::from(self.handle.max_offset().y),
+            max_offset,
         })
     }
 
@@ -171,12 +172,21 @@ impl Element for ScrollbarElement {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let Some(g) = geometry.take() else {
+        let Some(Geometry {
+            hitbox,
+            grab,
+            track_top,
+            track,
+            top,
+            len,
+            max_offset,
+        }) = geometry.take()
+        else {
             return;
         };
         let c = Theme::of(cx).colors;
-        let hovered = g.hitbox.is_hovered(window);
-        let active = hovered || g.grab.get().is_some();
+        let hovered = hitbox.is_hovered(window);
+        let active = hovered || grab.get().is_some();
         if active {
             window.paint_quad(fill(bounds, c.line));
         }
@@ -184,9 +194,9 @@ impl Element for ScrollbarElement {
         let thumb_bounds = Bounds::new(
             point(
                 bounds.left() + (bounds.size.width - thumb_width) / 2.0,
-                px(g.track_top + g.top),
+                px(track_top + top),
             ),
-            gpui::size(thumb_width, px(g.len)),
+            gpui::size(thumb_width, px(len)),
         );
         let color = if active {
             c.scroll_thumb_active
@@ -197,18 +207,16 @@ impl Element for ScrollbarElement {
 
         let view = window.current_view();
         let handle = self.handle.clone();
-        let Geometry {
-            hitbox,
-            grab,
-            track_top,
-            track,
-            top,
-            len,
-            max_offset,
-        } = g;
+        // Moves the content so the thumb's grab point sits at `y`; true when
+        // that changed the offset.
         let scroll_to = move |y: f32, grab_at: f32| {
             let scrolled = scrolled_for(y - track_top - grab_at, track, len, max_offset);
-            handle.set_offset(point(handle.offset().x, px(-scrolled)));
+            let offset = handle.offset();
+            let changed = offset.y != px(-scrolled);
+            if changed {
+                handle.set_offset(point(offset.x, px(-scrolled)));
+            }
+            changed
         };
 
         window.on_mouse_event({
@@ -236,10 +244,12 @@ impl Element for ScrollbarElement {
         });
         window.on_mouse_event({
             let grab = grab.clone();
-            move |event: &MouseMoveEvent, _, window, cx| match grab.get() {
+            move |event: &MouseMoveEvent, phase, window, cx| match grab.get() {
+                _ if phase != DispatchPhase::Bubble => {}
                 Some(grab_at) if event.dragging() => {
-                    scroll_to(f32::from(event.position.y), grab_at);
-                    cx.notify(view);
+                    if scroll_to(f32::from(event.position.y), grab_at) {
+                        cx.notify(view);
+                    }
                 }
                 Some(_) => {
                     // The button was released where no mouse-up reached us.
@@ -250,8 +260,11 @@ impl Element for ScrollbarElement {
                 None => {}
             }
         });
-        window.on_mouse_event(move |event: &MouseUpEvent, _, _, cx| {
-            if event.button == MouseButton::Left && grab.take().is_some() {
+        window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
+            if phase == DispatchPhase::Bubble
+                && event.button == MouseButton::Left
+                && grab.take().is_some()
+            {
                 cx.notify(view);
             }
         });
