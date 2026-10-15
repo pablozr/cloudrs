@@ -7,6 +7,7 @@
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{CardData, HeroData, card, hero, quick_tile, skeleton_card};
 use cloudrs_ui::components::{ButtonKind, Icon, button, icon, pill};
+use cloudrs_ui::scrollbar::scrollbar;
 use cloudrs_ui::tokens::{radius, size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, ClickEvent, Context, Div, SharedString, Window, div};
@@ -175,10 +176,21 @@ impl Shell {
         }
 
         div()
-            .id("home")
+            .relative()
             .size_full()
-            .overflow_y_scroll()
-            .child(page)
+            .child(
+                div()
+                    .id("home")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.page_scroll)
+                    .child(page),
+            )
+            .child(scrollbar(
+                "home-scrollbar",
+                &self.page_scroll,
+                i18n::app::scrollbar(),
+            ))
             .into_any_element()
     }
 

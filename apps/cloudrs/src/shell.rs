@@ -12,15 +12,16 @@ use cloudrs_ui::components::{
     ButtonKind, Icon, ToastKind, WindowButton, artwork_tint, button, icon, icon_button, toast,
     tooltip, window_button,
 };
+use cloudrs_ui::scrollbar::scrollbar;
 use cloudrs_ui::search_field::{SearchChanged, SearchField};
 use cloudrs_ui::tokens::{self, size, space, typography};
 use cloudrs_ui::{Theme, ThemeMode, motion};
 use gpui::prelude::*;
 use gpui::{
     AnimationExt, AnyElement, AnyWindowHandle, App, Context, Entity, FocusHandle, Focusable,
-    KeyBinding, MouseButton, NavigationDirection, Role, ScrollStrategy, SharedString, Stateful,
-    Subscription, Task, UniformListScrollHandle, Window, WindowControlArea, WindowHandle, actions,
-    div, img, px,
+    KeyBinding, MouseButton, NavigationDirection, Role, ScrollHandle, ScrollStrategy, SharedString,
+    Stateful, Subscription, Task, UniformListScrollHandle, Window, WindowControlArea, WindowHandle,
+    actions, div, img, px,
 };
 use sc_core::{
     ArtKey, Command, CoreConfig, CoreHandle, Event, Problem, Settings, StartError, ThemeChoice,
@@ -135,6 +136,9 @@ pub struct Shell {
     /// The comment pin under the pointer: its track, marker and place.
     pub(crate) comment_hover: Option<(sc_core::TrackId, usize, gpui::Point<gpui::Pixels>)>,
     pub(crate) comments_scroll: UniformListScrollHandle,
+    /// Shared by Home, Library, Settings, Account and Jam, which render one at a time.
+    pub(crate) page_scroll: ScrollHandle,
+    sidebar_scroll: ScrollHandle,
     /// The Library filter showing (All, Playlists, Albums).
     pub(crate) library_tab: usize,
     pub(crate) wave: Entity<TrackWave>,
@@ -287,6 +291,8 @@ impl Shell {
             track_tab: 0,
             comment_hover: None,
             comments_scroll: UniformListScrollHandle::new(),
+            page_scroll: ScrollHandle::new(),
+            sidebar_scroll: ScrollHandle::new(),
             library_tab: 0,
             wave,
             queue: QueueState::default(),
@@ -772,6 +778,7 @@ impl Shell {
         self.nav_seq += 1;
         self.comment_hover = None;
         self.comments_scroll.scroll_to_item(0, ScrollStrategy::Top);
+        self.page_scroll.set_offset(gpui::Point::default());
         let track = match self.router.current() {
             Route::Track(id) => Some(*id),
             _ => None,
@@ -984,25 +991,36 @@ impl Shell {
             }))
         });
         div()
-            .id("sidebar-playlists")
             .flex_1()
             .min_h(px(0.0))
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .gap(space::S1)
-            .pt(space::S4)
-            .when(!playlists.is_empty(), |list| {
-                list.child(
-                    theme
-                        .text(div(), typography::LABEL)
-                        .px(space::S4)
-                        .pb(space::S2)
-                        .text_color(c.text_subtle)
-                        .child(i18n::nav::your_playlists()),
-                )
-            })
-            .children(items)
+            .relative()
+            .child(
+                div()
+                    .id("sidebar-playlists")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.sidebar_scroll)
+                    .flex()
+                    .flex_col()
+                    .gap(space::S1)
+                    .pt(space::S4)
+                    .when(!playlists.is_empty(), |list| {
+                        list.child(
+                            theme
+                                .text(div(), typography::LABEL)
+                                .px(space::S4)
+                                .pb(space::S2)
+                                .text_color(c.text_subtle)
+                                .child(i18n::nav::your_playlists()),
+                        )
+                    })
+                    .children(items),
+            )
+            .child(scrollbar(
+                "sidebar-scrollbar",
+                &self.sidebar_scroll,
+                i18n::app::scrollbar(),
+            ))
             .into_any_element()
     }
     /// Opens Feed, Likes, Library or Following; the list loads the first time.

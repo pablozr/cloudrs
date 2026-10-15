@@ -3,6 +3,7 @@
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::components::{ButtonKind, Icon, button, icon};
+use cloudrs_ui::scrollbar::scrollbar;
 use cloudrs_ui::tokens::{size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, div, px};
@@ -92,29 +93,40 @@ impl Shell {
             }
         };
         div()
-            .id("account")
+            .relative()
             .size_full()
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .px(space::S5)
-            .pb(space::S6)
             .child(
-                theme
-                    .text(div(), typography::DISPLAY_L)
-                    .pt(space::S2)
-                    .pb(space::S4)
-                    .text_color(c.text)
-                    .child(t::title()),
+                div()
+                    .id("account")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.page_scroll)
+                    .flex()
+                    .flex_col()
+                    .px(space::S5)
+                    .pb(space::S6)
+                    .child(
+                        theme
+                            .text(div(), typography::DISPLAY_L)
+                            .pt(space::S2)
+                            .pb(space::S4)
+                            .text_color(c.text)
+                            .child(t::title()),
+                    )
+                    .child(div().max_w(size::SEARCH_MAX_WIDTH).child(body))
+                    .child(
+                        theme
+                            .text(div(), typography::BODY_MUTED)
+                            .pt(space::S6)
+                            .text_color(c.text_subtle)
+                            .child(t::unofficial()),
+                    ),
             )
-            .child(div().max_w(size::SEARCH_MAX_WIDTH).child(body))
-            .child(
-                theme
-                    .text(div(), typography::BODY_MUTED)
-                    .pt(space::S6)
-                    .text_color(c.text_subtle)
-                    .child(t::unofficial()),
-            )
+            .child(scrollbar(
+                "account-scrollbar",
+                &self.page_scroll,
+                i18n::app::scrollbar(),
+            ))
             .into_any_element()
     }
 
