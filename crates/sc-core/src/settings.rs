@@ -48,7 +48,7 @@ impl Language {
 }
 
 /// The equalizer presets (ADR 0022). There are no sliders yet; the gains
-/// are proposals, to be tuned by ear.
+/// are proposals, to be tuned by ear. The codes are saved, so never renumber.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EqPreset {
     #[default]
@@ -57,16 +57,24 @@ pub enum EqPreset {
     Treble,
     Vocal,
     Electronic,
+    Techno,
+    HardTechno,
+    Hardstyle,
+    Hardcore,
 }
 
 impl EqPreset {
     /// Every preset, in the order Settings lists them.
-    pub const ALL: [EqPreset; 5] = [
+    pub const ALL: [EqPreset; 9] = [
         Self::Off,
         Self::Bass,
         Self::Treble,
         Self::Vocal,
         Self::Electronic,
+        Self::Techno,
+        Self::HardTechno,
+        Self::Hardstyle,
+        Self::Hardcore,
     ];
 
     /// The stable code saved in the database.
@@ -77,6 +85,10 @@ impl EqPreset {
             Self::Treble => 2,
             Self::Vocal => 3,
             Self::Electronic => 4,
+            Self::Techno => 5,
+            Self::HardTechno => 6,
+            Self::Hardstyle => 7,
+            Self::Hardcore => 8,
         }
     }
 
@@ -88,7 +100,8 @@ impl EqPreset {
             .unwrap_or_default()
     }
 
-    /// The gain in dB for each band, 31 Hz to 16 kHz; `None` for `Off`.
+    /// The gain in dB for each band, 31 Hz to 16 kHz; `None` for `Off`. These
+    /// are proposals to be tuned by ear; the sc-audio preamp handles headroom.
     pub fn gains(self) -> Option<[f32; sc_audio::EQ_BANDS]> {
         match self {
             Self::Off => None,
@@ -96,6 +109,10 @@ impl EqPreset {
             Self::Treble => Some([0., 0., 0., 0., 0., 0., 1.5, 3., 4.5, 6.]),
             Self::Vocal => Some([-2., -2., -1., 0., 2., 3., 3., 2., 0., -1.]),
             Self::Electronic => Some([5., 4., 1., 0., -2., 0., 1., 2., 4., 5.]),
+            Self::Techno => Some([3., 5., 2., -1., -2., -1., 0., 1., 2., 2.]),
+            Self::HardTechno => Some([2., 6., 4., -1., -3., -2., 1., 2., 3., 2.]),
+            Self::Hardstyle => Some([1., 4., 5., 1., -2., -1., 2., 4., 2., 1.]),
+            Self::Hardcore => Some([0., 3., 5., 2., -2., -2., 1., 3., 4., 1.]),
         }
     }
 }
@@ -251,6 +268,26 @@ mod tests {
         assert_eq!(EqPreset::from_code(77), EqPreset::Off);
         assert_eq!(EqPreset::Off.gains(), None);
         assert!(EqPreset::ALL[1..].iter().all(|p| p.gains().is_some()));
+    }
+
+    #[test]
+    fn every_curve_stays_within_six_db() {
+        for preset in EqPreset::ALL {
+            for gain in preset.gains().unwrap_or_default() {
+                assert!(gain.abs() <= 6.0, "{preset:?}: {gain}");
+            }
+        }
+    }
+
+    #[test]
+    fn presets_are_distinct() {
+        let presets = &EqPreset::ALL[1..];
+        for (i, a) in presets.iter().enumerate() {
+            for b in &presets[i + 1..] {
+                assert_ne!(a.gains(), b.gains(), "{a:?} and {b:?}");
+                assert_ne!(a.code(), b.code(), "{a:?} and {b:?}");
+            }
+        }
     }
 
     #[test]

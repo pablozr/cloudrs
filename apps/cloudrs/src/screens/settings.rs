@@ -413,6 +413,10 @@ fn preset_label(preset: EqPreset) -> &'static str {
         EqPreset::Treble => t::eq_treble(),
         EqPreset::Vocal => t::eq_vocal(),
         EqPreset::Electronic => t::eq_electronic(),
+        EqPreset::Techno => t::eq_techno(),
+        EqPreset::HardTechno => t::eq_hard_techno(),
+        EqPreset::Hardstyle => t::eq_hardstyle(),
+        EqPreset::Hardcore => t::eq_hardcore(),
     }
 }
 

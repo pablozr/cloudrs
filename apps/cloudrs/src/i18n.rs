@@ -258,6 +258,10 @@ pub mod settings {
         eq_treble { en: "Treble", pt_br: "Agudos" }
         eq_vocal { en: "Vocal", pt_br: "Vocal" }
         eq_electronic { en: "Electronic", pt_br: "Eletrônica" }
+        eq_techno { en: "Techno", pt_br: "Techno" }
+        eq_hard_techno { en: "Hard techno", pt_br: "Hard techno" }
+        eq_hardstyle { en: "Hardstyle", pt_br: "Hardstyle" }
+        eq_hardcore { en: "Hardcore", pt_br: "Hardcore" }
         volume_boost { en: "Volume boost", pt_br: "Reforço de volume" }
         volume_boost_hint { en: "Lets the volume go up to 200% and lifts quiet tracks. Loud sound can harm your hearing.", pt_br: "Deixa o volume chegar a 200% e realça faixas baixas. Som alto pode prejudicar sua audição." }
         cache { en: "Cache", pt_br: "Cache" }

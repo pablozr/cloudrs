@@ -223,8 +223,11 @@ to it, and the engine was not run on a device.
 ## Settings
 
 1. **Three new settings** in `sc-core`: `normalize` (default on), `equalizer` (an `EqPreset`:
-   Off, Bass, Treble, Vocal, Electronic; default Off) and `volume_boost` (default off).
-   `EqPreset::gains` holds the dB tables; they are proposals, to be tuned by ear.
+   Off, Bass, Treble, Vocal, Electronic, Techno, Hard techno, Hardstyle, Hardcore, with codes 0
+   to 8; default Off) and `volume_boost` (default off). `EqPreset::gains` holds the dB tables;
+   they are proposals, to be tuned by ear. Techno, Hard techno, Hardstyle and Hardcore (codes 5
+   to 8) are new values in the same column, not a new schema: an older build reads them as Off
+   and keeps the other settings.
 2. **Schema version 5** adds three columns to `settings`: `normalize INTEGER NOT NULL DEFAULT 1`,
    `equalizer INTEGER NOT NULL DEFAULT 0` (a code; an unknown one reads as Off) and
    `volume_boost INTEGER NOT NULL DEFAULT 0`. A version-4 database migrates in place.
@@ -241,7 +244,9 @@ to it, and the engine was not run on a device.
 ### Validation
 
 Unit tests for the codes, defaults and migration (v4 to v5, round trip, unknown code), and core tests
-with the fake audio channel for each rule above. Nobody listened to it.
+with the fake audio channel for each rule above. Every preset keeps every band within 6 dB, the
+presets differ from each other, and each one round-trips through the store (an unknown code reads
+as Off and keeps the rest). The new hard-dance curves are proposals nobody has listened to.
 
 ## App
 

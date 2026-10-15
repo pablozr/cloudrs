@@ -639,6 +639,29 @@ mod tests {
     }
 
     #[test]
+    fn every_preset_round_trips_through_the_store() {
+        let conn = memory();
+        for equalizer in EqPreset::ALL {
+            let settings = Settings {
+                equalizer,
+                ..Settings::default()
+            };
+            save_settings(&conn, &settings).unwrap();
+            assert_eq!(load_settings(&conn).unwrap(), Some(settings));
+        }
+        // A code from a newer build reads as Off and keeps the rest.
+        let settings = Settings {
+            theme: ThemeChoice::Dark,
+            language: Language::PtBr,
+            ..Settings::default()
+        };
+        save_settings(&conn, &settings).unwrap();
+        conn.execute("UPDATE settings SET equalizer = 99", [])
+            .unwrap();
+        assert_eq!(load_settings(&conn).unwrap(), Some(settings));
+    }
+
+    #[test]
     fn a_version_three_database_gains_the_output_device() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(

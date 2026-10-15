@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Equalizer:** new presets for hard electronic music: Techno, Hard techno, Hardstyle and Hardcore, in Settings › Sound.
 - **Sound:** equalizer presets that lift neighbouring bands no longer clip.
 
 ## 0.1.0-beta.2 · 2026-10-09
