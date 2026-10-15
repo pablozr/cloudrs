@@ -10,6 +10,7 @@ use cloudrs_ui::components::{
     ButtonKind, Icon, RowLink, TrackRowData, button, row_action, row_toggle, skeleton_row,
     track_row,
 };
+use cloudrs_ui::scrollbar::{list_scroll_handle, scrollbar};
 use cloudrs_ui::tokens::space;
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Role, SharedString, div, uniform_list};
@@ -124,6 +125,7 @@ impl Shell {
             .role(Role::List)
             .aria_label(label)
             .size_full()
+            .relative()
             .child(
                 uniform_list(
                     SharedString::from(format!("list-{key:?}")),
@@ -133,6 +135,11 @@ impl Shell {
                 .track_scroll(&scroll)
                 .size_full(),
             )
+            .child(scrollbar(
+                "list-scrollbar",
+                &list_scroll_handle(&scroll),
+                i18n::app::scrollbar(),
+            ))
             .into_any_element()
     }
 

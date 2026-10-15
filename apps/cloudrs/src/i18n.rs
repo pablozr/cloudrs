@@ -227,6 +227,7 @@ pub mod app {
         minimize { en: "Minimize", pt_br: "Minimizar" }
         maximize { en: "Maximize", pt_br: "Maximizar" }
         close { en: "Close", pt_br: "Fechar" }
+        scrollbar { en: "Scroll bar", pt_br: "Barra de rolagem" }
     }
 }
 

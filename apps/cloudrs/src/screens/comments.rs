@@ -7,6 +7,7 @@ use std::time::Duration;
 use cloudrs_ui::Theme;
 use cloudrs_ui::browse::{CommentRowData, comment_popover, comment_row};
 use cloudrs_ui::components::{ButtonKind, Icon, button, comment_lane, skeleton_row};
+use cloudrs_ui::scrollbar::{list_scroll_handle, scrollbar};
 use cloudrs_ui::tokens::{size, space};
 use gpui::prelude::*;
 use gpui::{
@@ -250,6 +251,7 @@ impl Shell {
             .role(Role::List)
             .aria_label(t::tab())
             .size_full()
+            .relative()
             .child(
                 uniform_list(
                     "track-comments",
@@ -259,6 +261,11 @@ impl Shell {
                 .track_scroll(&self.comments_scroll)
                 .size_full(),
             )
+            .child(scrollbar(
+                "comments-scrollbar",
+                &list_scroll_handle(&self.comments_scroll),
+                i18n::app::scrollbar(),
+            ))
             .into_any_element()
     }
 

@@ -5,6 +5,7 @@ use std::ops::Range;
 
 use cloudrs_ui::Theme;
 use cloudrs_ui::components::{Icon, TrackRowData, drag_preview, row_action, track_row};
+use cloudrs_ui::scrollbar::{list_scroll_handle, scrollbar};
 use cloudrs_ui::tokens::{size, space, typography};
 use gpui::prelude::*;
 use gpui::{AnyElement, Context, Render, Role, SharedString, Window, div, px, uniform_list};
@@ -76,7 +77,21 @@ impl Shell {
                     .text_color(c.text)
                     .child(i18n::queue::title()),
             )
-            .child(div().flex_1().min_h(px(0.0)).px(space::S2).child(body))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h(px(0.0))
+                    .px(space::S2)
+                    .relative()
+                    .child(body)
+                    .when(count > 0, |body| {
+                        body.child(scrollbar(
+                            "queue-scrollbar",
+                            &list_scroll_handle(&self.queue_scroll),
+                            i18n::app::scrollbar(),
+                        ))
+                    }),
+            )
     }
 
     fn queue_rows(&mut self, range: Range<usize>, cx: &mut Context<Self>) -> Vec<AnyElement> {
