@@ -11,6 +11,7 @@ pub mod components;
 pub mod fonts;
 pub mod motion;
 pub mod palette;
+pub mod scrollbar;
 mod search_edit;
 pub mod search_field;
 pub mod theme;

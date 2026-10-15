@@ -72,6 +72,8 @@ The accent is reserved for: the primary action, the play button, progress, selec
 | `surface.hover` | `#2F2B26` | `#EAE3DA` |
 | `line` | `#FFECDC` at 8% | `#28190A` at 9% |
 | `line.strong` | `#FFECDC` at 14% | `#28190A` at 16% |
+| `scroll.thumb` | `#FFECDC` at 22% | `#28190A` at 24% |
+| `scroll.thumb.active` | `#FFECDC` at 40% | `#28190A` at 42% |
 | `text` | `#F5EFE8` | `#1A1714` |
 | `text.muted` | `#B3AAA0` | `#5E564D` |
 | `text.subtle` | `#7D756C` | `#8F867C` |
@@ -166,6 +168,14 @@ The OS "reduce motion" setting turns every duration down to an instant change.
   choosing a row closes it (ADR 0018).
 - **Slider:** volume. With Volume boost on it reaches 200%; above 100% the fill is `warning`
   (`Theme::readable` on light) as a caution, not as an accent. The focus ring stays the accent.
+- **Scrollbar (ADR 0027):** a vertical overlay on the right edge of every scrolling area, laid
+  over the content (it takes no layout space). It is always visible while there is something to
+  scroll, whatever the OS "hide scroll bars" setting says, and absent otherwise. A 6 px thumb
+  (`radius.full`, at least 32 px long) sits in the middle of a 12 px strip, 4 px in from the top
+  and bottom. At rest it is `scroll.thumb`; under the pointer or while dragged it is
+  `scroll.thumb.active` over a `line` track, with no animation. Drag the thumb to scroll;
+  clicking the track centres the thumb there. The wheel and the keyboard keep scrolling the
+  content. It takes no focus and no Tab stop, and it has `Role::ScrollBar` and a label.
 - **Timed comments (track page, ADR 0021):** pins in a thin lane under the large waveform, one per
   bar (muted dots; the one under the pointer is larger and in accent). Hovering a pin opens a
   popover with up to three comments (avatar, name, time, text) and "+N more". The Comments tab

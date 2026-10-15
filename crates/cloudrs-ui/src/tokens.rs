@@ -22,6 +22,9 @@ pub struct Palette {
     pub surface_hover: Hsla,
     pub line: Hsla,
     pub line_strong: Hsla,
+    /// The scrollbar thumb at rest, and under the pointer or being dragged.
+    pub scroll_thumb: Hsla,
+    pub scroll_thumb_active: Hsla,
     pub text: Hsla,
     pub text_muted: Hsla,
     pub text_subtle: Hsla,
@@ -45,6 +48,8 @@ pub fn dark() -> Palette {
         surface_hover: tone(0x2F2B26, 1.0),
         line: tone(0xFFECDC, 0.08),
         line_strong: tone(0xFFECDC, 0.14),
+        scroll_thumb: tone(0xFFECDC, 0.22),
+        scroll_thumb_active: tone(0xFFECDC, 0.40),
         text: tone(0xF5EFE8, 1.0),
         text_muted: tone(0xB3AAA0, 1.0),
         text_subtle: tone(0x7D756C, 1.0),
@@ -66,6 +71,8 @@ pub fn light() -> Palette {
         surface_hover: tone(0xEAE3DA, 1.0),
         line: tone(0x28190A, 0.09),
         line_strong: tone(0x28190A, 0.16),
+        scroll_thumb: tone(0x28190A, 0.24),
+        scroll_thumb_active: tone(0x28190A, 0.42),
         text: tone(0x1A1714, 1.0),
         text_muted: tone(0x5E564D, 1.0),
         text_subtle: tone(0x8F867C, 1.0),
@@ -340,4 +347,9 @@ pub mod size {
     pub const QUICK_PLAY: Pixels = px(32.0);
     /// Widest the Home content grows.
     pub const HOME_MAX_WIDTH: Pixels = px(1200.0);
+    /// The scrollbar: the strip that takes the pointer, the thumb drawn in
+    /// its middle, and the shortest the thumb gets.
+    pub const SCROLLBAR_HIT: Pixels = px(12.0);
+    pub const SCROLLBAR_THUMB: Pixels = px(6.0);
+    pub const SCROLLBAR_MIN_THUMB: Pixels = px(32.0);
 }
