@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+## 0.1.0-beta.3 · 2026-10-17
+
 - **Equalizer:** new presets for hard electronic music: Techno, Hard techno, Hardstyle and Hardcore, in Settings › Sound.
 - **Sound:** equalizer presets that lift neighbouring bands no longer clip.
+- **Scrollbars:** lists, pages, the sidebar and the command palette show a scrollbar you can
+  drag.
+- **Settings:** grouped into cards, each row with its label on the left and its control on the
+  right.
 
 ## 0.1.0-beta.2 · 2026-10-09
 
