@@ -135,7 +135,6 @@ host leaves.
   `sc-session` builds none of iroh's crates and a session ends at once as unreachable, so the
   core and the UI need no `cfg` of their own.
 - A guest applies only the newest host queue; an older fetch that answers late is dropped.
-- A guest applies only the newest host queue; an older fetch that answers late is dropped.
 - The mirror keeps the host's order whatever the guest's own shuffle.
 - A track fetched for an older `Prepare` is kept but not played.
 - Ready means the engine reported the requested position (within 250 ms); a position still in flight from the previous track no longer counts, which had let the start barrier pass early and sent guests a pause at the old track's position.
