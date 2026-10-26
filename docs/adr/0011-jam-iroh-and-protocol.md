@@ -143,3 +143,4 @@ host leaves.
 - A track the guest cannot fetch is left out of its mirror; its requests still name the host's indices.
 - A guest on a track queued twice stays on the host's entry.
 - A guest that is still late after a catch-up seek plays from there; the next correction waits for the 10 s cooldown.
+- A queue longer than 1,000 tracks reaches guests as a window around the current track, so a `Queue` frame stays under 64 KiB; the host offsets the indices in guests' requests. A beta.3 host with a longer queue still drops guests. The maintainer approved this change on 2026-10-26.

@@ -13,6 +13,7 @@
 //! little ahead and schedules play there. Its own queue comes back after.
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -50,6 +51,19 @@ const ON_TIME: Duration = Duration::from_millis(20);
 /// A position the engine reports for a `Prepare` or a seek is the requested
 /// spot; anything farther off was sent before the command.
 const READY_SLACK: Duration = Duration::from_millis(250);
+
+/// Most queue tracks sent to guests, so a Queue frame stays under MAX_FRAME.
+const QUEUE_WINDOW: usize = 1000;
+
+/// The part of a queue of `len` the guests see: all of it when it fits, else a
+/// window with a few tracks before `current`.
+fn queue_window(len: usize, current: Option<usize>) -> Range<usize> {
+    let start = current
+        .unwrap_or(0)
+        .saturating_sub(QUEUE_WINDOW / 10)
+        .min(len.saturating_sub(QUEUE_WINDOW));
+    start..len.min(start + QUEUE_WINDOW)
+}
 
 /// A `Prepare` or a paused seek that the engine has not answered yet.
 struct Awaiting {
@@ -979,13 +993,22 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Request::Next => Command::Next,
             Request::Previous => Command::Previous,
             Request::Seek { ms } => Command::Seek(Duration::from_millis(ms)),
-            Request::Remove { index } => Command::RemoveFromQueue(index as usize),
+            // Guests count from the start of the window they were sent.
+            Request::Remove { index } => {
+                Command::RemoveFromQueue(self.queue_window_start() + index as usize)
+            }
             Request::Move { from, to } => Command::MoveInQueue {
-                from: from as usize,
-                to: to as usize,
+                from: self.queue_window_start() + from as usize,
+                to: self.queue_window_start() + to as usize,
             },
         };
         self.command(command);
+    }
+
+    /// Where the window of the queue the guests see starts.
+    fn queue_window_start(&self) -> usize {
+        let snapshot = self.queue.snapshot();
+        queue_window(snapshot.tracks.len(), snapshot.current).start
     }
 
     /// A guest's track joins the queue; one the host has not seen is fetched.
@@ -1076,6 +1099,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     fn host_queue_message(&self) -> ToGuest {
         let snapshot = self.queue.snapshot();
+        let window = queue_window(snapshot.tracks.len(), snapshot.current);
         let added_by = match &self.jam {
             Some(Jam {
                 role: Role::Host(host),
@@ -1084,15 +1108,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             _ => None,
         };
         ToGuest::Queue {
-            tracks: snapshot
-                .tracks
+            tracks: snapshot.tracks[window.clone()]
                 .iter()
                 .map(|t| QueuedTrack {
                     track: t.id.0,
                     added_by: added_by.and_then(|by| by.get(&t.id).copied()),
                 })
                 .collect(),
-            current: snapshot.current.map(|i| i as u32),
+            current: snapshot.current.map(|i| (i - window.start) as u32),
         }
     }
 
@@ -1516,5 +1539,39 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             at,
         });
         self.to_audio(sc_audio::Command::Seek(at));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_queue_window_is_all_of_a_short_queue() {
+        assert_eq!(queue_window(10, Some(3)), 0..10);
+    }
+
+    #[test]
+    fn the_queue_window_follows_the_current_track() {
+        assert_eq!(queue_window(5000, Some(0)), 0..1000);
+        assert_eq!(queue_window(5000, Some(3000)), 2900..3900);
+        assert_eq!(queue_window(5000, Some(4990)), 4000..5000);
+        assert_eq!(queue_window(5000, None), 0..1000);
+    }
+
+    #[test]
+    fn a_full_queue_window_fits_a_frame() {
+        let message = ToGuest::Queue {
+            tracks: (0..QUEUE_WINDOW)
+                .map(|_| QueuedTrack {
+                    track: u64::MAX,
+                    added_by: Some(PeerId(u32::MAX)),
+                })
+                .collect(),
+            current: Some(u32::MAX),
+        };
+        assert!(
+            sc_session::protocol::encode(&message).len() - 4 <= sc_session::protocol::MAX_FRAME
+        );
     }
 }

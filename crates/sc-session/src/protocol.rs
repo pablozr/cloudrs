@@ -106,7 +106,9 @@ pub enum ToGuest {
         t0: u64,
         th: u64,
     },
-    /// The whole queue, replacing the guest's mirror.
+    /// The host's queue, or a window of it around the current track when it is
+    /// long; `current` indexes `tracks`, and the host reads queue indices in
+    /// requests the same way, replacing the guest's mirror.
     Queue {
         tracks: Vec<QueuedTrack>,
         current: Option<u32>,
