@@ -290,3 +290,28 @@ fn a_guest_mirrors_the_latest_queue_when_an_older_fetch_answers_last() {
         }
     }
 }
+
+#[test]
+fn a_guest_with_shuffle_on_sees_the_hosts_order() {
+    let host = Harness::new("shuffle-host");
+    let guest = Harness::new("shuffle-guest");
+    host.core.send(Command::StartJam);
+    let link = jam(&host, |s| s.link.is_some()).link.unwrap();
+    guest.core.send(Command::SetShuffle(true));
+    guest.core.send(Command::JoinJam(link));
+    jam(
+        &guest,
+        |s| matches!(&s.role, JamRole::Guest { host } if !host.is_empty()),
+    );
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(71),
+    });
+    let queue = queue_of(&guest, 2);
+    let ids: Vec<TrackId> = queue.tracks.iter().map(|t| t.id).collect();
+    assert_eq!(ids, [TrackId(70), TrackId(71)]);
+    assert_eq!(queue.current, Some(1));
+}

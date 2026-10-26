@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Jam:** a guest's queue no longer jumps back after autoplay or several changes in a row.
+- **Jam:** a guest with shuffle on sees the host's queue in the host's order.
 
 ## 0.1.0-beta.3 · 2026-10-17
 

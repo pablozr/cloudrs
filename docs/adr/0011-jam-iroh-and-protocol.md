@@ -136,3 +136,4 @@ host leaves.
   core and the UI need no `cfg` of their own.
 - A guest applies only the newest host queue; an older fetch that answers late is dropped.
 - A guest applies only the newest host queue; an older fetch that answers late is dropped.
+- The mirror keeps the host's order whatever the guest's own shuffle.

@@ -1228,9 +1228,15 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             .iter()
             .filter_map(|id| self.find_summary(TrackId(*id)))
             .collect();
-        let start = current.map_or(0, |i| i as usize);
         let art: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
-        self.queue.set_context(summaries, start);
+        // The host's order, whatever this guest's own shuffle; its flags stay.
+        let own = self.queue.snapshot();
+        self.queue.restore(
+            summaries,
+            current.map(|i| i as usize),
+            own.shuffle,
+            own.repeat,
+        );
         self.emit(Event::Queue(self.queue.snapshot()));
         // Tracks fetched for the mirror were never on a list here.
         for id in art {
