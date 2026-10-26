@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Jam:** a guest's queue no longer jumps back after autoplay or several changes in a row.
+
 ## 0.1.0-beta.3 · 2026-10-17
 
 - **Equalizer:** new presets for hard electronic music: Techno, Hard techno, Hardstyle and Hardcore, in Settings › Sound.

@@ -4,6 +4,7 @@
 
 mod common;
 
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use common::*;
@@ -249,4 +250,43 @@ fn a_jam_host_does_not_preload() {
         .chain(host.audio_commands.recv_timeout(Duration::from_millis(300)))
         .any(|c| matches!(c, sc_audio::Command::Preload(_)));
     assert!(!preloaded);
+}
+
+/// Waits for a queue of `len` tracks.
+fn queue_of(h: &Harness, len: usize) -> sc_core::QueueSnapshot {
+    h.wait(|e| match e {
+        Event::Queue(queue) if queue.tracks.len() == len => Some(queue),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_guest_mirrors_the_latest_queue_when_an_older_fetch_answers_last() {
+    let (host, guest) = pair("latest-queue");
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(71),
+    });
+    queue_of(&guest, 2);
+    guest.api.slow_tracks_once.store(true, Ordering::SeqCst);
+    // On the last track, autoplay sends two queues in a row.
+    host.core.send(Command::Next);
+    let queue = guest.wait(|e| match e {
+        Event::Queue(queue) if queue.tracks.len() == 4 && queue.current == Some(2) => Some(queue),
+        _ => None,
+    });
+    assert_eq!(queue.current, Some(2));
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while let Ok(event) = guest
+        .core
+        .events()
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+    {
+        if let Event::Queue(queue) = event {
+            assert_eq!(queue.current, Some(2), "the queue jumped back");
+        }
+    }
 }

@@ -27,6 +27,8 @@ pub struct FakeApi {
     pub fail_streams: Arc<AtomicBool>,
     /// Makes `next_page` answer after 400 ms.
     pub slow_next_page: Arc<AtomicBool>,
+    /// Makes the next `tracks` call answer after 400 ms.
+    pub slow_tracks_once: Arc<AtomicBool>,
     /// The token `set_oauth_token` was given; only `"good"` signs in.
     pub token: Arc<Mutex<Option<String>>>,
     /// Makes like and follow calls fail (`Status(500)`).
@@ -283,6 +285,9 @@ impl SoundCloudApi for FakeApi {
 
     async fn tracks(&self, ids: &[u64]) -> sc_api::Result<Vec<Track>> {
         self.log(format!("tracks {}", ids.len()));
+        if self.slow_tracks_once.swap(false, Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
         Ok(ids.iter().map(|id| track(*id, "Any", "ALLOW")).collect())
     }
 

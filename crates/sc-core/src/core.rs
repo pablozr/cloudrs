@@ -74,6 +74,7 @@ enum Input {
     /// The tracks of the host's queue a guest had not seen.
     JamMirror {
         generation: u64,
+        seq: u64,
         ids: Vec<u64>,
         current: Option<u32>,
         result: sc_api::Result<Vec<Track>>,
@@ -402,10 +403,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             } => self.jam_track_fetched(generation, then, result),
             Input::JamMirror {
                 generation,
+                seq,
                 ids,
                 current,
                 result,
-            } => self.jam_mirror_fetched(generation, ids, current, result),
+            } => self.jam_mirror_fetched(generation, seq, ids, current, result),
             Input::Audio(event) => self.audio_event(event),
             Input::ListDone {
                 list,

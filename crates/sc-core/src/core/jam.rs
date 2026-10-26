@@ -116,6 +116,8 @@ struct Guest {
     last_correction: Option<Instant>,
     /// The guest's own queue and position, restored when the Jam ends.
     saved: Option<SavedSession>,
+    /// Counts the host's queues received; only the newest one is mirrored.
+    queue_seq: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -359,6 +361,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                         strikes: 0,
                         last_correction: None,
                         saved: Some(saved),
+                        queue_seq: 0,
                     }),
                 )
             }
@@ -1160,6 +1163,15 @@ impl<A: SoundCloudApi + 'static> Core<A> {
 
     /// The host's queue: tracks this guest has not seen are fetched first.
     fn guest_queue(&mut self, tracks: Vec<QueuedTrack>, current: Option<u32>) {
+        let Some(Jam {
+            role: Role::Guest(guest),
+            ..
+        }) = &mut self.jam
+        else {
+            return;
+        };
+        guest.queue_seq += 1;
+        let seq = guest.queue_seq;
         let ids: Vec<u64> = tracks.iter().map(|t| t.track).collect();
         let missing: Vec<u64> = ids
             .iter()
@@ -1174,6 +1186,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             let result = api.tracks(&missing).await;
             let _ = inputs.send(Input::JamMirror {
                 generation,
+                seq,
                 ids,
                 current,
                 result,
@@ -1184,6 +1197,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     pub(super) fn jam_mirror_fetched(
         &mut self,
         generation: u64,
+        seq: u64,
         ids: Vec<u64>,
         current: Option<u32>,
         result: sc_api::Result<Vec<Track>>,
@@ -1199,7 +1213,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             }
             Err(error) => tracing::warn!(%error, "could not fetch the Jam's queue"),
         }
-        self.guest_mirror(&ids, current);
+        // A newer queue arrived meanwhile: this one is stale.
+        let newest = matches!(
+            &self.jam,
+            Some(Jam { role: Role::Guest(guest), .. }) if guest.queue_seq == seq
+        );
+        if newest {
+            self.guest_mirror(&ids, current);
+        }
     }
 
     fn guest_mirror(&mut self, ids: &[u64], current: Option<u32>) {

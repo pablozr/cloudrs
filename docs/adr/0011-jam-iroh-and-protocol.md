@@ -134,3 +134,5 @@ host leaves.
 - The `jam` feature is on by default in `sc-session`, `sc-core` and the app. Without it,
   `sc-session` builds none of iroh's crates and a session ends at once as unreachable, so the
   core and the UI need no `cfg` of their own.
+- A guest applies only the newest host queue; an older fetch that answers late is dropped.
+- A guest applies only the newest host queue; an older fetch that answers late is dropped.
