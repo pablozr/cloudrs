@@ -647,6 +647,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     && barrier.epoch == epoch
                 {
                     barrier.timed_out = true;
+                    tracing::debug!(
+                        epoch,
+                        waiting = barrier.waiting.len(),
+                        "the ready wait timed out"
+                    );
                     self.host_check_barrier();
                 }
             }
@@ -733,6 +738,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             timed_out: false,
             pos,
         });
+        tracing::debug!(
+            epoch,
+            waiting = host.people.len(),
+            pos_ms = ms(pos),
+            "barrier started"
+        );
         self.cancel_play_at();
         self.jam_send(SessionCommand::Broadcast(ToGuest::Prepare {
             epoch,
@@ -764,6 +775,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 epoch: host.epoch,
                 pos_ms: ms(self.playback.position),
             };
+            tracing::debug!(
+                epoch = host.epoch,
+                pos_ms = ms(self.playback.position),
+                "paused; telling the guests"
+            );
             self.cancel_play_at();
             self.jam_send(SessionCommand::Broadcast(paused));
         }
@@ -776,15 +792,19 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         };
         // Still on its way from the previous track: not the answer yet.
-        if jam
-            .awaiting_position
-            .as_ref()
-            .is_some_and(|awaiting| position.abs_diff(awaiting.at) > READY_SLACK)
+        if let Some(awaiting) = &jam.awaiting_position
+            && position.abs_diff(awaiting.at) > READY_SLACK
         {
+            tracing::debug!(
+                position_ms = ms(position),
+                awaited_ms = ms(awaiting.at),
+                "ignored a position away from the awaited one"
+            );
             return;
         }
         if let Some(awaiting) = jam.awaiting_position.take() {
             let took = awaiting.since.elapsed();
+            tracing::debug!(took_ms = ms(took), position_ms = ms(position), "ready");
             match &mut jam.role {
                 Role::Host(host) => {
                     if let Some(barrier) = &mut host.barrier {
@@ -800,6 +820,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     if !guest.ready_sent {
                         guest.ready_sent = true;
                         let epoch = guest.epoch;
+                        tracing::debug!(epoch, "telling the host this guest is ready");
                         self.jam_send(SessionCommand::Send(ToHost::Ready { epoch }));
                     }
                     self.guest_follow();
@@ -847,6 +868,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Problem::CannotPlay => Unplayable::Blocked,
             _ => Unplayable::Failed,
         };
+        tracing::debug!(
+            epoch = guest.epoch,
+            ?reason,
+            "telling the host this guest cannot play"
+        );
         let message = ToHost::CannotPlay {
             epoch: guest.epoch,
             track: self.current.map_or(0, |t| t.0),
@@ -866,6 +892,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let message = match &mut jam.role {
             Role::Guest(guest) => {
                 guest.ready = false;
+                tracing::debug!(
+                    epoch = guest.epoch,
+                    role = "guest",
+                    "the audio engine failed"
+                );
                 SessionCommand::Send(ToHost::CannotPlay {
                     epoch: guest.epoch,
                     track: self.current.map_or(0, |t| t.0),
@@ -878,6 +909,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     .take()
                     .map_or(self.playback.position, |b| b.pos);
                 host.resync = None;
+                tracing::debug!(
+                    epoch = host.epoch,
+                    role = "host",
+                    pos_ms = ms(pos),
+                    "the audio engine failed"
+                );
                 SessionCommand::Broadcast(ToGuest::Paused {
                     epoch: host.epoch,
                     pos_ms: ms(pos),
@@ -968,7 +1005,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 }
                 self.host_check_barrier();
             }
-            ToHost::CannotPlay { epoch, .. } => {
+            ToHost::CannotPlay { epoch, reason, .. } => {
+                tracing::debug!(?peer, epoch, ?reason, "a guest cannot play");
                 if let Some(Jam {
                     role: Role::Host(host),
                     ..
@@ -1010,6 +1048,11 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             && let Some(held) = host.held.get_mut(&peer)
         {
             held.push(request);
+            tracing::debug!(
+                ?peer,
+                held = held.len(),
+                "held a request while the guest's track loads"
+            );
             return;
         }
         let command = match request {
@@ -1105,6 +1148,8 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     Some(Jam { role: Role::Guest(guest), .. }) if guest.epoch == epoch
                 ) {
                     self.guest_prepare(epoch, id, pos);
+                } else {
+                    tracing::debug!(epoch, "dropped a track fetched for an older prepare");
                 }
             }
             (AfterFetch::Prepare { .. }, None) => {}
@@ -1120,7 +1165,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         else {
             return;
         };
-        for request in host.held.remove(&peer).unwrap_or_default() {
+        let held = host.held.remove(&peer).unwrap_or_default();
+        tracing::debug!(?peer, held = held.len(), "released the held requests");
+        for request in held {
             self.host_request(peer, request);
         }
     }
@@ -1208,6 +1255,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         }
         let pos = barrier.pos;
+        tracing::debug!(
+            epoch = barrier.epoch,
+            timed_out = barrier.timed_out,
+            still_waiting = barrier.waiting.len(),
+            "barrier released"
+        );
         host.barrier = None;
         self.host_announce(pos, true);
     }
@@ -1225,6 +1278,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         };
         let epoch = host.epoch;
         host.last_anchor = Some(Instant::now());
+        tracing::debug!(epoch, play, pos_ms = ms(pos), "announcing the anchor");
         let anchor = if play {
             ToGuest::Playing {
                 epoch,
@@ -1251,6 +1305,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if let Role::Host(host) = &mut jam.role {
             host.resync = Some(play);
         }
+        tracing::debug!(at_ms = ms(at), play, "resync");
         jam.awaiting_position = Some(Awaiting {
             since: Instant::now(),
             at,
@@ -1309,6 +1364,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 track,
                 pos_ms,
             } => {
+                tracing::debug!(epoch, track, pos_ms, "prepare received");
                 guest.epoch = epoch;
                 guest.ready = false;
                 guest.ready_sent = false;
@@ -1336,10 +1392,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     && self.playback.state == PlayState::Playing;
                 guest.anchor = Some(anchor);
                 if !heartbeat {
+                    tracing::debug!(epoch, pos_ms, "playing anchor received");
                     self.guest_follow();
                 }
             }
             ToGuest::Paused { epoch, pos_ms } => {
+                tracing::debug!(epoch, pos_ms, "paused received");
                 guest.anchor = Some(Anchor {
                     epoch,
                     playing: false,
@@ -1379,6 +1437,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         };
         guest.queue_seq += 1;
         let seq = guest.queue_seq;
+        tracing::debug!(seq, len = queue.ids.len(), current = ?queue.current, "queue received");
         let missing: Vec<u64> = queue
             .ids
             .iter()
@@ -1412,7 +1471,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Some(Jam {
                 role: Role::Guest(guest),
                 ..
-            }) if generation == self.jam_gen => guest.queue_seq == seq,
+            }) if generation == self.jam_gen => {
+                if guest.queue_seq != seq {
+                    tracing::debug!(
+                        seq,
+                        newest = guest.queue_seq,
+                        "dropped a stale queue mirror"
+                    );
+                }
+                guest.queue_seq == seq
+            }
             _ => return,
         };
         match result {
@@ -1447,6 +1515,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         }
         let summaries: Vec<TrackSummary> = kept.into_iter().map(|(_, s)| s).collect();
         let art: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
+        tracing::debug!(len = summaries.len(), ?current, "queue mirrored");
         // The host's order and modes; the guest's own come back when the Jam
         // ends (`saved`).
         self.queue
@@ -1521,11 +1590,21 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         // Paused at `local`: the host's clock reaches that point at `when`.
         let when = anchor.at_host_ns as i64 + ns(local) - ns(anchor.pos);
         if when >= host_now - ns(ON_TIME) {
+            tracing::debug!(
+                delay_ms = (when - host_now) / 1_000_000,
+                "scheduled the play"
+            );
             self.play_at(when - offset);
         } else if cooled {
             let target = anchor.pos + from_ns(host_now + ns(lead) - anchor.at_host_ns as i64);
+            tracing::debug!(
+                target_ms = ms(target),
+                late_ms = (host_now - when) / 1_000_000,
+                "late to play; catching up"
+            );
             self.guest_correct(target);
         } else {
+            tracing::debug!("late to play, but cooling down; playing from here");
             // Late again right after a catch-up: play from here, the drift
             // check corrects it once the cooldown is over.
             self.cancel_play_at();
@@ -1559,6 +1638,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         guest.strikes += 1;
         if guest.strikes >= DRIFT_STRIKES && guest.cooled() {
             let target = from_ns(expected + ns(guest.lead));
+            tracing::debug!(
+                target_ms = ms(target),
+                strikes = guest.strikes,
+                error_ms = error / 1_000_000,
+                "drifted; correcting"
+            );
             self.guest_correct(target);
         }
     }
