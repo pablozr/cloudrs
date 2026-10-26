@@ -425,6 +425,7 @@ Peer-to-peer, no cloudrs server; state is synced, audio never leaves SoundCloud.
   - `sc-core`: queue, shuffle and restore (pure logic).
   - An optional, manual smoke test against the real SoundCloud, to catch API breakage.
 - **Logs:** `tracing` + `tracing-subscriber`, `RUST_LOG=cloudrs=debug`.
+  `CLOUDRS_LOG_FILE=<path>` writes the log to a file instead (the Windows release has no console).
 - **Commits:** small, one topic each, in English, following Conventional Commits (`feat:`,
   `fix:`, `docs:`…) so the changelog can be generated.
 - **Issues:** bug/feature templates and `good first issue` labels.

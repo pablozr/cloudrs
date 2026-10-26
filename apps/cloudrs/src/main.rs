@@ -24,13 +24,37 @@ use gpui::{
 use gpui_platform::application;
 use sc_core::CoreConfig;
 
+/// Logs to stderr, or to the file in `CLOUDRS_LOG_FILE`: the Windows release has no console.
+fn init_logging() {
+    let file = std::env::var_os("CLOUDRS_LOG_FILE").map(|path| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+    });
+    // A log file also turns on the Jam's details; `RUST_LOG` always wins.
+    let default = match file {
+        Some(Ok(_)) => "cloudrs=info,sc_core::core::jam=debug,warn",
+        _ => "cloudrs=info,warn",
+    };
+    let filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| default.into());
+    let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    match file {
+        Some(Ok(file)) => builder
+            .with_ansi(false)
+            .with_writer(std::sync::Mutex::new(file))
+            .init(),
+        Some(Err(error)) => {
+            builder.init();
+            tracing::warn!(%error, "could not open CLOUDRS_LOG_FILE; logging to stderr");
+        }
+        None => builder.init(),
+    }
+}
+
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cloudrs=info,warn".into()),
-        )
-        .init();
+    init_logging();
 
     // The sign-in window runs as this same executable (ADR 0010).
     let mut args = std::env::args().skip(1);

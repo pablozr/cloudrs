@@ -162,6 +162,19 @@ cargo run -p cloudrs --release
 | `cargo run -p sc-session --example jam -- host` | Tests a Jam connection without the app |
 | `cargo run -p sc-session --example jam -- join "<link>"` | Joins that test connection from another machine |
 
+### Logs
+
+The Windows app has no console. To report a problem, set `CLOUDRS_LOG_FILE` and send the file;
+it includes the Jam's details. `RUST_LOG` still sets the level when you need more.
+
+```powershell
+$env:CLOUDRS_LOG_FILE="$env:TEMP\cloudrs.log"; & "$env:LOCALAPPDATA\cloudrs\cloudrs.exe"
+```
+
+```sh
+CLOUDRS_LOG_FILE=/tmp/cloudrs.log cloudrs
+```
+
 ## Architecture
 
 A Rust workspace in layers. Dependencies point one way, and `tests/architecture` checks it in CI.
