@@ -366,11 +366,11 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 
 ### M4 — Desktop integration
 - [x] MPRIS / Now Playing / SMTC ([ADR 0019](./adr/0019-os-media-controls.md)).
-  - [ ] Tried by the maintainer: media keys and the Windows flyout; macOS and Linux untried.
+  - [x] Tried by the maintainer: media keys and the Windows flyout; macOS and Linux untried.
 - [x] Full keyboard shortcuts (Ctrl K and / focus search; Ctrl P opens the command palette,
       ADR 0018).
 - [x] Audio device selection and recovery (ADR 0020).
-  - [ ] Tried by the maintainer: unplugging headphones while playing, switching the Windows
+  - [x] Tried by the maintainer: unplugging headphones while playing, switching the Windows
     default; macOS and Linux untried.
 - [x] Timed comments on the waveform (ADR 0021).
 - [x] Settings, themes (system, dark, light) remembered (ADR 0017); the language picker came
@@ -378,25 +378,25 @@ Design: [ADR 0010](./adr/0010-m3-sign-in-and-account.md).
 
 ### M5 — Polish and 0.1 release
 - [x] Gapless (ADR 0022).
-  - [ ] Listened to by the maintainer: an album, repeat one, reordering near the end, a device
+  - [x] Listened to by the maintainer: an album, repeat one, reordering near the end, a device
     switch near the end.
 - [x] Loudness normalization (ADR 0022).
-  - [ ] Listened to by the maintainer.
+  - [x] Listened to by the maintainer.
 - [x] Equalizer, with presets (ADR 0022).
-  - [ ] Listened to by the maintainer.
+  - [x] Listened to by the maintainer.
 - [x] Volume boost up to 200% behind a limiter (ADR 0022).
-  - [ ] Listened to by the maintainer.
+  - [x] Listened to by the maintainer.
 - [x] In-app updates (ADR 0026).
-  - [ ] Tried end to end by the maintainer (an older build updating to the newest release).
+  - [x] Tried end to end by the maintainer (an older build updating to the newest release).
 - [x] Mini player (ADR 0023).
-  - [ ] Tried by the maintainer: always on top on Windows, dragging, focus, both themes.
+  - [x] Tried by the maintainer: always on top on Windows, dragging, focus, both themes.
 - [x] Tray (ADR 0024).
-  - [ ] Tried by the maintainer on Windows; macOS and Linux untried.
+  - [x] Tried by the maintainer on Windows; macOS and Linux untried.
 - [x] Discord RPC (ADR 0015).
 - [ ] Packaging: `.AppImage`/`.deb`/Flatpak, `.dmg`, `.msi` (via `cargo-dist` or
       `cargo-packager`).
 - [x] First translations beyond English: Brazilian Portuguese (ADR 0025).
-  - [ ] Translations reviewed by the maintainer.
+  - [x] Translations reviewed by the maintainer.
 - [ ] Website/README with GIFs and a download page.
 
 ### Later — Listen together (after M2)
