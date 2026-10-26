@@ -29,6 +29,8 @@ pub struct FakeApi {
     pub slow_next_page: Arc<AtomicBool>,
     /// Makes the next `tracks` call answer after 400 ms.
     pub slow_tracks_once: Arc<AtomicBool>,
+    /// `track` and `tracks` calls that include this id answer after 400 ms.
+    pub slow_track: Arc<Mutex<Option<u64>>>,
     /// The token `set_oauth_token` was given; only `"good"` signs in.
     pub token: Arc<Mutex<Option<String>>>,
     /// Makes like and follow calls fail (`Status(500)`).
@@ -271,6 +273,9 @@ impl SoundCloudApi for FakeApi {
     }
 
     async fn track(&self, id: u64) -> sc_api::Result<Track> {
+        if *self.slow_track.lock().unwrap() == Some(id) {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
         Ok(Track {
             description: Some("About this track".into()),
             playback_count: Some(1_000),
@@ -286,6 +291,10 @@ impl SoundCloudApi for FakeApi {
     async fn tracks(&self, ids: &[u64]) -> sc_api::Result<Vec<Track>> {
         self.log(format!("tracks {}", ids.len()));
         if self.slow_tracks_once.swap(false, Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
+        let slow = *self.slow_track.lock().unwrap();
+        if slow.is_some_and(|slow| ids.contains(&slow)) {
             tokio::time::sleep(Duration::from_millis(400)).await;
         }
         Ok(ids.iter().map(|id| track(*id, "Any", "ALLOW")).collect())

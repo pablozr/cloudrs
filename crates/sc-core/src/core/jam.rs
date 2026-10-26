@@ -946,7 +946,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         self.tracks.insert(id, track);
         match then {
             AfterFetch::Enqueue { peer, next } => self.host_add(peer, id, next),
-            AfterFetch::Prepare { epoch, pos } => self.guest_prepare(epoch, id, pos),
+            AfterFetch::Prepare { epoch, pos } => {
+                // The host moved on while this track was loading: keep it, do not play it.
+                let current = matches!(
+                    &self.jam,
+                    Some(Jam { role: Role::Guest(guest), .. }) if guest.epoch == epoch
+                );
+                if current {
+                    self.guest_prepare(epoch, id, pos);
+                }
+            }
         }
     }
 

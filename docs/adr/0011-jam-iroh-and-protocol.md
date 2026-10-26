@@ -137,3 +137,4 @@ host leaves.
 - A guest applies only the newest host queue; an older fetch that answers late is dropped.
 - A guest applies only the newest host queue; an older fetch that answers late is dropped.
 - The mirror keeps the host's order whatever the guest's own shuffle.
+- A track fetched for an older `Prepare` is kept but not played.

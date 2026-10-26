@@ -315,3 +315,30 @@ fn a_guest_with_shuffle_on_sees_the_hosts_order() {
     assert_eq!(ids, [TrackId(70), TrackId(71)]);
     assert_eq!(queue.current, Some(1));
 }
+
+#[test]
+fn a_guest_does_not_play_a_track_the_host_already_left() {
+    let (host, guest) = pair("stale-prepare");
+    *guest.api.slow_track.lock().unwrap() = Some(70);
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    host.core.send(Command::Next);
+    audio(
+        &guest,
+        |c| matches!(c, sc_audio::Command::Prepare { source, .. } if source.url.contains("/71.")),
+    );
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while let Ok(command) = guest
+        .audio_commands
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+    {
+        if let sc_audio::Command::Prepare { source, .. } = command {
+            assert!(!source.url.contains("/70."), "played the track left behind");
+        }
+    }
+}
