@@ -31,6 +31,8 @@ pub struct FakeApi {
     pub slow_tracks_once: Arc<AtomicBool>,
     /// `track` and `tracks` calls that include this id answer after 400 ms.
     pub slow_track: Arc<Mutex<Option<u64>>>,
+    /// `tracks` leaves this id out and `track` answers `NotFound` for it (deleted or private).
+    pub missing_track: Arc<Mutex<Option<u64>>>,
     /// The token `set_oauth_token` was given; only `"good"` signs in.
     pub token: Arc<Mutex<Option<String>>>,
     /// Makes like and follow calls fail (`Status(500)`).
@@ -273,6 +275,9 @@ impl SoundCloudApi for FakeApi {
     }
 
     async fn track(&self, id: u64) -> sc_api::Result<Track> {
+        if *self.missing_track.lock().unwrap() == Some(id) {
+            return Err(sc_api::Error::NotFound);
+        }
         if *self.slow_track.lock().unwrap() == Some(id) {
             tokio::time::sleep(Duration::from_millis(400)).await;
         }
@@ -297,7 +302,12 @@ impl SoundCloudApi for FakeApi {
         if slow.is_some_and(|slow| ids.contains(&slow)) {
             tokio::time::sleep(Duration::from_millis(400)).await;
         }
-        Ok(ids.iter().map(|id| track(*id, "Any", "ALLOW")).collect())
+        let missing = *self.missing_track.lock().unwrap();
+        Ok(ids
+            .iter()
+            .filter(|id| Some(**id) != missing)
+            .map(|id| track(*id, "Any", "ALLOW"))
+            .collect())
     }
 
     async fn stream_url(&self, track: &Track) -> sc_api::Result<StreamSource> {

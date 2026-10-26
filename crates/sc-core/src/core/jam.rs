@@ -129,6 +129,9 @@ struct Guest {
     saved: Option<SavedSession>,
     /// Counts the host's queues received; only the newest one is mirrored.
     queue_seq: u64,
+    /// For each mirrored track, its index in the host's queue (tracks that
+    /// could not be fetched are left out).
+    host_index: Vec<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -306,13 +309,16 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 vec![Request::PlayNext { track: track.0 }, Request::Next]
             }
             Command::Play { track, .. } => vec![Request::PlayNext { track: track.0 }],
-            Command::RemoveFromQueue(index) => vec![Request::Remove {
-                index: *index as u32,
-            }],
-            Command::MoveInQueue { from, to } => vec![Request::Move {
-                from: *from as u32,
-                to: *to as u32,
-            }],
+            Command::RemoveFromQueue(index) => match self.guest_host_index(*index) {
+                Some(index) => vec![Request::Remove { index }],
+                None => return true,
+            },
+            Command::MoveInQueue { from, to } => {
+                match (self.guest_host_index(*from), self.guest_host_index(*to)) {
+                    (Some(from), Some(to)) => vec![Request::Move { from, to }],
+                    _ => return true,
+                }
+            }
             // The host's queue and modes: not for guests to change.
             Command::PlayQueueIndex(_) | Command::SetShuffle(_) | Command::SetRepeat(_) => {
                 self.emit(Event::Problem(Problem::JamNotAllowed));
@@ -324,6 +330,17 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             self.jam_send(SessionCommand::Send(ToHost::Request(request)));
         }
         true
+    }
+
+    /// The host's queue index for an index in this guest's mirror.
+    fn guest_host_index(&self, index: usize) -> Option<u32> {
+        match &self.jam {
+            Some(Jam {
+                role: Role::Guest(guest),
+                ..
+            }) => guest.host_index.get(index).copied(),
+            _ => None,
+        }
     }
 
     fn start_jam(&mut self, link: Option<String>) {
@@ -374,6 +391,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                         last_correction: None,
                         saved: Some(saved),
                         queue_seq: 0,
+                        host_index: Vec::new(),
                     }),
                 )
             }
@@ -1333,19 +1351,25 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     }
 
     fn guest_mirror(&mut self, ids: &[u64], current: Option<u32>) {
-        let summaries: Vec<TrackSummary> = ids
+        let kept: Vec<(u32, TrackSummary)> = ids
             .iter()
-            .filter_map(|id| self.find_summary(TrackId(*id)))
+            .enumerate()
+            .filter_map(|(i, id)| self.find_summary(TrackId(*id)).map(|s| (i as u32, s)))
             .collect();
+        let current = current.and_then(|c| kept.iter().position(|(i, _)| *i == c));
+        if let Some(Jam {
+            role: Role::Guest(guest),
+            ..
+        }) = &mut self.jam
+        {
+            guest.host_index = kept.iter().map(|(i, _)| *i).collect();
+        }
+        let summaries: Vec<TrackSummary> = kept.into_iter().map(|(_, s)| s).collect();
         let art: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
         // The host's order, whatever this guest's own shuffle; its flags stay.
         let own = self.queue.snapshot();
-        self.queue.restore(
-            summaries,
-            current.map(|i| i as usize),
-            own.shuffle,
-            own.repeat,
-        );
+        self.queue
+            .restore(summaries, current, own.shuffle, own.repeat);
         self.emit(Event::Queue(self.queue.snapshot()));
         // Tracks fetched for the mirror were never on a list here.
         for id in art {

@@ -459,3 +459,30 @@ fn a_guests_play_now_plays_the_track_the_host_did_not_know() {
         "the host jumped to the wrong track"
     );
 }
+
+#[test]
+fn a_guests_mirror_keeps_the_hosts_indices_when_a_track_is_missing() {
+    let (host, guest) = pair("missing");
+    *guest.api.missing_track.lock().unwrap() = Some(70);
+    host.core.send(Command::SetJamGuestsControl(true));
+    jam(&guest, |s| s.guests_control_playback);
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    let mirror = guest.wait(|e| match e {
+        Event::Queue(queue) if queue.tracks.len() == 1 => Some(queue),
+        _ => None,
+    });
+    assert_eq!(mirror.tracks[0].id, TrackId(71));
+    assert_eq!(mirror.current, None);
+    guest.core.send(Command::RemoveFromQueue(0));
+    let queue = host.wait(|e| match e {
+        Event::Queue(queue) if queue.tracks.len() == 1 => Some(queue),
+        _ => None,
+    });
+    assert_eq!(queue.tracks[0].id, TrackId(70));
+}
