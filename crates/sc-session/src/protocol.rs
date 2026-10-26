@@ -9,9 +9,18 @@ use serde::{Deserialize, Serialize};
 /// Protocol name and major version, negotiated by QUIC.
 pub const ALPN: &[u8] = b"cloudrs/jam/1";
 /// Minor version this build speaks.
-pub const PROTO_MINOR: u16 = 1;
+pub const PROTO_MINOR: u16 = 2;
 /// A larger frame closes the connection.
 pub const MAX_FRAME: usize = 64 * 1024;
+
+/// The host's repeat mode. Closed: a new variant would break older peers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RepeatMode {
+    #[default]
+    Off,
+    One,
+    All,
+}
 
 /// A guest, as the host numbers them (1, 2, 3...).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -112,6 +121,12 @@ pub enum ToGuest {
     Queue {
         tracks: Vec<QueuedTrack>,
         current: Option<u32>,
+        /// The host's shuffle (minor 2).
+        #[serde(default)]
+        shuffle: bool,
+        /// The host's repeat mode (minor 2).
+        #[serde(default)]
+        repeat: RepeatMode,
     },
     /// Load this track paused at `pos_ms` and answer `Ready`.
     Prepare {
@@ -229,6 +244,8 @@ mod tests {
                 added_by: Some(PeerId(2)),
             }],
             current: Some(0),
+            shuffle: true,
+            repeat: RepeatMode::All,
         });
         roundtrip(ToGuest::Ended {
             reason: EndReason::Full,
@@ -252,6 +269,21 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(welcome, ToGuest::Welcome { you: PeerId(3), .. }));
+    }
+
+    #[test]
+    fn queue_modes_from_older_hosts_default() {
+        let queue: ToGuest =
+            serde_json::from_str(r#"{"type":"Queue","tracks":[],"current":null}"#).unwrap();
+        assert_eq!(
+            queue,
+            ToGuest::Queue {
+                tracks: Vec::new(),
+                current: None,
+                shuffle: false,
+                repeat: RepeatMode::Off,
+            }
+        );
     }
 
     #[test]

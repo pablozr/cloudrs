@@ -75,8 +75,7 @@ enum Input {
     JamMirror {
         generation: u64,
         seq: u64,
-        ids: Vec<u64>,
-        current: Option<u32>,
+        queue: jam::HostQueue,
         result: sc_api::Result<Vec<Track>>,
     },
     Ui(Command),
@@ -404,10 +403,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Input::JamMirror {
                 generation,
                 seq,
-                ids,
-                current,
+                queue,
                 result,
-            } => self.jam_mirror_fetched(generation, seq, ids, current, result),
+            } => self.jam_mirror_fetched(generation, seq, queue, result),
             Input::Audio(event) => self.audio_event(event),
             Input::ListDone {
                 list,

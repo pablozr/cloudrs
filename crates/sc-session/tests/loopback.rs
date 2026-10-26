@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use sc_session::{
-    EndReason, Ended, Network, PeerId, Perms, Profile, QueuedTrack, Request, Session,
+    EndReason, Ended, Network, PeerId, Perms, Profile, QueuedTrack, RepeatMode, Request, Session,
     SessionCommand, SessionEvent, ToGuest, ToHost,
 };
 
@@ -105,6 +105,8 @@ fn a_guest_joins_talks_and_is_told_when_the_host_leaves() {
             added_by: Some(peer),
         }],
         current: Some(0),
+        shuffle: false,
+        repeat: RepeatMode::Off,
     };
     host.send(SessionCommand::Broadcast(queue.clone()));
     let got = next(&guest, |e| match e {

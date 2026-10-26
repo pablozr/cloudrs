@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use sc_api::SoundCloudApi;
 use sc_api::models::Track;
 use sc_session::{
-    EndReason, Ended, PeerId, PeerInfo, Perms, Profile, QueuedTrack, Request, Session,
+    EndReason, Ended, PeerId, PeerInfo, Perms, Profile, QueuedTrack, RepeatMode, Request, Session,
     SessionCommand, SessionEvent, ToGuest, ToHost, Unplayable,
 };
 use tokio::task::JoinHandle;
@@ -28,7 +28,7 @@ use tokio::task::JoinHandle;
 use super::{Core, Input};
 use crate::store::Session as SavedSession;
 use crate::types::{
-    ArtKey, JamPerson, JamRole, JamState, PlayState, Problem, TrackId, TrackSummary, UserId,
+    ArtKey, JamPerson, JamRole, JamState, PlayState, Problem, Repeat, TrackId, TrackSummary, UserId,
 };
 use crate::{Command, Event};
 
@@ -63,6 +63,14 @@ fn queue_window(len: usize, current: Option<usize>) -> Range<usize> {
         .saturating_sub(QUEUE_WINDOW / 10)
         .min(len.saturating_sub(QUEUE_WINDOW));
     start..len.min(start + QUEUE_WINDOW)
+}
+
+/// The host's queue as a guest received it.
+pub(super) struct HostQueue {
+    ids: Vec<u64>,
+    current: Option<u32>,
+    shuffle: bool,
+    repeat: Repeat,
 }
 
 /// A `Prepare` or a paused seek that the engine has not answered yet.
@@ -1116,6 +1124,12 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 })
                 .collect(),
             current: snapshot.current.map(|i| (i - window.start) as u32),
+            shuffle: snapshot.shuffle,
+            repeat: match snapshot.repeat {
+                Repeat::Off => RepeatMode::Off,
+                Repeat::One => RepeatMode::One,
+                Repeat::All => RepeatMode::All,
+            },
         }
     }
 
@@ -1247,7 +1261,24 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 self.remember_avatar(host_user_id, host_avatar);
                 self.emit_jam();
             }
-            ToGuest::Queue { tracks, current } => self.guest_queue(tracks, current),
+            ToGuest::Queue {
+                tracks,
+                current,
+                shuffle,
+                repeat,
+            } => {
+                let queue = HostQueue {
+                    ids: tracks.iter().map(|t| t.track).collect(),
+                    current,
+                    shuffle,
+                    repeat: match repeat {
+                        RepeatMode::Off => Repeat::Off,
+                        RepeatMode::One => Repeat::One,
+                        RepeatMode::All => Repeat::All,
+                    },
+                };
+                self.guest_queue(queue);
+            }
             ToGuest::Prepare {
                 epoch,
                 track,
@@ -1313,7 +1344,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     }
 
     /// The host's queue: tracks this guest has not seen are fetched first.
-    fn guest_queue(&mut self, tracks: Vec<QueuedTrack>, current: Option<u32>) {
+    fn guest_queue(&mut self, queue: HostQueue) {
         let Some(Jam {
             role: Role::Guest(guest),
             ..
@@ -1323,14 +1354,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         };
         guest.queue_seq += 1;
         let seq = guest.queue_seq;
-        let ids: Vec<u64> = tracks.iter().map(|t| t.track).collect();
-        let missing: Vec<u64> = ids
+        let missing: Vec<u64> = queue
+            .ids
             .iter()
             .copied()
             .filter(|id| !self.tracks.contains_key(&TrackId(*id)))
             .collect();
         if missing.is_empty() {
-            return self.guest_mirror(&ids, current);
+            return self.guest_mirror(&queue);
         }
         let (api, inputs, generation) = (Arc::clone(&self.api), self.inputs.clone(), self.jam_gen);
         tokio::spawn(async move {
@@ -1338,8 +1369,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             let _ = inputs.send(Input::JamMirror {
                 generation,
                 seq,
-                ids,
-                current,
+                queue,
                 result,
             });
         });
@@ -1349,8 +1379,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         &mut self,
         generation: u64,
         seq: u64,
-        ids: Vec<u64>,
-        current: Option<u32>,
+        queue: HostQueue,
         result: sc_api::Result<Vec<Track>>,
     ) {
         // A newer queue arrived meanwhile: keep the tracks, do not mirror this one.
@@ -1370,17 +1399,20 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Err(error) => tracing::warn!(%error, "could not fetch the Jam's queue"),
         }
         if newest {
-            self.guest_mirror(&ids, current);
+            self.guest_mirror(&queue);
         }
     }
 
-    fn guest_mirror(&mut self, ids: &[u64], current: Option<u32>) {
-        let kept: Vec<(u32, TrackSummary)> = ids
+    fn guest_mirror(&mut self, queue: &HostQueue) {
+        let kept: Vec<(u32, TrackSummary)> = queue
+            .ids
             .iter()
             .enumerate()
             .filter_map(|(i, id)| self.find_summary(TrackId(*id)).map(|s| (i as u32, s)))
             .collect();
-        let current = current.and_then(|c| kept.iter().position(|(i, _)| *i == c));
+        let current = queue
+            .current
+            .and_then(|c| kept.iter().position(|(i, _)| *i == c));
         if let Some(Jam {
             role: Role::Guest(guest),
             ..
@@ -1390,10 +1422,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         }
         let summaries: Vec<TrackSummary> = kept.into_iter().map(|(_, s)| s).collect();
         let art: Vec<TrackId> = summaries.iter().map(|t| t.id).collect();
-        // The host's order, whatever this guest's own shuffle; its flags stay.
-        let own = self.queue.snapshot();
+        // The host's order and modes; the guest's own come back when the Jam
+        // ends (`saved`).
         self.queue
-            .restore(summaries, current, own.shuffle, own.repeat);
+            .restore(summaries, current, queue.shuffle, queue.repeat);
         self.emit(Event::Queue(self.queue.snapshot()));
         // Tracks fetched for the mirror were never on a list here.
         for id in art {
@@ -1569,6 +1601,8 @@ mod tests {
                 })
                 .collect(),
             current: Some(u32::MAX),
+            shuffle: true,
+            repeat: RepeatMode::All,
         };
         assert!(
             sc_session::protocol::encode(&message).len() - 4 <= sc_session::protocol::MAX_FRAME

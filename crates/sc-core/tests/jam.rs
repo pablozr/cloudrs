@@ -540,3 +540,21 @@ fn a_guest_that_seeks_slowly_plays_late_instead_of_seeking_again() {
     });
     assert!(matches!(next, sc_audio::Command::Play), "seeked again");
 }
+
+#[test]
+fn a_guest_sees_the_hosts_shuffle_and_repeat() {
+    let (host, guest) = pair("modes");
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    host.core.send(Command::SetRepeat(sc_core::Repeat::All));
+    host.core.send(Command::SetShuffle(true));
+    guest.wait(|e| match e {
+        Event::Queue(q) if q.repeat == sc_core::Repeat::All && q.shuffle => Some(q),
+        _ => None,
+    });
+}

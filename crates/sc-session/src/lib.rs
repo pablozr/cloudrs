@@ -22,7 +22,8 @@ pub mod protocol;
 use std::time::{Duration, Instant};
 
 pub use protocol::{
-    EndReason, PeerId, PeerInfo, Perms, QueuedTrack, Request, ToGuest, ToHost, Unplayable,
+    EndReason, PeerId, PeerInfo, Perms, QueuedTrack, RepeatMode, Request, ToGuest, ToHost,
+    Unplayable,
 };
 
 /// What a Jam link starts with, in the search field or a chat.
