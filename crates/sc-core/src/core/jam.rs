@@ -713,11 +713,13 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let Some(jam) = &mut self.jam else {
             return;
         };
-        if let Some(awaiting) = &jam.awaiting_position {
-            // Still on its way from the previous track: not the answer yet.
-            if position.abs_diff(awaiting.at) > READY_SLACK {
-                return;
-            }
+        // Still on its way from the previous track: not the answer yet.
+        if jam
+            .awaiting_position
+            .as_ref()
+            .is_some_and(|awaiting| position.abs_diff(awaiting.at) > READY_SLACK)
+        {
+            return;
         }
         if let Some(awaiting) = jam.awaiting_position.take() {
             let took = awaiting.since.elapsed();
@@ -967,11 +969,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             AfterFetch::Enqueue { peer, next } => self.host_add(peer, id, next),
             AfterFetch::Prepare { epoch, pos } => {
                 // The host moved on while this track was loading: keep it, do not play it.
-                let current = matches!(
+                if matches!(
                     &self.jam,
                     Some(Jam { role: Role::Guest(guest), .. }) if guest.epoch == epoch
-                );
-                if current {
+                ) {
                     self.guest_prepare(epoch, id, pos);
                 }
             }
@@ -1233,9 +1234,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         current: Option<u32>,
         result: sc_api::Result<Vec<Track>>,
     ) {
-        if generation != self.jam_gen || !self.is_jam_guest() {
-            return;
-        }
+        // A newer queue arrived meanwhile: keep the tracks, do not mirror this one.
+        let newest = match &self.jam {
+            Some(Jam {
+                role: Role::Guest(guest),
+                ..
+            }) if generation == self.jam_gen => guest.queue_seq == seq,
+            _ => return,
+        };
         match result {
             Ok(tracks) => {
                 for track in tracks {
@@ -1244,11 +1250,6 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             }
             Err(error) => tracing::warn!(%error, "could not fetch the Jam's queue"),
         }
-        // A newer queue arrived meanwhile: this one is stale.
-        let newest = matches!(
-            &self.jam,
-            Some(Jam { role: Role::Guest(guest), .. }) if guest.queue_seq == seq
-        );
         if newest {
             self.guest_mirror(&ids, current);
         }
