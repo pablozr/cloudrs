@@ -342,3 +342,69 @@ fn a_guest_does_not_play_a_track_the_host_already_left() {
         }
     }
 }
+
+/// A host with a track playing in a pair, ready for a `Next`.
+fn playing_pair(name: &str) -> (Harness, Harness) {
+    let (host, guest) = pair(name);
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    prepared(&host);
+    prepared(&guest);
+    plays(&host);
+    plays(&guest);
+    (host, guest)
+}
+
+/// Whether a `Play` reaches `h` within a second.
+fn plays_within_a_second(h: &Harness) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while let Ok(command) = h
+        .audio_commands
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+    {
+        if matches!(command, sc_audio::Command::Play) {
+            return true;
+        }
+    }
+    false
+}
+
+#[test]
+fn a_guest_is_ready_only_once_its_engine_prepared() {
+    let (host, guest) = playing_pair("ready-guest");
+    host.core.send(Command::Next);
+    audio(&guest, |c| matches!(c, sc_audio::Command::Prepare { .. }));
+    // The old track's position, still in flight when the new one is prepared.
+    send_audio(&guest, sc_audio::Event::Position(Duration::from_secs(42)));
+    prepared(&host);
+    assert!(!plays_within_a_second(&host), "the host started too early");
+    send_audio(
+        &guest,
+        sc_audio::Event::State(sc_audio::PlaybackState::Paused),
+    );
+    send_audio(&guest, sc_audio::Event::Position(Duration::ZERO));
+    plays(&host);
+    plays(&guest);
+}
+
+#[test]
+fn a_host_starts_only_once_its_own_engine_prepared() {
+    let (host, guest) = playing_pair("ready-host");
+    host.core.send(Command::Next);
+    audio(&host, |c| matches!(c, sc_audio::Command::Prepare { .. }));
+    send_audio(&host, sc_audio::Event::Position(Duration::from_secs(42)));
+    prepared(&guest);
+    assert!(!plays_within_a_second(&host), "the host started too early");
+    send_audio(
+        &host,
+        sc_audio::Event::State(sc_audio::PlaybackState::Paused),
+    );
+    send_audio(&host, sc_audio::Event::Position(Duration::ZERO));
+    plays(&host);
+    plays(&guest);
+}

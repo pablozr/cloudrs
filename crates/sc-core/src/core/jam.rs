@@ -47,14 +47,23 @@ const DEFAULT_LEAD: Duration = Duration::from_secs(1);
 const MAX_LEAD: Duration = Duration::from_secs(4);
 /// A schedule this close (or late) plays at once instead of catching up.
 const ON_TIME: Duration = Duration::from_millis(20);
+/// A position the engine reports for a `Prepare` or a seek is the requested
+/// spot; anything farther off was sent before the command.
+const READY_SLACK: Duration = Duration::from_millis(250);
+
+/// A `Prepare` or a paused seek that the engine has not answered yet.
+struct Awaiting {
+    since: Instant,
+    at: Duration,
+}
 
 pub(super) struct Jam {
     session: Session,
     generation: u64,
     pump: JoinHandle<()>,
     role: Role,
-    /// A `Prepare` or a paused seek was sent; the next position means ready.
-    awaiting_position: Option<Instant>,
+    /// A `Prepare` or a paused seek was sent; a position near `at` means ready.
+    awaiting_position: Option<Awaiting>,
     /// A play scheduled at the shared instant.
     play_at: Option<JoinHandle<()>>,
     play_at_token: u64,
@@ -625,10 +634,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let Some(jam) = &mut self.jam else {
             return false;
         };
-        jam.awaiting_position = Some(Instant::now());
+        let at = at.unwrap_or_default();
+        jam.awaiting_position = Some(Awaiting {
+            since: Instant::now(),
+            at,
+        });
         self.to_audio(sc_audio::Command::Prepare {
             source: source.clone(),
-            at: at.unwrap_or_default(),
+            at,
         });
         true
     }
@@ -700,8 +713,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let Some(jam) = &mut self.jam else {
             return;
         };
-        if let Some(since) = jam.awaiting_position.take() {
-            let took = since.elapsed();
+        if let Some(awaiting) = &jam.awaiting_position {
+            // Still on its way from the previous track: not the answer yet.
+            if position.abs_diff(awaiting.at) > READY_SLACK {
+                return;
+            }
+        }
+        if let Some(awaiting) = jam.awaiting_position.take() {
+            let took = awaiting.since.elapsed();
             match &mut jam.role {
                 Role::Host(host) => {
                     if let Some(barrier) = &mut host.barrier {
@@ -1074,7 +1093,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if let Role::Host(host) = &mut jam.role {
             host.resync = Some(play);
         }
-        jam.awaiting_position = Some(Instant::now());
+        jam.awaiting_position = Some(Awaiting {
+            since: Instant::now(),
+            at,
+        });
         self.cancel_play_at();
         self.to_audio(sc_audio::Command::Pause);
         self.to_audio(sc_audio::Command::Seek(at));
@@ -1374,7 +1396,10 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if let Role::Guest(guest) = &mut jam.role {
             guest.ready = false;
         }
-        jam.awaiting_position = Some(Instant::now());
+        jam.awaiting_position = Some(Awaiting {
+            since: Instant::now(),
+            at,
+        });
         self.to_audio(sc_audio::Command::Seek(at));
     }
 }
