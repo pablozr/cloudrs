@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Jam:** a guest whose sound fails no longer holds everyone at the start, and the host shows it; if the host's sound fails, the guests pause too.
 - **Jam:** a guest's queue no longer jumps back after autoplay or several changes in a row.
 - **Jam:** a guest with shuffle on sees the host's queue in the host's order.
 - **Jam:** skipping quickly no longer leaves a guest on the previous track.

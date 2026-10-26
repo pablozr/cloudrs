@@ -408,3 +408,37 @@ fn a_host_starts_only_once_its_own_engine_prepared() {
     plays(&host);
     plays(&guest);
 }
+
+#[test]
+fn a_guest_whose_engine_fails_does_not_hold_the_start() {
+    let (host, guest) = pair("guest-fails");
+    let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
+    host.core.send(Command::OpenUser(sc_core::UserId(50)));
+    host.list(list);
+    host.core.send(Command::Play {
+        list,
+        track: TrackId(70),
+    });
+    audio(&guest, |c| matches!(c, sc_audio::Command::Prepare { .. }));
+    send_audio(&guest, sc_audio::Event::Error("boom".into()));
+    send_audio(
+        &guest,
+        sc_audio::Event::State(sc_audio::PlaybackState::Idle),
+    );
+    prepared(&host);
+    jam(&host, |s| s.people.iter().any(|p| p.cannot_play));
+    assert!(
+        plays_within_a_second(&host),
+        "the host waited for the timeout"
+    );
+}
+
+#[test]
+fn a_host_whose_engine_fails_pauses_the_guests() {
+    let (host, guest) = playing_pair("host-fails");
+    host.core.send(Command::Seek(Duration::from_secs(30)));
+    audio(&host, |c| matches!(c, sc_audio::Command::Seek(_)));
+    send_audio(&host, sc_audio::Event::Error("boom".into()));
+    send_audio(&host, sc_audio::Event::State(sc_audio::PlaybackState::Idle));
+    audio(&guest, |c| matches!(c, sc_audio::Command::Pause));
+}

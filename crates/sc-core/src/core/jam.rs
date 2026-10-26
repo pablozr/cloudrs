@@ -794,6 +794,38 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         true
     }
 
+    /// The audio engine failed and dropped its track. A guest tells the host
+    /// it cannot play; a host stops waiting and pauses the guests where it was.
+    pub(super) fn jam_audio_failed(&mut self) {
+        let Some(jam) = &mut self.jam else {
+            return;
+        };
+        jam.awaiting_position = None;
+        let message = match &mut jam.role {
+            Role::Guest(guest) => {
+                guest.ready = false;
+                SessionCommand::Send(ToHost::CannotPlay {
+                    epoch: guest.epoch,
+                    track: self.current.map_or(0, |t| t.0),
+                    reason: Unplayable::Failed,
+                })
+            }
+            Role::Host(host) => {
+                let pos = host
+                    .barrier
+                    .take()
+                    .map_or(self.playback.position, |b| b.pos);
+                host.resync = None;
+                SessionCommand::Broadcast(ToGuest::Paused {
+                    epoch: host.epoch,
+                    pos_ms: ms(pos),
+                })
+            }
+        };
+        self.cancel_play_at();
+        self.jam_send(message);
+    }
+
     // Host
 
     fn host_peer_joined(&mut self, peer: PeerId, profile: Profile) {

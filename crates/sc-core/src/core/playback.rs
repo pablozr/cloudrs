@@ -457,6 +457,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             sc_audio::Event::DeviceMissing => self.output_fell_back(Problem::OutputDeviceMissing),
             sc_audio::Event::Error(detail) => {
                 tracing::warn!(%detail, "audio error");
+                self.jam_audio_failed();
                 self.emit(Event::Problem(Problem::Audio(detail)));
             }
         }
