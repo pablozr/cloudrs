@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0-beta.4 · 2026-10-26
+
 - **Logs:** set `CLOUDRS_LOG_FILE` to a path and cloudrs writes its log there, with the Jam's details; useful to report a problem on Windows, where there is no console.
 - **Jam:** a guest sees the host's shuffle and repeat.
 - **Jam:** a host with a very long queue no longer drops guests; they see the part around the current track.
