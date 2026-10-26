@@ -56,12 +56,15 @@ const READY_SLACK: Duration = Duration::from_millis(250);
 const QUEUE_WINDOW: usize = 1000;
 
 /// The part of a queue of `len` the guests see: all of it when it fits, else a
-/// window with a few tracks before `current`.
+/// window that starts 100 to 199 tracks before `current`. The start moves in
+/// steps of 100 and never with `len`, so a request still counts from the start
+/// the guest saw after tracks were added or removed.
 fn queue_window(len: usize, current: Option<usize>) -> Range<usize> {
-    let start = current
-        .unwrap_or(0)
-        .saturating_sub(QUEUE_WINDOW / 10)
-        .min(len.saturating_sub(QUEUE_WINDOW));
+    if len <= QUEUE_WINDOW {
+        return 0..len;
+    }
+    let step = QUEUE_WINDOW / 10;
+    let start = current.unwrap_or(0).saturating_sub(step) / step * step;
     start..len.min(start + QUEUE_WINDOW)
 }
 
@@ -154,6 +157,14 @@ struct Guest {
     /// For each mirrored track, its index in the host's queue (tracks that
     /// could not be fetched are left out).
     host_index: Vec<u32>,
+}
+
+impl Guest {
+    /// A guest corrects its position at most once per cooldown.
+    fn cooled(&self) -> bool {
+        self.last_correction
+            .is_none_or(|at| at.elapsed() >= CORRECTION_COOLDOWN)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -463,7 +474,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 self.set_state(PlayState::Idle);
                 match guest.saved {
                     Some(saved) if !saved.tracks.is_empty() => self.restore(saved),
-                    _ => self.emit(Event::Queue(self.queue.snapshot())),
+                    saved => {
+                        // Nothing to bring back but this guest's own modes.
+                        if let Some(saved) = saved {
+                            self.queue
+                                .restore(Vec::new(), None, saved.shuffle, saved.repeat);
+                        }
+                        self.emit(Event::Queue(self.queue.snapshot()));
+                    }
                 }
             }
             Role::Host(host) => {
@@ -1003,20 +1021,22 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             Request::Seek { ms } => Command::Seek(Duration::from_millis(ms)),
             // Guests count from the start of the window they were sent.
             Request::Remove { index } => {
-                Command::RemoveFromQueue(self.queue_window_start() + index as usize)
+                Command::RemoveFromQueue(self.queue_window().start + index as usize)
             }
-            Request::Move { from, to } => Command::MoveInQueue {
-                from: self.queue_window_start() + from as usize,
-                to: self.queue_window_start() + to as usize,
-            },
+            Request::Move { from, to } => {
+                let start = self.queue_window().start;
+                Command::MoveInQueue {
+                    from: start + from as usize,
+                    to: start + to as usize,
+                }
+            }
         };
         self.command(command);
     }
 
-    /// Where the window of the queue the guests see starts.
-    fn queue_window_start(&self) -> usize {
-        let snapshot = self.queue.snapshot();
-        queue_window(snapshot.tracks.len(), snapshot.current).start
+    /// The window of the queue the guests see.
+    fn queue_window(&self) -> Range<usize> {
+        queue_window(self.queue.len(), self.queue.current_index())
     }
 
     /// A guest's track joins the queue; one the host has not seen is fetched.
@@ -1106,8 +1126,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     }
 
     fn host_queue_message(&self) -> ToGuest {
-        let snapshot = self.queue.snapshot();
-        let window = queue_window(snapshot.tracks.len(), snapshot.current);
+        let window = self.queue_window();
         let added_by = match &self.jam {
             Some(Jam {
                 role: Role::Host(host),
@@ -1116,16 +1135,22 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             _ => None,
         };
         ToGuest::Queue {
-            tracks: snapshot.tracks[window.clone()]
-                .iter()
+            tracks: self
+                .queue
+                .tracks()
+                .skip(window.start)
+                .take(window.len())
                 .map(|t| QueuedTrack {
                     track: t.id.0,
                     added_by: added_by.and_then(|by| by.get(&t.id).copied()),
                 })
                 .collect(),
-            current: snapshot.current.map(|i| (i - window.start) as u32),
-            shuffle: snapshot.shuffle,
-            repeat: match snapshot.repeat {
+            current: self
+                .queue
+                .current_index()
+                .map(|i| (i - window.start) as u32),
+            shuffle: self.queue.shuffle(),
+            repeat: match self.queue.repeat() {
                 Repeat::Off => RepeatMode::Off,
                 Repeat::One => RepeatMode::One,
                 Repeat::All => RepeatMode::All,
@@ -1451,7 +1476,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         // The host's queue, which arrived first, already names the right entry
         // (a track queued twice has two).
         if !self.queue.current_track().is_some_and(|t| t.id == id) {
-            let index = self.queue.snapshot().tracks.iter().position(|t| t.id == id);
+            let index = self.queue.tracks().position(|t| t.id == id);
             if let Some(index) = index {
                 self.queue.play_index(index);
                 self.emit(Event::Queue(self.queue.snapshot()));
@@ -1477,9 +1502,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         }
         let lead = guest.lead;
-        let cooled = guest
-            .last_correction
-            .is_none_or(|at| at.elapsed() >= CORRECTION_COOLDOWN);
+        let cooled = guest.cooled();
         let host_now = now + offset;
         let local = self.playback.position;
         if !anchor.playing {
@@ -1534,10 +1557,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         }
         guest.strikes += 1;
-        let cooled = guest
-            .last_correction
-            .is_none_or(|at| at.elapsed() >= CORRECTION_COOLDOWN);
-        if guest.strikes >= DRIFT_STRIKES && cooled {
+        if guest.strikes >= DRIFT_STRIKES && guest.cooled() {
             let target = from_ns(expected + ns(guest.lead));
             self.guest_correct(target);
         }
@@ -1587,8 +1607,16 @@ mod tests {
     fn the_queue_window_follows_the_current_track() {
         assert_eq!(queue_window(5000, Some(0)), 0..1000);
         assert_eq!(queue_window(5000, Some(3000)), 2900..3900);
-        assert_eq!(queue_window(5000, Some(4990)), 4000..5000);
+        assert_eq!(queue_window(5000, Some(4990)), 4800..5000);
         assert_eq!(queue_window(5000, None), 0..1000);
+    }
+
+    #[test]
+    fn the_queue_window_start_moves_in_steps_and_not_with_the_length() {
+        assert_eq!(queue_window(5000, Some(3099)).start, 2900);
+        assert_eq!(queue_window(4999, Some(3000)).start, 2900);
+        assert_eq!(queue_window(3001, Some(2999)).start, 2800);
+        assert_eq!(queue_window(3000, Some(2999)).start, 2800);
     }
 
     #[test]

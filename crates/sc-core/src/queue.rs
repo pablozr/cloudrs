@@ -89,6 +89,22 @@ impl Queue {
         self.entries.len()
     }
 
+    pub fn current_index(&self) -> Option<usize> {
+        self.current
+    }
+
+    pub fn tracks(&self) -> impl ExactSizeIterator<Item = &TrackSummary> {
+        self.entries.iter().map(|e| &e.track)
+    }
+
+    pub fn shuffle(&self) -> bool {
+        self.shuffle
+    }
+
+    pub fn repeat(&self) -> Repeat {
+        self.repeat
+    }
+
     pub fn contains(&self, id: TrackId) -> bool {
         self.entries.iter().any(|e| e.track.id == id)
     }

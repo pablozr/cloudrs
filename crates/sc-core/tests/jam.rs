@@ -473,17 +473,11 @@ fn a_guests_mirror_keeps_the_hosts_indices_when_a_track_is_missing() {
         list,
         track: TrackId(70),
     });
-    let mirror = guest.wait(|e| match e {
-        Event::Queue(queue) if queue.tracks.len() == 1 => Some(queue),
-        _ => None,
-    });
+    let mirror = queue_of(&guest, 1);
     assert_eq!(mirror.tracks[0].id, TrackId(71));
     assert_eq!(mirror.current, None);
     guest.core.send(Command::RemoveFromQueue(0));
-    let queue = host.wait(|e| match e {
-        Event::Queue(queue) if queue.tracks.len() == 1 => Some(queue),
-        _ => None,
-    });
+    let queue = queue_of(&host, 1);
     assert_eq!(queue.tracks[0].id, TrackId(70));
 }
 
@@ -542,7 +536,7 @@ fn a_guest_that_seeks_slowly_plays_late_instead_of_seeking_again() {
 }
 
 #[test]
-fn a_guest_sees_the_hosts_shuffle_and_repeat() {
+fn a_guest_sees_the_hosts_shuffle_and_repeat_until_it_leaves() {
     let (host, guest) = pair("modes");
     let list = sc_core::ListId::UserTracks(sc_core::UserId(50));
     host.core.send(Command::OpenUser(sc_core::UserId(50)));
@@ -557,4 +551,18 @@ fn a_guest_sees_the_hosts_shuffle_and_repeat() {
         Event::Queue(q) if q.repeat == sc_core::Repeat::All && q.shuffle => Some(q),
         _ => None,
     });
+    // The guest came with an empty queue: only its own modes come back.
+    guest.core.send(Command::LeaveJam);
+    let mut last = None;
+    guest.wait(|e| match e {
+        Event::Queue(q) => {
+            last = Some(q);
+            None
+        }
+        Event::Jam(None) => Some(()),
+        _ => None,
+    });
+    let queue = last.expect("no queue after leaving");
+    assert_eq!(queue.repeat, sc_core::Repeat::Off);
+    assert!(!queue.shuffle, "kept the host's shuffle");
 }
