@@ -1234,6 +1234,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                 guest.ready = false;
                 guest.ready_sent = false;
                 guest.strikes = 0;
+                guest.last_correction = None;
                 if guest.anchor.is_some_and(|a| a.epoch != epoch) {
                     guest.anchor = None;
                 }
@@ -1421,6 +1422,9 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             return;
         }
         let lead = guest.lead;
+        let cooled = guest
+            .last_correction
+            .is_none_or(|at| at.elapsed() >= CORRECTION_COOLDOWN);
         let host_now = now + offset;
         let local = self.playback.position;
         if !anchor.playing {
@@ -1440,9 +1444,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         let when = anchor.at_host_ns as i64 + ns(local) - ns(anchor.pos);
         if when >= host_now - ns(ON_TIME) {
             self.play_at(when - offset);
-        } else {
+        } else if cooled {
             let target = anchor.pos + from_ns(host_now + ns(lead) - anchor.at_host_ns as i64);
             self.guest_correct(target);
+        } else {
+            // Late again right after a catch-up: play from here, the drift
+            // check corrects it once the cooldown is over.
+            self.cancel_play_at();
+            self.to_audio(sc_audio::Command::Play);
         }
     }
 

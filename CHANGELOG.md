@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Jam:** a guest on a slow connection no longer stays paused seeking over and over.
 - **Jam:** a track queued twice no longer shows the guest on the wrong copy.
 - **Jam:** removing or moving a track in a guest's queue acts on the right track when one of the host's tracks is unavailable to the guest.
 - **Jam:** "Play now" from a guest plays that track even when the host had never seen it.

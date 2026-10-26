@@ -142,3 +142,4 @@ host leaves.
 - While a track a guest asked for is being fetched, that guest's later requests wait for it, so "play now" plays it.
 - A track the guest cannot fetch is left out of its mirror; its requests still name the host's indices.
 - A guest on a track queued twice stays on the host's entry.
+- A guest that is still late after a catch-up seek plays from there; the next correction waits for the 10 s cooldown.

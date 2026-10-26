@@ -516,3 +516,27 @@ fn a_guest_on_a_repeated_track_stays_on_the_hosts_entry() {
     }
     assert_eq!(last, Some(2));
 }
+
+#[test]
+fn a_guest_that_seeks_slowly_plays_late_instead_of_seeking_again() {
+    let (_host, guest) = playing_pair("slow-seek");
+    for _ in 0..2 {
+        send_audio(&guest, sc_audio::Event::Position(Duration::from_secs(10)));
+    }
+    audio(&guest, |c| matches!(c, sc_audio::Command::Pause));
+    send_audio(
+        &guest,
+        sc_audio::Event::State(sc_audio::PlaybackState::Paused),
+    );
+    let at = match audio(&guest, |c| matches!(c, sc_audio::Command::Seek(_))) {
+        sc_audio::Command::Seek(at) => at,
+        _ => unreachable!(),
+    };
+    // The seek took longer than the lead: the host is already past `at`.
+    std::thread::sleep(Duration::from_millis(1500));
+    send_audio(&guest, sc_audio::Event::Position(at));
+    let next = audio(&guest, |c| {
+        matches!(c, sc_audio::Command::Seek(_) | sc_audio::Command::Play)
+    });
+    assert!(matches!(next, sc_audio::Command::Play), "seeked again");
+}
