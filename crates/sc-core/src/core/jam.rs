@@ -1392,10 +1392,14 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             });
             return;
         };
-        let index = self.queue.snapshot().tracks.iter().position(|t| t.id == id);
-        if let Some(index) = index {
-            self.queue.play_index(index);
-            self.emit(Event::Queue(self.queue.snapshot()));
+        // The host's queue, which arrived first, already names the right entry
+        // (a track queued twice has two).
+        if !self.queue.current_track().is_some_and(|t| t.id == id) {
+            let index = self.queue.snapshot().tracks.iter().position(|t| t.id == id);
+            if let Some(index) = index {
+                self.queue.play_index(index);
+                self.emit(Event::Queue(self.queue.snapshot()));
+            }
         }
         self.play_summary(summary, Some(pos), false);
     }

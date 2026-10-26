@@ -486,3 +486,33 @@ fn a_guests_mirror_keeps_the_hosts_indices_when_a_track_is_missing() {
     });
     assert_eq!(queue.tracks[0].id, TrackId(70));
 }
+
+#[test]
+fn a_guest_on_a_repeated_track_stays_on_the_hosts_entry() {
+    let (host, guest) = playing_pair("duplicate");
+    host.core.send(Command::AddToQueue(TrackId(70)));
+    queue_of(&guest, 3);
+    // Let the events of the setup settle, so only the two skips are judged.
+    while guest
+        .core
+        .events()
+        .recv_timeout(Duration::from_millis(300))
+        .is_ok()
+    {}
+    host.core.send(Command::Next);
+    prepared(&host);
+    prepared(&guest);
+    plays(&host);
+    plays(&guest);
+    host.core.send(Command::Next);
+    prepared(&host);
+    prepared(&guest);
+    let mut last = None;
+    while let Ok(event) = guest.core.events().recv_timeout(Duration::from_secs(1)) {
+        if let Event::Queue(queue) = event {
+            assert_ne!(queue.current, Some(0), "jumped to the first copy");
+            last = queue.current;
+        }
+    }
+    assert_eq!(last, Some(2));
+}

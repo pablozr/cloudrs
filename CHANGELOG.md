@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Jam:** a track queued twice no longer shows the guest on the wrong copy.
 - **Jam:** removing or moving a track in a guest's queue acts on the right track when one of the host's tracks is unavailable to the guest.
 - **Jam:** "Play now" from a guest plays that track even when the host had never seen it.
 - **Jam:** a guest whose sound fails no longer holds everyone at the start, and the host shows it; if the host's sound fails, the guests pause too.

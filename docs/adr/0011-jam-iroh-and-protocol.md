@@ -141,3 +141,4 @@ host leaves.
 - An audio engine failure counts as not being able to play: a guest reports `CannotPlay` (`Failed`) and stays silent until the next track; a host stops waiting for the start and pauses the guests where it was.
 - While a track a guest asked for is being fetched, that guest's later requests wait for it, so "play now" plays it.
 - A track the guest cannot fetch is left out of its mirror; its requests still name the host's indices.
+- A guest on a track queued twice stays on the host's entry.
