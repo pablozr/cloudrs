@@ -442,3 +442,20 @@ fn a_host_whose_engine_fails_pauses_the_guests() {
     send_audio(&host, sc_audio::Event::State(sc_audio::PlaybackState::Idle));
     audio(&guest, |c| matches!(c, sc_audio::Command::Pause));
 }
+
+#[test]
+fn a_guests_play_now_plays_the_track_the_host_did_not_know() {
+    let (host, guest) = playing_pair("play-now");
+    host.core.send(Command::SetJamGuestsControl(true));
+    jam(&guest, |s| s.guests_control_playback);
+    *host.api.slow_track.lock().unwrap() = Some(7);
+    guest.core.send(Command::Play {
+        list: TRACKS,
+        track: TrackId(7),
+    });
+    let first = audio(&host, |c| matches!(c, sc_audio::Command::Prepare { .. }));
+    assert!(
+        matches!(&first, sc_audio::Command::Prepare { source, .. } if source.url.contains("/7.")),
+        "the host jumped to the wrong track"
+    );
+}

@@ -86,6 +86,8 @@ struct Host {
     /// A seek or a resume is waiting for the audio to be ready at the new
     /// position; `true` to play once it is.
     resync: Option<bool>,
+    /// A guest's requests that wait for a track fetched for that guest, in order.
+    held: HashMap<PeerId, Vec<Request>>,
 }
 
 struct Person {
@@ -341,6 +343,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     added_by: HashMap::new(),
                     last_anchor: None,
                     resync: None,
+                    held: HashMap::new(),
                 }),
             ),
             Some(link) => {
@@ -524,6 +527,7 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     if let Some(barrier) = &mut host.barrier {
                         barrier.waiting.remove(&peer);
                     }
+                    host.held.remove(&peer);
                 }
                 self.host_broadcast_peers();
                 self.host_check_barrier();
@@ -941,6 +945,15 @@ impl<A: SoundCloudApi + 'static> Core<A> {
             self.jam_send(SessionCommand::SendTo(peer, ToGuest::Denied { request }));
             return;
         }
+        if let Some(Jam {
+            role: Role::Host(host),
+            ..
+        }) = &mut self.jam
+            && let Some(held) = host.held.get_mut(&peer)
+        {
+            held.push(request);
+            return;
+        }
         let command = match request {
             Request::AddToQueue { track } => return self.host_add(peer, TrackId(track), false),
             Request::PlayNext { track } => return self.host_add(peer, TrackId(track), true),
@@ -960,6 +973,13 @@ impl<A: SoundCloudApi + 'static> Core<A> {
     /// A guest's track joins the queue; one the host has not seen is fetched.
     fn host_add(&mut self, peer: PeerId, id: TrackId, next: bool) {
         if self.find_summary(id).is_none() {
+            if let Some(Jam {
+                role: Role::Host(host),
+                ..
+            }) = &mut self.jam
+            {
+                host.held.entry(peer).or_default();
+            }
             let (api, inputs, generation) =
                 (Arc::clone(&self.api), self.inputs.clone(), self.jam_gen);
             tokio::spawn(async move {
@@ -991,15 +1011,25 @@ impl<A: SoundCloudApi + 'static> Core<A> {
         if generation != self.jam_gen {
             return;
         }
-        let track = match result {
-            Ok(track) => *track,
-            Err(error) => return self.emit(Event::Problem(Problem::from_api(&error))),
+        let id = match result {
+            Ok(track) => {
+                let id = TrackId(track.id);
+                self.tracks.insert(id, *track);
+                Some(id)
+            }
+            Err(error) => {
+                self.emit(Event::Problem(Problem::from_api(&error)));
+                None
+            }
         };
-        let id = TrackId(track.id);
-        self.tracks.insert(id, track);
-        match then {
-            AfterFetch::Enqueue { peer, next } => self.host_add(peer, id, next),
-            AfterFetch::Prepare { epoch, pos } => {
+        match (then, id) {
+            (AfterFetch::Enqueue { peer, next }, id) => {
+                if let Some(id) = id {
+                    self.host_add(peer, id, next);
+                }
+                self.host_release(peer);
+            }
+            (AfterFetch::Prepare { epoch, pos }, Some(id)) => {
                 // The host moved on while this track was loading: keep it, do not play it.
                 if matches!(
                     &self.jam,
@@ -1008,6 +1038,21 @@ impl<A: SoundCloudApi + 'static> Core<A> {
                     self.guest_prepare(epoch, id, pos);
                 }
             }
+            (AfterFetch::Prepare { .. }, None) => {}
+        }
+    }
+
+    /// Runs the requests a guest made while its track was being fetched.
+    fn host_release(&mut self, peer: PeerId) {
+        let Some(Jam {
+            role: Role::Host(host),
+            ..
+        }) = &mut self.jam
+        else {
+            return;
+        };
+        for request in host.held.remove(&peer).unwrap_or_default() {
+            self.host_request(peer, request);
         }
     }
 

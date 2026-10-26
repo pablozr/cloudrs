@@ -139,3 +139,4 @@ host leaves.
 - A track fetched for an older `Prepare` is kept but not played.
 - Ready means the engine reported the requested position (within 250 ms); a position still in flight from the previous track no longer counts, which had let the start barrier pass early and sent guests a pause at the old track's position.
 - An audio engine failure counts as not being able to play: a guest reports `CannotPlay` (`Failed`) and stays silent until the next track; a host stops waiting for the start and pauses the guests where it was.
+- While a track a guest asked for is being fetched, that guest's later requests wait for it, so "play now" plays it.
